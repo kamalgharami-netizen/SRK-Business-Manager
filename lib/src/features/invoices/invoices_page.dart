@@ -57,6 +57,7 @@ class _InvoicesPageState extends State<InvoicesPage> {
     }
 
     final settingsRows = await db.query('app_settings');
+    if (!mounted) return;
     final settings = <String, String>{
       for (final row in settingsRows)
         row['setting_key'] as String: row['setting_value'] as String,
