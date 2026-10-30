@@ -121,7 +121,7 @@ class _PartiesPageState extends State<PartiesPage> {
       context: context,
       builder: (dialogContext) => AlertDialog(
         title: const Text('Delete party?'),
-        content: Text('Delete ' + (party['name'] as String) + ' from this device?'),
+        content: Text('Delete ${party['name']} from this device?'),
         actions: [
           TextButton(onPressed: () => Navigator.pop(dialogContext, false), child: const Text('Cancel')),
           FilledButton(onPressed: () => Navigator.pop(dialogContext, true), child: const Text('Delete')),
