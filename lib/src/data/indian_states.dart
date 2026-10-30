@@ -1,7 +1,5 @@
 /// Indian States and Union Territories used for GST state selection.
 class IndianStates {
-  IndianStates._();
-
   static const List<String> all = [
     'Andhra Pradesh',
     'Arunachal Pradesh',
@@ -40,6 +38,7 @@ class IndianStates {
     'Lakshadweep',
     'Puducherry',
   ];
+
   /// Current GST State/UT codes used in the first two GSTIN characters.
   static const Map<String, String> gstCodes = {
     '01': 'Jammu and Kashmir',
@@ -82,17 +81,13 @@ class IndianStates {
 
   static bool gstinMatchesState(String gstin, String state) {
     final normalized = gstin.trim().toUpperCase();
-    if (!RegExp(r'^[0-9]{2}[A-Z]{5}[0-9]{4}[A-Z][1-9A-Z]Z[0-9A-Z]
-      return false;
-    }
-    return gstCodes[normalized.substring(0, 2)] == state;
-  }
-}
-)
-        .hasMatch(normalized)) {
-      return false;
-    }
-    return gstCodes[normalized.substring(0, 2)] == state;
-  }
+    final gstinPattern =
+        RegExp(r'^[0-9]{2}[A-Z]{5}[0-9]{4}[A-Z][1-9A-Z]Z[0-9A-Z]$');
 
+    if (!gstinPattern.hasMatch(normalized)) {
+      return false;
+    }
+
+    return gstCodes[normalized.substring(0, 2)] == state;
+  }
 }
