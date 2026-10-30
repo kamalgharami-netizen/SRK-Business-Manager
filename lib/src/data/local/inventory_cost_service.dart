@@ -212,8 +212,8 @@ class InventoryCostService {
       throw StateError('Sales return quantity must be positive.');
     }
     final priorRows = await txn.rawQuery(
-      'SELECT COALESCE(SUM(quantity), 0) AS qty FROM invoice_items WHERE original_invoice_item_id = ?',
-      [originalInvoiceItemId],
+      'SELECT COALESCE(SUM(quantity), 0) AS qty FROM invoice_items WHERE original_invoice_item_id = ? AND id != ?',
+      [originalInvoiceItemId, returnItemId],
     );
     var alreadyReturned = (priorRows.first['qty'] as num?)?.toDouble() ?? 0;
     var remaining = quantity;
