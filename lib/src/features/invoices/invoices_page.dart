@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 
 import '../../data/local/app_database.dart';
+import 'invoice_pdf_service.dart';
 
 class InvoicesPage extends StatefulWidget {
   const InvoicesPage({super.key});
@@ -344,6 +345,11 @@ class _InvoicesPageState extends State<InvoicesPage> {
       where: 'invoice_id = ?',
       whereArgs: [invoice['id']],
     );
+    final settingsRows = await db.query('app_settings');
+    final business = <String, String>{
+      for (final row in settingsRows)
+        row['setting_key'] as String: row['setting_value'] as String,
+    };
     if (!mounted) return;
     await showDialog<void>(
       context: context,
@@ -372,6 +378,25 @@ class _InvoicesPageState extends State<InvoicesPage> {
           ),
         ),
         actions: [
+          TextButton.icon(
+            onPressed: () async {
+              try {
+                await InvoicePdfService.printInvoice(
+                  invoice: invoice,
+                  items: items,
+                  business: business,
+                );
+              } catch (error) {
+                if (mounted) {
+                  ScaffoldMessenger.of(this.context).showSnackBar(
+                    SnackBar(content: Text('Could not create invoice PDF: $error')),
+                  );
+                }
+              }
+            },
+            icon: const Icon(Icons.picture_as_pdf),
+            label: const Text('PDF / Print'),
+          ),
           TextButton(onPressed: () => Navigator.pop(context), child: const Text('Close')),
         ],
       ),
