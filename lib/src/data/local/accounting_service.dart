@@ -4,11 +4,13 @@ import 'package:sqflite_common_ffi/sqflite_ffi.dart';
 class AccountingService {
   AccountingService._();
 
-  static Future<void> postSalesInvoice(Transaction txn, {required int invoiceId, required String invoiceNumber, required String date, required double subtotal, required double tax, required double total}) async {
+  static Future<void> postSalesInvoice(Transaction txn, {required int invoiceId, required String invoiceNumber, required String date, required double subtotal, required double tax, required double total, double costOfGoodsSold = 0}) async {
     final lines = <Map<String, Object?>>[
       if (total > 0) {'code': '1100', 'debit': total, 'credit': 0.0, 'description': 'Customer receivable'},
       if (subtotal > 0) {'code': '4000', 'debit': 0.0, 'credit': subtotal, 'description': 'Sales revenue'},
       if (tax > 0) {'code': '2100', 'debit': 0.0, 'credit': tax, 'description': 'Output GST payable'},
+      if (costOfGoodsSold > 0) {'code': '5000', 'debit': costOfGoodsSold, 'credit': 0.0, 'description': 'FIFO cost of goods sold'},
+      if (costOfGoodsSold > 0) {'code': '1200', 'debit': 0.0, 'credit': costOfGoodsSold, 'description': 'Inventory issued at FIFO cost'},
     ];
     await _post(txn, sourceType: 'sales_invoice', sourceId: invoiceId, date: date, memo: 'Sales invoice $invoiceNumber', lines: lines);
   }
