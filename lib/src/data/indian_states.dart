@@ -82,7 +82,13 @@ class IndianStates {
 
   static bool gstinMatchesState(String gstin, String state) {
     final normalized = gstin.trim().toUpperCase();
-    if (!RegExp(r'^[0-9]{2}[A-Z]{5}[0-9]{4}[A-Z][1-9A-Z]Z[0-9A-Z])
+    if (!RegExp(r'^[0-9]{2}[A-Z]{5}[0-9]{4}[A-Z][1-9A-Z]Z[0-9A-Z]
+      return false;
+    }
+    return gstCodes[normalized.substring(0, 2)] == state;
+  }
+}
+)
         .hasMatch(normalized)) {
       return false;
     }
