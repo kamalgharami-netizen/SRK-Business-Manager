@@ -310,8 +310,7 @@ class _StockControlPageState extends State<StockControlPage> {
                         return 'Enter a quantity greater than zero';
                       }
                       if (direction == 'decrease' && productId != null) {
-                        final selected = products.firstWhere((row) => row['id'] == productId);
-                        if (parsed > (selected['current_stock'] as num).toDouble()) {
+                                      if (parsed > (selected['current_stock'] as num).toDouble()) {
                           return 'Cannot reduce stock below zero';
                         }
                       }
