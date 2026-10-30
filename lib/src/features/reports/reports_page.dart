@@ -107,6 +107,19 @@ class _ReportsPageState extends State<ReportsPage> {
         COALESCE((SELECT SUM(i.grand_total - i.amount_paid) FROM invoices i WHERE i.party_id=p.id AND i.invoice_type='purchase'),0) AS payable
       FROM parties p ORDER BY p.name COLLATE NOCASE
     """);
+    final journalDateWhere = <String>[];
+    final journalDateArgs = <Object?>[];
+    if (_startDate != null) {
+      journalDateWhere.add('je.entry_date >= ?');
+      journalDateArgs.add(_date(_startDate!));
+    }
+    if (_endDate != null) {
+      journalDateWhere.add('je.entry_date < ?');
+      journalDateArgs.add(_date(_endDate!.add(const Duration(days: 1))));
+    }
+    final journalDateClause = journalDateWhere.isEmpty
+        ? ''
+        : ' AND ${journalDateWhere.join(' AND ')}';
     final journalRows = await db.rawQuery("""
       SELECT a.id, a.account_code, a.account_name, a.account_type,
         COALESCE(j.total_debit, 0) AS total_debit,
@@ -117,12 +130,12 @@ class _ReportsPageState extends State<ReportsPage> {
           SUM(jl.credit) AS total_credit
         FROM journal_lines jl
         INNER JOIN journal_entries je ON je.id = jl.journal_entry_id
-        WHERE je.status = 'posted'
+        WHERE je.status = 'posted'$journalDateClause
         GROUP BY jl.account_id
       ) j ON j.account_id = a.id
       WHERE a.is_active = 1
       ORDER BY a.account_code
-    """);
+    """, journalDateArgs);
     double trialDebit = 0;
     double trialCredit = 0;
     double profitIncome = 0;
@@ -192,7 +205,7 @@ class _ReportsPageState extends State<ReportsPage> {
     child: Padding(
       padding: const EdgeInsets.all(12),
       child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
-        const Text('GST report date range', style: TextStyle(fontWeight: FontWeight.bold)),
+        const Text('Report date range', style: TextStyle(fontWeight: FontWeight.bold)),
         const SizedBox(height: 8),
         Wrap(spacing: 8, runSpacing: 8, children: [
           OutlinedButton.icon(
@@ -229,12 +242,15 @@ class _ReportsPageState extends State<ReportsPage> {
         child: ListView(padding: const EdgeInsets.all(16), children: [
           const Text('Summary from locally recorded transactions'),
           const SizedBox(height: 10),
-          if (title == 'GST Reports') ...[
+          if (title == 'GST Reports' || title == 'Trial Balance' ||
+              title == 'Profit & Loss' || title == 'Balance Sheet') ...[
             _gstDateFilter(),
             const SizedBox(height: 8),
             Text(_startDate == null && _endDate == null
               ? 'Period: All recorded dates'
               : 'Period: ${_startDate == null ? 'Beginning' : _date(_startDate!)} to ${_endDate == null ? 'Latest' : _date(_endDate!)}'),
+          ],
+          if (title == 'GST Reports') ...[
             _metric('Sales taxable + tax total', _money(_number('sales')), Icons.point_of_sale),
             _metric('Output GST on sales', _money(_number('salesTax')), Icons.south),
             _metric('Output CGST', _money(_number('salesCgst')), Icons.south),
