@@ -56,6 +56,19 @@ class _InvoicesPageState extends State<InvoicesPage> {
       return;
     }
 
+    final settingsRows = await db.query('app_settings');
+    final settings = <String, String>{
+      for (final row in settingsRows)
+        row['setting_key'] as String: row['setting_value'] as String,
+    };
+    final businessState = (settings['company_state'] ?? '').trim();
+    if (businessState.isEmpty) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Set your GST registration state in Settings before creating a GST invoice.')),
+      );
+      return;
+    }
+    final placeOfSupply = TextEditingController(text: businessState);
     final formKey = GlobalKey<FormState>();
     int? selectedPartyId;
     final lines = <_InvoiceLine>[_InvoiceLine()];
@@ -76,6 +89,10 @@ class _InvoicesPageState extends State<InvoicesPage> {
             subtotal += base;
             taxTotal += base * gst / 100;
           }
+          final isIntraState = placeOfSupply.text.trim().toLowerCase() == businessState.toLowerCase();
+          final cgstTotal = isIntraState ? taxTotal / 2 : 0.0;
+          final sgstTotal = isIntraState ? taxTotal - cgstTotal : 0.0;
+          final igstTotal = isIntraState ? 0.0 : taxTotal;
           final grandTotal = subtotal + taxTotal;
 
           return AlertDialog(
@@ -97,6 +114,17 @@ class _InvoicesPageState extends State<InvoicesPage> {
                           child: Text(party['name'] as String),
                         )).toList(),
                         onChanged: (value) => refreshDialog(() => selectedPartyId = value),
+                      ),
+                      TextFormField(
+                        controller: placeOfSupply,
+                        decoration: const InputDecoration(
+                          labelText: 'Place of Supply state *',
+                          helperText: 'Enter the state applicable to this supply.',
+                        ),
+                        validator: (value) => value == null || value.trim().isEmpty
+                            ? 'Enter Place of Supply state'
+                            : null,
+                        onChanged: (_) => refreshDialog(() {}),
                       ),
                       const SizedBox(height: 16),
                       Text('Invoice items', style: Theme.of(context).textTheme.titleMedium),
@@ -127,7 +155,12 @@ class _InvoicesPageState extends State<InvoicesPage> {
                       ),
                       const Divider(height: 24),
                       _totalRow('Taxable subtotal', subtotal),
-                      _totalRow('GST', taxTotal),
+                      _totalRow('Total GST', taxTotal),
+                      if (isIntraState) ...[
+                        _totalRow('CGST', cgstTotal),
+                        _totalRow('SGST', sgstTotal),
+                      ] else
+                        _totalRow('IGST', igstTotal),
                       _totalRow('Grand total', grandTotal, bold: true),
                     ],
                   ),
@@ -181,6 +214,10 @@ class _InvoicesPageState extends State<InvoicesPage> {
             }
             final base = quantity * rate;
             final tax = base * gstRate / 100;
+            final isIntraState = placeOfSupply.text.trim().toLowerCase() == businessState.toLowerCase();
+            final cgst = isIntraState ? tax / 2 : 0.0;
+            final sgst = isIntraState ? tax - cgst : 0.0;
+            final igst = isIntraState ? 0.0 : tax;
             subtotal += base;
             taxTotal += tax;
             prepared.add({
@@ -193,6 +230,9 @@ class _InvoicesPageState extends State<InvoicesPage> {
               'discount': 0,
               'gst_rate': gstRate,
               'tax_amount': tax,
+              'cgst_amount': cgst,
+              'sgst_amount': sgst,
+              'igst_amount': igst,
               'line_total': base + tax,
             });
           }
@@ -204,6 +244,11 @@ class _InvoicesPageState extends State<InvoicesPage> {
             'invoice_date': now.toIso8601String(),
             'subtotal': subtotal,
             'tax_total': taxTotal,
+            'place_of_supply': placeOfSupply.text.trim(),
+            'tax_type': placeOfSupply.text.trim().toLowerCase() == businessState.toLowerCase() ? 'intra_state' : 'inter_state',
+            'cgst_total': placeOfSupply.text.trim().toLowerCase() == businessState.toLowerCase() ? taxTotal / 2 : 0,
+            'sgst_total': placeOfSupply.text.trim().toLowerCase() == businessState.toLowerCase() ? taxTotal / 2 : 0,
+            'igst_total': placeOfSupply.text.trim().toLowerCase() == businessState.toLowerCase() ? 0 : taxTotal,
             'grand_total': subtotal + taxTotal,
             'amount_paid': 0,
             'status': 'unpaid',
@@ -237,6 +282,7 @@ class _InvoicesPageState extends State<InvoicesPage> {
       line.dispose();
     }
     notes.dispose();
+    placeOfSupply.dispose();
   }
 
   Widget _buildLine({
@@ -364,6 +410,11 @@ class _InvoicesPageState extends State<InvoicesPage> {
             children: [
               Text('Customer: ${invoice['party_name'] ?? 'Walk-in customer'}'),
               Text('Date: ${(invoice['invoice_date'] as String).split('T').first}'),
+              Text('Place of Supply: ${invoice['place_of_supply'] ?? 'Not recorded'}'),
+              Text('Tax type: ${invoice['tax_type'] ?? 'Not classified'}'),
+              _totalRow('CGST', (invoice['cgst_total'] as num?)?.toDouble() ?? 0),
+              _totalRow('SGST', (invoice['sgst_total'] as num?)?.toDouble() ?? 0),
+              _totalRow('IGST', (invoice['igst_total'] as num?)?.toDouble() ?? 0),
               const Divider(),
               for (final item in items)
                 ListTile(
