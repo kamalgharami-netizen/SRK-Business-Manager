@@ -9,7 +9,7 @@ class AppDatabase {
   AppDatabase._();
 
   static final AppDatabase instance = AppDatabase._();
-  static const int _databaseVersion = 8;
+  static const int _databaseVersion = 9;
   String? _databasePath;
   Database? _database;
 
@@ -86,6 +86,11 @@ class AppDatabase {
         }
         if (oldVersion < 8) {
           await _seedDefaultAccounts(db);
+        }
+        if (oldVersion < 9) {
+          await db.execute('ALTER TABLE invoice_items ADD COLUMN cost_of_goods_sold REAL NOT NULL DEFAULT 0');
+          await _createInventoryCostSchema(db);
+          await _seedLegacyInventoryCostLayers(db);
         }
       },
     );
@@ -176,6 +181,7 @@ class AppDatabase {
         sgst_amount REAL NOT NULL DEFAULT 0,
         igst_amount REAL NOT NULL DEFAULT 0,
         line_total REAL NOT NULL,
+        cost_of_goods_sold REAL NOT NULL DEFAULT 0,
         FOREIGN KEY (invoice_id) REFERENCES invoices(id) ON DELETE CASCADE,
         FOREIGN KEY (product_id) REFERENCES products(id) ON DELETE SET NULL
       )
@@ -263,6 +269,7 @@ class AppDatabase {
     await db.execute('CREATE INDEX idx_stock_movements_product ON stock_movements(product_id)');
     await _createAccountingSchema(db);
     await _seedDefaultAccounts(db);
+    await _createInventoryCostSchema(db);
   }
 
   Future<void> _createAccountingSchema(Database db) async {
@@ -322,6 +329,61 @@ class AppDatabase {
     await db.execute(
       'CREATE INDEX idx_journal_lines_entry ON journal_lines(journal_entry_id)',
     );
+  }
+
+  Future<void> _createInventoryCostSchema(DatabaseExecutor db) async {
+    await db.execute('''
+      CREATE TABLE inventory_cost_layers (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        product_id INTEGER NOT NULL,
+        source_type TEXT NOT NULL,
+        source_id INTEGER,
+        received_at TEXT NOT NULL,
+        quantity_received REAL NOT NULL CHECK (quantity_received > 0),
+        quantity_remaining REAL NOT NULL CHECK (quantity_remaining >= 0),
+        unit_cost REAL NOT NULL CHECK (unit_cost >= 0),
+        is_estimated INTEGER NOT NULL DEFAULT 0,
+        created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+        FOREIGN KEY (product_id) REFERENCES products(id) ON DELETE RESTRICT
+      )
+    ''');
+    await db.execute('''
+      CREATE TABLE invoice_item_costs (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        invoice_item_id INTEGER NOT NULL,
+        layer_id INTEGER NOT NULL,
+        quantity REAL NOT NULL CHECK (quantity > 0),
+        unit_cost REAL NOT NULL CHECK (unit_cost >= 0),
+        total_cost REAL NOT NULL CHECK (total_cost >= 0),
+        is_estimated INTEGER NOT NULL DEFAULT 0,
+        FOREIGN KEY (invoice_item_id) REFERENCES invoice_items(id) ON DELETE CASCADE,
+        FOREIGN KEY (layer_id) REFERENCES inventory_cost_layers(id) ON DELETE RESTRICT
+      )
+    ''');
+    await db.execute('CREATE INDEX idx_inventory_layers_fifo ON inventory_cost_layers(product_id, received_at, id)');
+    await db.execute('CREATE INDEX idx_invoice_item_costs_item ON invoice_item_costs(invoice_item_id)');
+  }
+
+  Future<void> _seedLegacyInventoryCostLayers(DatabaseExecutor db) async {
+    final rows = await db.rawQuery('''
+      SELECT id, current_stock, purchase_price
+      FROM products
+      WHERE (is_service = 0 OR is_service IS NULL) AND current_stock > 0
+    ''');
+    for (final row in rows) {
+      final quantity = (row['current_stock'] as num).toDouble();
+      final unitCost = (row['purchase_price'] as num).toDouble();
+      if (quantity <= 0) continue;
+      await db.insert('inventory_cost_layers', {
+        'product_id': row['id'],
+        'source_type': 'migration_estimate',
+        'received_at': DateTime.now().toIso8601String(),
+        'quantity_received': quantity,
+        'quantity_remaining': quantity,
+        'unit_cost': unitCost,
+        'is_estimated': 1,
+      });
+    }
   }
 
   Future<void> _seedDefaultAccounts(Database db) async {
