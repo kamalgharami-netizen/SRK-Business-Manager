@@ -211,18 +211,29 @@ class InventoryCostService {
     if (quantity <= 0 || !quantity.isFinite) {
       throw StateError('Sales return quantity must be positive.');
     }
+    final priorRows = await txn.rawQuery(
+      'SELECT COALESCE(SUM(quantity), 0) AS qty FROM invoice_items WHERE original_invoice_item_id = ?',
+      [originalInvoiceItemId],
+    );
+    var alreadyReturned = (priorRows.first['qty'] as num?)?.toDouble() ?? 0;
+    var remaining = quantity;
+    var totalCost = 0.0;
     final allocations = await txn.query(
       'invoice_item_costs',
       where: 'invoice_item_id = ?',
       whereArgs: [originalInvoiceItemId],
       orderBy: 'id ASC',
     );
-    var remaining = quantity;
-    var totalCost = 0.0;
     for (final allocation in allocations) {
-      if (remaining <= 0.0000001) break;
       final allocatedQty = (allocation['quantity'] as num).toDouble();
-      final usedQty = allocatedQty < remaining ? allocatedQty : remaining;
+      if (alreadyReturned >= allocatedQty - 0.0000001) {
+        alreadyReturned -= allocatedQty;
+        continue;
+      }
+      final available = allocatedQty - alreadyReturned;
+      alreadyReturned = 0;
+      if (remaining <= 0.0000001) break;
+      final usedQty = available < remaining ? available : remaining;
       final unitCost = (allocation['unit_cost'] as num).toDouble();
       final cost = usedQty * unitCost;
       final layerId = await txn.insert('inventory_cost_layers', {
