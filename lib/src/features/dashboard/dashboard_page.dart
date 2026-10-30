@@ -134,7 +134,7 @@ class _SummaryCard extends StatelessWidget {
 }
 
 class _ModulePlaceholderPage extends StatelessWidget {
-  const _ModulePlaceholderPage({super.key, required this.module});
+  const _ModulePlaceholderPage({required this.module});
   final _ModuleInfo module;
 
   @override
