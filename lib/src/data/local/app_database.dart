@@ -9,7 +9,7 @@ class AppDatabase {
   AppDatabase._();
 
   static final AppDatabase instance = AppDatabase._();
-  static const int _databaseVersion = 6;
+  static const int _databaseVersion = 7;
   String? _databasePath;
   Database? _database;
 
@@ -79,6 +79,10 @@ class AppDatabase {
           await db.execute('ALTER TABLE invoice_items ADD COLUMN cgst_amount REAL NOT NULL DEFAULT 0');
           await db.execute('ALTER TABLE invoice_items ADD COLUMN sgst_amount REAL NOT NULL DEFAULT 0');
           await db.execute('ALTER TABLE invoice_items ADD COLUMN igst_amount REAL NOT NULL DEFAULT 0');
+        }
+        if (oldVersion < 7) {
+          await _createAccountingSchema(db);
+          await _seedDefaultAccounts(db);
         }
       },
     );
@@ -254,6 +258,95 @@ class AppDatabase {
       FOREIGN KEY (product_id) REFERENCES products(id) ON DELETE RESTRICT
     )''');
     await db.execute('CREATE INDEX idx_stock_movements_product ON stock_movements(product_id)');
+    await _createAccountingSchema(db);
+    await _seedDefaultAccounts(db);
+  }
+
+  Future<void> _createAccountingSchema(Database db) async {
+    await db.execute('''
+      CREATE TABLE accounts (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        account_code TEXT NOT NULL UNIQUE,
+        account_name TEXT NOT NULL,
+        account_type TEXT NOT NULL CHECK (
+          account_type IN ('asset','liability','equity','income','expense')
+        ),
+        normal_balance TEXT NOT NULL CHECK (normal_balance IN ('debit','credit')),
+        is_system INTEGER NOT NULL DEFAULT 1,
+        is_active INTEGER NOT NULL DEFAULT 1,
+        created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+      )
+    ''');
+    await db.execute('''
+      CREATE TABLE journal_entries (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        entry_number TEXT NOT NULL UNIQUE,
+        entry_date TEXT NOT NULL,
+        source_type TEXT NOT NULL,
+        source_id INTEGER,
+        memo TEXT,
+        status TEXT NOT NULL DEFAULT 'draft'
+          CHECK (status IN ('draft','posted','void')),
+        created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+        UNIQUE(source_type, source_id)
+      )
+    ''');
+    await db.execute('''
+      CREATE TABLE journal_lines (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        journal_entry_id INTEGER NOT NULL,
+        account_id INTEGER NOT NULL,
+        description TEXT,
+        debit REAL NOT NULL DEFAULT 0 CHECK (debit >= 0),
+        credit REAL NOT NULL DEFAULT 0 CHECK (credit >= 0),
+        FOREIGN KEY (journal_entry_id) REFERENCES journal_entries(id) ON DELETE CASCADE,
+        FOREIGN KEY (account_id) REFERENCES accounts(id) ON DELETE RESTRICT,
+        CHECK (
+          (debit > 0 AND credit = 0) OR
+          (credit > 0 AND debit = 0)
+        )
+      )
+    ''');
+    await db.execute(
+      'CREATE INDEX idx_journal_entries_date ON journal_entries(entry_date)',
+    );
+    await db.execute(
+      'CREATE INDEX idx_journal_entries_source ON journal_entries(source_type, source_id)',
+    );
+    await db.execute(
+      'CREATE INDEX idx_journal_lines_account ON journal_lines(account_id)',
+    );
+    await db.execute(
+      'CREATE INDEX idx_journal_lines_entry ON journal_lines(journal_entry_id)',
+    );
+  }
+
+  Future<void> _seedDefaultAccounts(Database db) async {
+    const accounts = <Map<String, Object>>[
+      {'account_code': '1000', 'account_name': 'Cash in Hand', 'account_type': 'asset', 'normal_balance': 'debit'},
+      {'account_code': '1010', 'account_name': 'Bank Accounts', 'account_type': 'asset', 'normal_balance': 'debit'},
+      {'account_code': '1100', 'account_name': 'Accounts Receivable', 'account_type': 'asset', 'normal_balance': 'debit'},
+      {'account_code': '1200', 'account_name': 'Inventory', 'account_type': 'asset', 'normal_balance': 'debit'},
+      {'account_code': '1300', 'account_name': 'Input GST', 'account_type': 'asset', 'normal_balance': 'debit'},
+      {'account_code': '2000', 'account_name': 'Accounts Payable', 'account_type': 'liability', 'normal_balance': 'credit'},
+      {'account_code': '2100', 'account_name': 'Output GST', 'account_type': 'liability', 'normal_balance': 'credit'},
+      {'account_code': '3000', 'account_name': 'Owner Capital', 'account_type': 'equity', 'normal_balance': 'credit'},
+      {'account_code': '3100', 'account_name': 'Retained Earnings', 'account_type': 'equity', 'normal_balance': 'credit'},
+      {'account_code': '4000', 'account_name': 'Sales Revenue', 'account_type': 'income', 'normal_balance': 'credit'},
+      {'account_code': '4100', 'account_name': 'Other Income', 'account_type': 'income', 'normal_balance': 'credit'},
+      {'account_code': '5000', 'account_name': 'Cost of Goods Sold', 'account_type': 'expense', 'normal_balance': 'debit'},
+      {'account_code': '5100', 'account_name': 'Purchase Expense', 'account_type': 'expense', 'normal_balance': 'debit'},
+      {'account_code': '5200', 'account_name': 'Operating Expenses', 'account_type': 'expense', 'normal_balance': 'debit'},
+      {'account_code': '5300', 'account_name': 'Bank Charges', 'account_type': 'expense', 'normal_balance': 'debit'},
+      {'account_code': '5400', 'account_name': 'Depreciation Expense', 'account_type': 'expense', 'normal_balance': 'debit'},
+    ];
+    for (final account in accounts) {
+      await db.insert(
+        'accounts',
+        account,
+        conflictAlgorithm: ConflictAlgorithm.ignore,
+      );
+    }
   }
 
   Future<String> createBackup() async {
