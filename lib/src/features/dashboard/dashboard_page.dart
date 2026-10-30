@@ -1,5 +1,8 @@
 import 'package:flutter/material.dart';
 
+import '../parties/parties_page.dart';
+import '../products/products_page.dart';
+
 class DashboardPage extends StatelessWidget {
   const DashboardPage({super.key, required this.cloudConfigured});
   final bool cloudConfigured;
@@ -77,9 +80,16 @@ class DashboardPage extends StatelessWidget {
                         leading: CircleAvatar(child: Icon(module.icon)),
                         title: Text(module.title, style: const TextStyle(fontWeight: FontWeight.w600)),
                         trailing: const Icon(Icons.chevron_right),
-                        onTap: () => Navigator.of(context).push(MaterialPageRoute<void>(
-                          builder: (_) => _ModulePlaceholderPage(module: module),
-                        )),
+                        onTap: () {
+                          final Widget page = switch (module.title) {
+                            'Customers & Suppliers' => const PartiesPage(),
+                            'Inventory & Stock' => const ProductsPage(),
+                            _ => _ModulePlaceholderPage(module: module),
+                          };
+                          Navigator.of(context).push(
+                            MaterialPageRoute<void>(builder: (_) => page),
+                          );
+                        },
                       ),
                     );
                   },
