@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import '../../data/local/app_database.dart';
+import '../../data/local/accounting_service.dart';
 
 class ExpensesPage extends StatefulWidget {
   const ExpensesPage({super.key});
@@ -37,7 +38,25 @@ class _ExpensesPageState extends State<ExpensesPage> {
     )));
     if (saved == true) {
       final db = await AppDatabase.instance.database;
-      await db.insert('expenses', {'expense_date': DateTime.now().toIso8601String(), 'category': category.text.trim(), 'description': description.text.trim(), 'amount': double.parse(amount.text), 'payment_mode': mode});
+      await db.transaction((txn) async {
+        final expenseDate = DateTime.now().toIso8601String();
+        final expenseId = await txn.insert('expenses', {
+          'expense_date': expenseDate,
+          'category': category.text.trim(),
+          'description': description.text.trim(),
+          'amount': double.parse(amount.text),
+          'payment_mode': mode,
+        });
+        await AccountingService.postExpense(
+          txn,
+          expenseId: expenseId,
+          date: expenseDate,
+          category: category.text.trim(),
+          description: description.text.trim(),
+          mode: mode,
+          amount: double.parse(amount.text),
+        );
+      });
       await _load();
     }
     category.dispose(); description.dispose(); amount.dispose();
@@ -50,7 +69,14 @@ class _ExpensesPageState extends State<ExpensesPage> {
     ]));
     if (yes != true) return;
     final db = await AppDatabase.instance.database;
-    await db.delete('expenses', where: 'id = ?', whereArgs: [row['id']]);
+    await db.transaction((txn) async {
+      await AccountingService.voidSource(
+        txn,
+        sourceType: 'expense',
+        sourceId: row['id'] as int,
+      );
+      await txn.delete('expenses', where: 'id = ?', whereArgs: [row['id']]);
+    });
     await _load();
   }
 
