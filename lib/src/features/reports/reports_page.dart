@@ -14,6 +14,7 @@ class _ReportsPageState extends State<ReportsPage> {
   List<Map<String, Object?>> _rows = [];
   List<Map<String, Object?>> _stockRows = [];
   double _stockValue = 0;
+  bool _stockValueHasEstimates = false;
   List<Map<String, Object?>> _journalRows = [];
   double _trialDebit = 0;
   double _trialCredit = 0;
@@ -74,18 +75,27 @@ class _ReportsPageState extends State<ReportsPage> {
     final expense = await db.rawQuery("SELECT COALESCE(SUM(amount),0) AS total, COUNT(*) AS count FROM expenses");
     final payments = await db.rawQuery("SELECT COALESCE(SUM(CASE WHEN payment_type='receipt' THEN amount ELSE 0 END),0) AS receipts, COALESCE(SUM(CASE WHEN payment_type='payment' THEN amount ELSE 0 END),0) AS payments FROM payments");
     final stockRows = await db.rawQuery("""
-      SELECT id, name, current_stock, unit, purchase_price
-      FROM products
-      WHERE (is_service = 0 OR is_service IS NULL)
-        AND current_stock > 0
-      ORDER BY name COLLATE NOCASE
+      SELECT p.id, p.name, p.current_stock, p.unit, p.purchase_price,
+        COALESCE(c.remaining_value, 0) AS fifo_value,
+        COALESCE(c.estimated_quantity, 0) AS estimated_quantity
+      FROM products p
+      LEFT JOIN (
+        SELECT product_id, SUM(quantity_remaining * unit_cost) AS remaining_value,
+          SUM(CASE WHEN is_estimated = 1 THEN quantity_remaining ELSE 0 END) AS estimated_quantity
+        FROM inventory_cost_layers
+        WHERE quantity_remaining > 0
+        GROUP BY product_id
+      ) c ON c.product_id = p.id
+      WHERE (p.is_service = 0 OR p.is_service IS NULL)
+        AND p.current_stock > 0
+      ORDER BY p.name COLLATE NOCASE
     """);
     final stockValue = stockRows.fold<double>(
       0,
-      (total, row) =>
-          total +
-          ((row['current_stock'] as num?)?.toDouble() ?? 0) *
-              ((row['purchase_price'] as num?)?.toDouble() ?? 0),
+      (total, row) => total + (row['fifo_value'] as num).toDouble(),
+    );
+    final stockValueHasEstimates = stockRows.any(
+      (row) => (row['estimated_quantity'] as num).toDouble() > 0,
     );
     final partyRows = await db.rawQuery("""
       SELECT p.id, p.name, p.party_type,
@@ -135,6 +145,7 @@ class _ReportsPageState extends State<ReportsPage> {
       _rows = partyRows;
       _stockRows = stockRows;
       _stockValue = stockValue;
+      _stockValueHasEstimates = stockValueHasEstimates;
       _journalRows = journalRows;
       _trialDebit = trialDebit;
       _trialCredit = trialCredit;
@@ -213,7 +224,7 @@ class _ReportsPageState extends State<ReportsPage> {
             const SizedBox(height: 8),
             const Text('HSN/SAC codes are stored with product details and copied to new invoice items. This is a bookkeeping summary, not a GST return or filing calculation. Verify tax treatment and eligibility before filing.'),
           ] else if (title == 'Stock Valuation') ...[
-            _metric('Estimated stock value', _money(_stockValue), Icons.inventory_2),
+            _metric('FIFO stock value', _money(_stockValue), Icons.inventory_2),
             _metric('Products with available stock', '${_stockRows.length}', Icons.category),
             const SizedBox(height: 12),
             Text('Product-wise stock valuation', style: Theme.of(context).textTheme.titleMedium),
@@ -228,19 +239,16 @@ class _ReportsPageState extends State<ReportsPage> {
                 Card(child: ListTile(
                   title: Text(row['name'] as String),
                   subtitle: Text(
-                    'Quantity: ${row['current_stock']} ${row['unit']} × Purchase cost: ${_money((row['purchase_price'] as num?)?.toDouble() ?? 0)}',
+                    'Quantity: ${row['current_stock']} ${row['unit']} • FIFO value: ${_money((row['fifo_value'] as num).toDouble())}${(row['estimated_quantity'] as num).toDouble() > 0 ? ' • includes estimated opening cost' : ''}',
                   ),
                   trailing: Text(
-                    _money(
-                      ((row['current_stock'] as num?)?.toDouble() ?? 0) *
-                      ((row['purchase_price'] as num?)?.toDouble() ?? 0),
-                    ),
+                    _money((row['fifo_value'] as num).toDouble()),
                     style: const TextStyle(fontWeight: FontWeight.bold),
                   ),
                 )),
             const SizedBox(height: 8),
             const Text(
-              'This is an estimate based on the purchase price currently saved in each product record. It is not a FIFO or weighted-average inventory valuation and does not include accounting adjustments.',
+              'Valuation uses FIFO cost layers for recorded purchases. Existing stock at the time of upgrade is initialized using the saved product purchase price and is marked as estimated. Purchase returns and manual stock adjustments are not yet fully reflected in FIFO cost layers.',
             ),
           ] else if (title == 'Trial Balance') ...[
             _metric('Total debit balances', _money(_trialDebit), Icons.south),
