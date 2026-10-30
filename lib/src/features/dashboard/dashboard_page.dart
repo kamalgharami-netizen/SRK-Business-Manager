@@ -20,6 +20,7 @@ class DashboardPage extends StatelessWidget {
     _ModuleInfo('Purchases', Icons.shopping_cart),
     _ModuleInfo('Purchase Returns & Stock Control', Icons.assignment_return),
     _ModuleInfo('Inventory & Stock', Icons.inventory_2),
+    _ModuleInfo('Stock Valuation', Icons.price_check),
     _ModuleInfo('Customers & Suppliers', Icons.people_alt),
     _ModuleInfo('Receipts & Payments', Icons.payments),
     _ModuleInfo('Expenses', Icons.receipt_long),
@@ -104,6 +105,7 @@ class DashboardPage extends StatelessWidget {
                             'Settings' => const SettingsPage(),
                             'Customers & Suppliers' => const PartiesPage(),
                             'Inventory & Stock' => const ProductsPage(),
+                            'Stock Valuation' => const ReportsPage(reportType: 'Stock Valuation'),
                             _ => _ModulePlaceholderPage(module: module),
                           };
                           Navigator.of(context).push(
