@@ -124,6 +124,7 @@ class AppDatabase {
         amount_paid REAL NOT NULL DEFAULT 0,
         status TEXT NOT NULL DEFAULT 'draft',
         notes TEXT,
+        parent_invoice_id INTEGER,
         created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
         FOREIGN KEY (party_id) REFERENCES parties(id) ON DELETE SET NULL
       )
