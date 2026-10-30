@@ -1,5 +1,7 @@
 import 'package:flutter/material.dart';
 
+import '../accounting/accounts_page.dart';
+
 import '../expenses/expenses_page.dart';
 import '../invoices/invoices_page.dart';
 import '../payments/payments_page.dart';
@@ -28,6 +30,7 @@ class DashboardPage extends StatelessWidget {
     _ModuleInfo('Expenses', Icons.receipt_long),
     _ModuleInfo('GST Reports', Icons.account_balance),
     _ModuleInfo('Accounting & Ledgers', Icons.menu_book),
+    _ModuleInfo('Chart of Accounts & Opening Balances', Icons.account_balance_wallet),
     _ModuleInfo('Business Reports', Icons.analytics),
     _ModuleInfo('Staff & Permissions', Icons.admin_panel_settings),
     _ModuleInfo('Backup & Sync', Icons.cloud_sync),
@@ -101,6 +104,7 @@ class DashboardPage extends StatelessWidget {
                             'Expenses' => const ExpensesPage(),
                             'GST Reports' => const ReportsPage(reportType: 'GST Reports'),
                             'Accounting & Ledgers' => const ReportsPage(reportType: 'Accounting & Ledgers'),
+                            'Chart of Accounts & Opening Balances' => const AccountsPage(),
                             'Business Reports' => const ReportsPage(reportType: 'Business Reports'),
                             'Staff & Permissions' => const StaffPage(),
                             'Backup & Sync' => const SettingsPage(),
