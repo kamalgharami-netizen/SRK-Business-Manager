@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 
 import '../../data/local/app_database.dart';
+import '../../data/local/inventory_cost_service.dart';
 import '../invoices/invoice_pdf_service.dart';
 
 
@@ -331,6 +332,12 @@ class _StockControlPageState extends State<StockControlPage> {
             await txn.insert('invoice_items', {'invoice_id': returnId, ...item});
             final productId = item['product_id'] as int;
             final qty = (item['quantity'] as num).toDouble();
+            await InventoryCostService.removeStockAtFifo(
+              txn,
+              productId: productId,
+              quantity: qty,
+              removedAt: now.toIso8601String(),
+            );
             await txn.rawUpdate(
               'UPDATE products SET current_stock = current_stock - ?, updated_at = ? WHERE id = ?',
               [qty, now.toIso8601String(), productId],
@@ -571,6 +578,21 @@ class _StockControlPageState extends State<StockControlPage> {
             throw StateError('Stock cannot become negative.');
           }
           final now = DateTime.now();
+          if (signedQty > 0) {
+            await InventoryCostService.addAdjustmentLayer(
+              txn,
+              productId: productId!,
+              quantity: signedQty,
+              adjustedAt: now.toIso8601String(),
+            );
+          } else {
+            await InventoryCostService.removeStockAtFifo(
+              txn,
+              productId: productId!,
+              quantity: -signedQty,
+              removedAt: now.toIso8601String(),
+            );
+          }
           await txn.rawUpdate(
             'UPDATE products SET current_stock = current_stock + ?, updated_at = ? WHERE id = ?',
             [signedQty, now.toIso8601String(), productId],
