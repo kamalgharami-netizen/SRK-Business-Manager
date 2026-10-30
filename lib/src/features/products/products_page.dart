@@ -134,7 +134,7 @@ class _ProductsPageState extends State<ProductsPage> {
       context: context,
       builder: (dialogContext) => AlertDialog(
         title: const Text('Delete product?'),
-        content: Text('Delete ' + (product['name'] as String) + ' from this device?'),
+        content: Text('Delete ${product['name']} from this device?'),
         actions: [
           TextButton(onPressed: () => Navigator.pop(dialogContext, false), child: const Text('Cancel')),
           FilledButton(onPressed: () => Navigator.pop(dialogContext, true), child: const Text('Delete')),
@@ -171,7 +171,7 @@ class _ProductsPageState extends State<ProductsPage> {
                     return ListTile(
                       leading: const CircleAvatar(child: Icon(Icons.inventory_2_outlined)),
                       title: Text(product['name'] as String),
-                      subtitle: Text('Stock: ' + quantity + ' ' + product['unit'].toString() + ' • Sale: ₹' + price),
+                      subtitle: Text('Stock: $quantity ${product['unit']} • Sale: ₹$price'),
                       onTap: () => _showProductForm(product: product),
                       trailing: IconButton(
                         tooltip: 'Delete product',
