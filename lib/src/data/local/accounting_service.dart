@@ -57,7 +57,7 @@ class AccountingService {
       throw StateError('Journal entry is not balanced. Debit and credit must match.');
     }
     final entryId = await txn.insert('journal_entries', {
-      'entry_number': 'JE-\${DateTime.now().microsecondsSinceEpoch}',
+      'entry_number': 'JE-${DateTime.now().microsecondsSinceEpoch}',
       'entry_date': date,
       'source_type': sourceType,
       'source_id': sourceId,
@@ -66,7 +66,7 @@ class AccountingService {
     });
     for (final line in lines) {
       final account = await txn.query('accounts', columns: ['id'], where: 'account_code = ? AND is_active = 1', whereArgs: [line['code']], limit: 1);
-      if (account.isEmpty) throw StateError('Required ledger account \${line['code']} is missing or inactive.');
+      if (account.isEmpty) throw StateError('Required ledger account ${line['code']} is missing or inactive.');
       await txn.insert('journal_lines', {
         'journal_entry_id': entryId,
         'account_id': account.first['id'],
