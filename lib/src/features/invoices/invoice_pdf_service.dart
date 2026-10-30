@@ -9,6 +9,7 @@ class InvoicePdfService {
     required Map<String, Object?> invoice,
     required List<Map<String, Object?>> items,
     required Map<String, String> business,
+    bool isPurchase = false,
   }) async {
     final document = pw.Document();
     final companyName = business['company_name']?.trim().isNotEmpty == true
@@ -17,7 +18,10 @@ class InvoicePdfService {
     final invoiceNumber = invoice['invoice_number']?.toString() ?? '';
     final invoiceDate =
         (invoice['invoice_date']?.toString() ?? '').split('T').first;
-    final customer = invoice['party_name']?.toString() ?? 'Walk-in customer';
+    final partyName = invoice['party_name']?.toString() ??
+        (isPurchase ? 'Supplier not selected' : 'Walk-in customer');
+    final documentTitle = isPurchase ? 'PURCHASE INVOICE' : 'TAX INVOICE';
+    final partyLabel = isPurchase ? 'Supplier' : 'Customer';
     final subtotal = (invoice['subtotal'] as num?)?.toDouble() ?? 0;
     final tax = (invoice['tax_total'] as num?)?.toDouble() ?? 0;
     final total = (invoice['grand_total'] as num?)?.toDouble() ?? 0;
@@ -53,7 +57,7 @@ class InvoicePdfService {
               ),
             ),
             pw.Text(
-              'TAX INVOICE',
+              documentTitle,
               style: const pw.TextStyle(
                 fontSize: 18,
                 fontWeight: pw.FontWeight.bold,
@@ -74,7 +78,7 @@ class InvoicePdfService {
                   style: const pw.TextStyle(fontWeight: pw.FontWeight.bold),
                 ),
                 pw.Text('Date: $invoiceDate'),
-                pw.Text('Customer: $customer'),
+                pw.Text('$partyLabel: $partyName'),
               ],
             ),
             pw.Text('Status: ${invoice['status'] ?? 'unpaid'}'),
@@ -182,7 +186,7 @@ class InvoicePdfService {
 
     await Printing.layoutPdf(
       onLayout: (format) async => document.save(),
-      name: 'Invoice-$invoiceNumber.pdf',
+      name: '${isPurchase ? 'Purchase' : 'Invoice'}-$invoiceNumber.pdf',
     );
   }
 
