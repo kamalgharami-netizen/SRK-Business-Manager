@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:sqflite/sqflite.dart' show ConflictAlgorithm;
 import '../../data/local/app_database.dart';
 
 class SettingsPage extends StatefulWidget {
@@ -6,6 +7,7 @@ class SettingsPage extends StatefulWidget {
   @override
   State<SettingsPage> createState() => _SettingsPageState();
 }
+
 class _SettingsPageState extends State<SettingsPage> {
   final _name = TextEditingController();
   final _phone = TextEditingController();
@@ -13,8 +15,10 @@ class _SettingsPageState extends State<SettingsPage> {
   final _gstin = TextEditingController();
   bool _loading = true;
   String? _backupPath;
+
   @override
   void initState() { super.initState(); _load(); }
+
   Future<void> _load() async {
     final db = await AppDatabase.instance.database;
     final rows = await db.query('app_settings');
@@ -26,6 +30,7 @@ class _SettingsPageState extends State<SettingsPage> {
     if (!mounted) return;
     setState(() => _loading = false);
   }
+
   Future<void> _save() async {
     final db = await AppDatabase.instance.database;
     final values = {'company_name': _name.text.trim(), 'company_phone': _phone.text.trim(), 'company_address': _address.text.trim(), 'company_gstin': _gstin.text.trim().toUpperCase()};
@@ -37,6 +42,7 @@ class _SettingsPageState extends State<SettingsPage> {
     if (!mounted) return;
     ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Business profile saved on this device.')));
   }
+
   Future<void> _backup() async {
     try {
       final path = await AppDatabase.instance.createBackup();
@@ -48,8 +54,10 @@ class _SettingsPageState extends State<SettingsPage> {
       ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Backup failed: $error')));
     }
   }
+
   @override
   void dispose() { _name.dispose(); _phone.dispose(); _address.dispose(); _gstin.dispose(); super.dispose(); }
+
   @override
   Widget build(BuildContext context) => Scaffold(
     appBar: AppBar(title: const Text('Settings & Backup')),
