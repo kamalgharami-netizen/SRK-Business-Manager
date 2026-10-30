@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 
 import '../../data/local/app_database.dart';
 import '../../data/local/accounting_service.dart';
+import '../../data/local/inventory_cost_service.dart';
 import '../../data/indian_states.dart';
 import '../invoices/invoice_pdf_service.dart';
 
@@ -287,6 +288,14 @@ class _PurchasesPageState extends State<PurchasesPage> {
               'invoice_id': invoiceId,
               ...item,
             });
+            await InventoryCostService.receivePurchase(
+              txn,
+              productId: item['product_id'] as int,
+              invoiceId: invoiceId,
+              quantity: (item['quantity'] as num).toDouble(),
+              unitCost: (item['rate'] as num).toDouble(),
+              receivedAt: now.toIso8601String(),
+            );
             await txn.rawUpdate(
               'UPDATE products SET current_stock = current_stock + ?, purchase_price = ?, updated_at = ? WHERE id = ?',
               [
