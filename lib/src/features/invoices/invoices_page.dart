@@ -24,7 +24,8 @@ class _InvoicesPageState extends State<InvoicesPage> {
   Future<void> _loadInvoices() async {
     final db = await AppDatabase.instance.database;
     final rows = await db.rawQuery('''
-      SELECT invoices.*, parties.name AS party_name,\n             parties.gstin AS party_gstin, parties.state AS party_state
+      SELECT invoices.*, parties.name AS party_name,
+             parties.gstin AS party_gstin, parties.state AS party_state
       FROM invoices
       LEFT JOIN parties ON parties.id = invoices.party_id
       WHERE invoices.invoice_type = 'sale'
