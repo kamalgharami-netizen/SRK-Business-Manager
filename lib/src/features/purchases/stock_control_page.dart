@@ -138,9 +138,7 @@ class _StockControlPageState extends State<StockControlPage> {
                       items: purchases.map((row) => DropdownMenuItem<int>(
                         value: row['id'] as int,
                         child: Text(
-                          row['invoice_number'].toString() + ' • ' +
-                              (row['supplier_name']?.toString() ??
-                                  'Supplier not selected'),
+                          '${row['invoice_number']} • ${row['supplier_name'] ?? 'Supplier not selected'}',
                           overflow: TextOverflow.ellipsis,
                         ),
                       )).toList(),
@@ -170,10 +168,7 @@ class _StockControlPageState extends State<StockControlPage> {
                                   line.item['description']?.toString() ?? 'Product',
                                 ),
                                 subtitle: Text(
-                                  'Purchased: ' +
-                                      line.item['quantity'].toString() +
-                                      ' • Returnable: ' +
-                                      line.available.toStringAsFixed(3),
+                                  'Purchased: ${line.item['quantity']} • Returnable: ${line.available.toStringAsFixed(3)}',
                                 ),
                                 onChanged: line.available <= 0
                                     ? null
@@ -306,7 +301,7 @@ class _StockControlPageState extends State<StockControlPage> {
           }
 
           final now = DateTime.now();
-          final returnNumber = 'PR-' + now.microsecondsSinceEpoch.toString();
+          final returnNumber = 'PR-${now.microsecondsSinceEpoch}';
           final returnId = await txn.insert('invoices', {
             'invoice_number': returnNumber,
             'invoice_type': 'purchase_return',
@@ -318,8 +313,7 @@ class _StockControlPageState extends State<StockControlPage> {
             'grand_total': subtotal + taxTotal,
             'amount_paid': 0,
             'status': 'recorded',
-            'notes': ('Return against ' + original['invoice_number'].toString() +
-                '. ' + notes.text.trim()).trim(),
+            'notes': 'Return against ${original['invoice_number']}. ${notes.text.trim()}'.trim(),
           });
 
           for (final item in returnItems) {
@@ -335,8 +329,7 @@ class _StockControlPageState extends State<StockControlPage> {
               'movement_type': 'purchase_return',
               'quantity_change': -qty,
               'reference': returnNumber,
-              'notes': ('Against ' + original['invoice_number'].toString() +
-                  '. ' + notes.text.trim()).trim(),
+              'notes': 'Against ${original['invoice_number']}. ${notes.text.trim()}'.trim(),
               'created_at': now.toIso8601String(),
             });
           }
@@ -344,7 +337,7 @@ class _StockControlPageState extends State<StockControlPage> {
         _message('Purchase return saved and stock reduced for all selected items.');
         await _loadMovements();
       } catch (error) {
-        _message('Could not save purchase return: ' + error.toString());
+        _message('Could not save purchase return: $error');
       }
     }
 
