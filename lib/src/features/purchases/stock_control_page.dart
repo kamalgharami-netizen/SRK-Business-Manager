@@ -310,7 +310,10 @@ class _StockControlPageState extends State<StockControlPage> {
                         return 'Enter a quantity greater than zero';
                       }
                       if (direction == 'decrease' && productId != null) {
-                                      if (parsed > (selected['current_stock'] as num).toDouble()) {
+                        final selectedProduct = products.firstWhere(
+                          (row) => row['id'] == productId,
+                        );
+                        if (parsed > (selectedProduct['current_stock'] as num).toDouble()) {
                           return 'Cannot reduce stock below zero';
                         }
                       }
@@ -342,7 +345,6 @@ class _StockControlPageState extends State<StockControlPage> {
     if (saved == true && productId != null) {
       try {
         await db.transaction((txn) async {
-          final selected = products.firstWhere((row) => row['id'] == productId);
           final qty = double.parse(quantity.text.trim());
           final signedQty = direction == 'increase' ? qty : -qty;
           final current = await txn.query(
