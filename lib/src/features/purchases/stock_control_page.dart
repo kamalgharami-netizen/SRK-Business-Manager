@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 
 import '../../data/local/app_database.dart';
+import '../invoices/invoice_pdf_service.dart';
 
 
 class _ReturnLine {
@@ -22,6 +23,7 @@ class StockControlPage extends StatefulWidget {
 
 class _StockControlPageState extends State<StockControlPage> {
   List<Map<String, Object?>> _movements = [];
+  List<Map<String, Object?>> _returns = [];
   bool _loading = true;
 
   @override
@@ -39,9 +41,18 @@ class _StockControlPageState extends State<StockControlPage> {
       ORDER BY m.id DESC
       LIMIT 100
     ''');
+    final returns = await db.rawQuery('''
+      SELECT r.*, p.name AS party_name, original.invoice_number AS original_invoice_number
+      FROM invoices r
+      LEFT JOIN parties p ON p.id = r.party_id
+      LEFT JOIN invoices original ON original.id = r.parent_invoice_id
+      WHERE r.invoice_type = 'purchase_return'
+      ORDER BY r.id DESC
+    ''');
     if (!mounted) return;
     setState(() {
       _movements = rows;
+      _returns = returns;
       _loading = false;
     });
   }
@@ -347,6 +358,110 @@ class _StockControlPageState extends State<StockControlPage> {
     notes.dispose();
   }
 
+
+  Future<void> _showReturnDetails(Map<String, Object?> invoice) async {
+    final db = await AppDatabase.instance.database;
+    final items = await db.query(
+      'invoice_items',
+      where: 'invoice_id = ?',
+      whereArgs: [invoice['id']],
+      orderBy: 'id',
+    );
+    final settingsRows = await db.query('app_settings');
+    final business = <String, String>{
+      for (final row in settingsRows)
+        row['setting_key'] as String: row['setting_value'] as String,
+    };
+    if (!mounted) return;
+
+    await showDialog<void>(
+      context: context,
+      builder: (dialogContext) => AlertDialog(
+        title: Text(invoice['invoice_number']?.toString() ?? 'Purchase return'),
+        content: SizedBox(
+          width: 480,
+          child: SingleChildScrollView(
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text('Supplier: ${invoice['party_name'] ?? 'Supplier not selected'}'),
+                Text('Original purchase: ${invoice['original_invoice_number'] ?? 'Not available'}'),
+                Text('Date: ${(invoice['invoice_date'] as String).split('T').first}'),
+                const Divider(),
+                for (final item in items)
+                  ListTile(
+                    contentPadding: EdgeInsets.zero,
+                    title: Text(item['description']?.toString() ?? ''),
+                    subtitle: Text(
+                      '${item['quantity']} ${item['unit']} × ₹${item['rate']}  |  GST ${item['gst_rate']}%',
+                    ),
+                    trailing: Text(
+                      '₹${((item['line_total'] as num?)?.toDouble() ?? 0).toStringAsFixed(2)}',
+                    ),
+                  ),
+                const Divider(),
+                _returnTotalRow(
+                  'Taxable subtotal',
+                  (invoice['subtotal'] as num?)?.toDouble() ?? 0,
+                ),
+                _returnTotalRow(
+                  'GST',
+                  (invoice['tax_total'] as num?)?.toDouble() ?? 0,
+                ),
+                _returnTotalRow(
+                  'Return total',
+                  (invoice['grand_total'] as num?)?.toDouble() ?? 0,
+                  bold: true,
+                ),
+                if ((invoice['notes']?.toString() ?? '').trim().isNotEmpty)
+                  Text('Reason / notes: ${invoice['notes']}'),
+              ],
+            ),
+          ),
+        ),
+        actions: [
+          TextButton.icon(
+            onPressed: () async {
+              try {
+                await InvoicePdfService.printInvoice(
+                  invoice: invoice,
+                  items: items,
+                  business: business,
+                  isPurchaseReturn: true,
+                );
+              } catch (error) {
+                _message('Could not create purchase return PDF: $error');
+              }
+            },
+            icon: const Icon(Icons.picture_as_pdf),
+            label: const Text('PDF / Print'),
+          ),
+          TextButton(
+            onPressed: () => Navigator.pop(dialogContext),
+            child: const Text('Close'),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _returnTotalRow(String label, double amount, {bool bold = false}) {
+    final style = TextStyle(
+      fontWeight: bold ? FontWeight.bold : FontWeight.normal,
+    );
+    return Padding(
+      padding: const EdgeInsets.symmetric(vertical: 3),
+      child: Row(
+        mainAxisAlignment: MainAxisAlignment.spaceBetween,
+        children: [
+          Text(label, style: style),
+          Text('₹${amount.toStringAsFixed(2)}', style: style),
+        ],
+      ),
+    );
+  }
+
   Future<void> _adjustStock() async {
     final db = await AppDatabase.instance.database;
     final products = await db.query(
@@ -511,6 +626,33 @@ class _StockControlPageState extends State<StockControlPage> {
                     ),
                   ],
                 ),
+                const SizedBox(height: 20),
+                Text('Purchase return history', style: Theme.of(context).textTheme.titleLarge),
+                const SizedBox(height: 8),
+                if (_returns.isEmpty)
+                  const Card(
+                    child: Padding(
+                      padding: EdgeInsets.all(16),
+                      child: Text('No purchase returns recorded yet.'),
+                    ),
+                  )
+                else
+                  for (final invoice in _returns)
+                    Card(
+                      child: ListTile(
+                        leading: const CircleAvatar(
+                          child: Icon(Icons.assignment_return),
+                        ),
+                        title: Text(invoice['invoice_number']?.toString() ?? ''),
+                        subtitle: Text(
+                          '${invoice['party_name'] ?? 'Supplier not selected'} • Original: ${invoice['original_invoice_number'] ?? 'N/A'} • ${(invoice['invoice_date'] as String).split('T').first}',
+                        ),
+                        trailing: Text(
+                          '₹${((invoice['grand_total'] as num?)?.toDouble() ?? 0).toStringAsFixed(2)}',
+                        ),
+                        onTap: () => _showReturnDetails(invoice),
+                      ),
+                    ),
                 const SizedBox(height: 20),
                 Text('Recent stock movements', style: Theme.of(context).textTheme.titleLarge),
                 const SizedBox(height: 8),
