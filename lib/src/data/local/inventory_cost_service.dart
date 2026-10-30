@@ -197,4 +197,93 @@ class InventoryCostService {
     return totalCost;
   }
 
+
+  /// Restores returned sale quantities into FIFO inventory using the exact
+  /// cost allocations recorded against the original sale item.
+  static Future<double> restoreSalesReturn(
+    Transaction txn, {
+    required int returnItemId,
+    required int originalInvoiceItemId,
+    required int productId,
+    required double quantity,
+    required String returnedAt,
+  }) async {
+    if (quantity <= 0 || !quantity.isFinite) {
+      throw StateError('Sales return quantity must be positive.');
+    }
+    final allocations = await txn.query(
+      'invoice_item_costs',
+      where: 'invoice_item_id = ?',
+      whereArgs: [originalInvoiceItemId],
+      orderBy: 'id ASC',
+    );
+    var remaining = quantity;
+    var totalCost = 0.0;
+    for (final allocation in allocations) {
+      if (remaining <= 0.0000001) break;
+      final allocatedQty = (allocation['quantity'] as num).toDouble();
+      final usedQty = allocatedQty < remaining ? allocatedQty : remaining;
+      final unitCost = (allocation['unit_cost'] as num).toDouble();
+      final cost = usedQty * unitCost;
+      final layerId = await txn.insert('inventory_cost_layers', {
+        'product_id': productId,
+        'source_type': 'sales_return',
+        'source_id': returnItemId,
+        'received_at': returnedAt,
+        'quantity_received': usedQty,
+        'quantity_remaining': usedQty,
+        'unit_cost': unitCost,
+        'is_estimated': allocation['is_estimated'] ?? 1,
+      });
+      await txn.insert('invoice_item_costs', {
+        'invoice_item_id': returnItemId,
+        'layer_id': layerId,
+        'quantity': usedQty,
+        'unit_cost': unitCost,
+        'total_cost': cost,
+        'is_estimated': allocation['is_estimated'] ?? 1,
+      });
+      totalCost += cost;
+      remaining -= usedQty;
+    }
+    if (remaining > 0.0000001) {
+      final rows = await txn.query(
+        'products',
+        columns: ['purchase_price'],
+        where: 'id = ?',
+        whereArgs: [productId],
+        limit: 1,
+      );
+      if (rows.isEmpty) throw StateError('Product cost information is missing.');
+      final unitCost = (rows.first['purchase_price'] as num).toDouble();
+      final cost = remaining * unitCost;
+      final layerId = await txn.insert('inventory_cost_layers', {
+        'product_id': productId,
+        'source_type': 'sales_return_estimate',
+        'source_id': returnItemId,
+        'received_at': returnedAt,
+        'quantity_received': remaining,
+        'quantity_remaining': remaining,
+        'unit_cost': unitCost,
+        'is_estimated': 1,
+      });
+      await txn.insert('invoice_item_costs', {
+        'invoice_item_id': returnItemId,
+        'layer_id': layerId,
+        'quantity': remaining,
+        'unit_cost': unitCost,
+        'total_cost': cost,
+        'is_estimated': 1,
+      });
+      totalCost += cost;
+    }
+    await txn.update(
+      'invoice_items',
+      {'cost_of_goods_sold': totalCost},
+      where: 'id = ?',
+      whereArgs: [returnItemId],
+    );
+    return totalCost;
+  }
+
 }
