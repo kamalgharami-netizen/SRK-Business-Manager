@@ -437,7 +437,7 @@ class _PurchasesPageState extends State<PurchasesPage> {
                 );
               } catch (error) {
                 if (mounted) {
-                  ScaffoldMessenger.of(this.context).showSnackBar(
+                  ScaffoldMessenger.of(context).showSnackBar(
                     SnackBar(content: Text('Could not create purchase PDF: $error')),
                   );
                 }
