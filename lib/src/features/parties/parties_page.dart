@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 
 import '../../data/local/app_database.dart';
+import '../../data/indian_states.dart';
 
 class PartiesPage extends StatefulWidget {
   const PartiesPage({super.key});
@@ -36,6 +37,7 @@ class _PartiesPageState extends State<PartiesPage> {
     final email = TextEditingController(text: party?['email'] as String? ?? '');
     final address = TextEditingController(text: party?['address'] as String? ?? '');
     final gstin = TextEditingController(text: party?['gstin'] as String? ?? '');
+    String? state = party?['state'] as String?;
     var type = party?['party_type'] as String? ?? 'customer';
 
     final saved = await showDialog<bool>(
@@ -71,7 +73,37 @@ class _PartiesPageState extends State<PartiesPage> {
                   ),
                   TextFormField(controller: phone, decoration: const InputDecoration(labelText: 'Phone'), keyboardType: TextInputType.phone),
                   TextFormField(controller: email, decoration: const InputDecoration(labelText: 'Email'), keyboardType: TextInputType.emailAddress),
-                  TextFormField(controller: gstin, decoration: const InputDecoration(labelText: 'GSTIN'), textCapitalization: TextCapitalization.characters),
+                  DropdownButtonFormField<String>(
+                    initialValue: IndianStates.all.contains(state) ? state : null,
+                    decoration: const InputDecoration(
+                      labelText: 'State / Union Territory',
+                      helperText: 'Required when a GSTIN is entered.',
+                    ),
+                    items: IndianStates.all.map((item) => DropdownMenuItem<String>(
+                      value: item,
+                      child: Text(item),
+                    )).toList(),
+                    onChanged: (value) => state = value,
+                  ),
+                  TextFormField(
+                    controller: gstin,
+                    decoration: const InputDecoration(
+                      labelText: 'GSTIN (optional)',
+                      helperText: '15-character GSTIN; first two digits must match the selected state.',
+                    ),
+                    textCapitalization: TextCapitalization.characters,
+                    validator: (value) {
+                      final valueText = (value ?? '').trim().toUpperCase();
+                      if (valueText.isEmpty) return null;
+                      if (state == null || !IndianStates.all.contains(state)) {
+                        return 'Select the GST registration state';
+                      }
+                      if (!IndianStates.gstinMatchesState(valueText, state!)) {
+                        return 'Enter a valid GSTIN matching the selected state';
+                      }
+                      return null;
+                    },
+                  ),
                   TextFormField(controller: address, decoration: const InputDecoration(labelText: 'Address'), maxLines: 2),
                 ],
               ),
@@ -99,6 +131,7 @@ class _PartiesPageState extends State<PartiesPage> {
         'email': email.text.trim(),
         'address': address.text.trim(),
         'gstin': gstin.text.trim().toUpperCase(),
+        'state': state,
         'updated_at': DateTime.now().toIso8601String(),
       };
       if (party == null) {
@@ -154,11 +187,13 @@ class _PartiesPageState extends State<PartiesPage> {
                   itemBuilder: (context, index) {
                     final party = _parties[index];
                     final phone = party['phone'] as String? ?? '';
+                    final state = party['state'] as String? ?? '';
+                    final gstin = party['gstin'] as String? ?? '';
                     final type = (party['party_type'] as String? ?? 'customer').replaceAll('_', ' ');
                     return ListTile(
                       leading: const CircleAvatar(child: Icon(Icons.person_outline)),
                       title: Text(party['name'] as String),
-                      subtitle: Text([type, phone].where((v) => v.isNotEmpty).join(' • ')),
+                      subtitle: Text([type, phone, state, gstin].where((v) => v.isNotEmpty).join(' • ')),
                       onTap: () => _showPartyForm(party: party),
                       trailing: IconButton(
                         tooltip: 'Delete party',
