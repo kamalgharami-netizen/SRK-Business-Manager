@@ -9,7 +9,7 @@ class AppDatabase {
   AppDatabase._();
 
   static final AppDatabase instance = AppDatabase._();
-  static const int _databaseVersion = 4;
+  static const int _databaseVersion = 5;
   String? _databasePath;
   Database? _database;
 
@@ -66,6 +66,16 @@ class AppDatabase {
         }
         if (oldVersion < 4) {
           await db.execute('ALTER TABLE invoice_items ADD COLUMN hsn_sac TEXT');
+        }
+        if (oldVersion < 5) {
+          await db.execute('ALTER TABLE invoices ADD COLUMN place_of_supply TEXT');
+          await db.execute("ALTER TABLE invoices ADD COLUMN tax_type TEXT NOT NULL DEFAULT 'unclassified'");
+          await db.execute('ALTER TABLE invoices ADD COLUMN cgst_total REAL NOT NULL DEFAULT 0');
+          await db.execute('ALTER TABLE invoices ADD COLUMN sgst_total REAL NOT NULL DEFAULT 0');
+          await db.execute('ALTER TABLE invoices ADD COLUMN igst_total REAL NOT NULL DEFAULT 0');
+          await db.execute('ALTER TABLE invoice_items ADD COLUMN cgst_amount REAL NOT NULL DEFAULT 0');
+          await db.execute('ALTER TABLE invoice_items ADD COLUMN sgst_amount REAL NOT NULL DEFAULT 0');
+          await db.execute('ALTER TABLE invoice_items ADD COLUMN igst_amount REAL NOT NULL DEFAULT 0');
         }
       },
     );
@@ -128,6 +138,11 @@ class AppDatabase {
         status TEXT NOT NULL DEFAULT 'draft',
         notes TEXT,
         parent_invoice_id INTEGER,
+        place_of_supply TEXT,
+        tax_type TEXT NOT NULL DEFAULT 'unclassified',
+        cgst_total REAL NOT NULL DEFAULT 0,
+        sgst_total REAL NOT NULL DEFAULT 0,
+        igst_total REAL NOT NULL DEFAULT 0,
         created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
         FOREIGN KEY (party_id) REFERENCES parties(id) ON DELETE SET NULL
       )
@@ -145,6 +160,10 @@ class AppDatabase {
         discount REAL NOT NULL DEFAULT 0,
         gst_rate REAL NOT NULL DEFAULT 0,
         tax_amount REAL NOT NULL DEFAULT 0,
+        hsn_sac TEXT,
+        cgst_amount REAL NOT NULL DEFAULT 0,
+        sgst_amount REAL NOT NULL DEFAULT 0,
+        igst_amount REAL NOT NULL DEFAULT 0,
         line_total REAL NOT NULL,
         FOREIGN KEY (invoice_id) REFERENCES invoices(id) ON DELETE CASCADE,
         FOREIGN KEY (product_id) REFERENCES products(id) ON DELETE SET NULL
