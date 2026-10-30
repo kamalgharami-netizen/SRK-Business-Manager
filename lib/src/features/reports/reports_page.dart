@@ -19,7 +19,7 @@ class _ReportsPageState extends State<ReportsPage> {
   void initState() { super.initState(); _load(); }
 
   String _date(DateTime value) =>
-      '\${value.year.toString().padLeft(4, '0')}-\${value.month.toString().padLeft(2, '0')}-\${value.day.toString().padLeft(2, '0')}';
+      '${value.year.toString().padLeft(4, '0')}-${value.month.toString().padLeft(2, '0')}-${value.day.toString().padLeft(2, '0')}';
 
   Future<void> _pickDate({required bool isStart}) async {
     final initial = isStart
@@ -55,13 +55,13 @@ class _ReportsPageState extends State<ReportsPage> {
       where.add('invoice_date < ?');
       args.add(_date(_endDate!.add(const Duration(days: 1))));
     }
-    final dateClause = where.isEmpty ? '' : ' AND \${where.join(' AND ')}';
+    final dateClause = where.isEmpty ? '' : ' AND ${where.join(' AND ')}';
     final sales = await db.rawQuery(
-      "SELECT COALESCE(SUM(grand_total),0) AS total, COALESCE(SUM(tax_total),0) AS tax, COUNT(*) AS count FROM invoices WHERE invoice_type='sale'\$dateClause",
+      "SELECT COALESCE(SUM(grand_total),0) AS total, COALESCE(SUM(tax_total),0) AS tax, COUNT(*) AS count FROM invoices WHERE invoice_type='sale'$dateClause",
       args,
     );
     final purchases = await db.rawQuery(
-      "SELECT COALESCE(SUM(grand_total),0) AS total, COALESCE(SUM(tax_total),0) AS tax, COUNT(*) AS count FROM invoices WHERE invoice_type='purchase'\$dateClause",
+      "SELECT COALESCE(SUM(grand_total),0) AS total, COALESCE(SUM(tax_total),0) AS tax, COUNT(*) AS count FROM invoices WHERE invoice_type='purchase'$dateClause",
       args,
     );
     final expense = await db.rawQuery("SELECT COALESCE(SUM(amount),0) AS total, COUNT(*) AS count FROM expenses");
@@ -87,7 +87,7 @@ class _ReportsPageState extends State<ReportsPage> {
   }
 
   double _number(String key) => (_summary[key] as num?)?.toDouble() ?? 0;
-  String _money(double value) => '₹\${value.toStringAsFixed(2)}';
+  String _money(double value) => '₹${value.toStringAsFixed(2)}';
 
   Widget _metric(String label, String value, IconData icon) => Card(
     child: ListTile(leading: Icon(icon), title: Text(label),
@@ -104,12 +104,12 @@ class _ReportsPageState extends State<ReportsPage> {
           OutlinedButton.icon(
             onPressed: () => _pickDate(isStart: true),
             icon: const Icon(Icons.calendar_today),
-            label: Text(_startDate == null ? 'From date' : 'From: \${_date(_startDate!)}'),
+            label: Text(_startDate == null ? 'From date' : 'From: ${_date(_startDate!)}'),
           ),
           OutlinedButton.icon(
             onPressed: () => _pickDate(isStart: false),
             icon: const Icon(Icons.event),
-            label: Text(_endDate == null ? 'To date' : 'To: \${_date(_endDate!)}'),
+            label: Text(_endDate == null ? 'To date' : 'To: ${_date(_endDate!)}'),
           ),
           TextButton.icon(
             onPressed: _startDate == null && _endDate == null ? null : () {
@@ -140,7 +140,7 @@ class _ReportsPageState extends State<ReportsPage> {
             const SizedBox(height: 8),
             Text(_startDate == null && _endDate == null
               ? 'Period: All recorded dates'
-              : 'Period: \${_startDate == null ? 'Beginning' : _date(_startDate!)} to \${_endDate == null ? 'Latest' : _date(_endDate!)}'),
+              : 'Period: ${_startDate == null ? 'Beginning' : _date(_startDate!)} to ${_endDate == null ? 'Latest' : _date(_endDate!)}'),
             _metric('Sales taxable + tax total', _money(_number('sales')), Icons.point_of_sale),
             _metric('Output GST on sales', _money(_number('salesTax')), Icons.south),
             _metric('Purchase taxable + tax total', _money(_number('purchases')), Icons.shopping_cart),
@@ -158,8 +158,8 @@ class _ReportsPageState extends State<ReportsPage> {
                 title: Text(row['name'] as String), subtitle: Text(row['party_type'] as String),
                 trailing: Column(mainAxisAlignment: MainAxisAlignment.center,
                   crossAxisAlignment: CrossAxisAlignment.end, children: [
-                    Text('Due from: \${_money((row['receivable'] as num).toDouble())}', style: const TextStyle(fontSize: 12)),
-                    Text('Due to: \${_money((row['payable'] as num).toDouble())}', style: const TextStyle(fontSize: 12)),
+                    Text('Due from: ${_money((row['receivable'] as num).toDouble())}', style: const TextStyle(fontSize: 12)),
+                    Text('Due to: ${_money((row['payable'] as num).toDouble())}', style: const TextStyle(fontSize: 12)),
                   ]),
               )),
           ] else ...[
@@ -170,7 +170,7 @@ class _ReportsPageState extends State<ReportsPage> {
             _metric('Payments made', _money(_number('payments')), Icons.call_made),
             _metric('Gross difference (sales - purchases - expenses)', _money(_number('sales') - _number('purchases') - _number('expenses')), Icons.analytics),
             const SizedBox(height: 8),
-            Text('Sales: \${_summary['salesCount'] ?? 0} • Purchases: \${_summary['purchaseCount'] ?? 0} • Expenses: \${_summary['expenseCount'] ?? 0}'),
+            Text('Sales: ${_summary['salesCount'] ?? 0} • Purchases: ${_summary['purchaseCount'] ?? 0} • Expenses: ${_summary['expenseCount'] ?? 0}'),
             const Text('This summary uses recorded totals; it is not a complete profit-and-loss statement or statutory financial report.'),
           ],
         ]),
