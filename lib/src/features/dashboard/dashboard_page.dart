@@ -4,6 +4,7 @@ import '../expenses/expenses_page.dart';
 import '../invoices/invoices_page.dart';
 import '../payments/payments_page.dart';
 import '../purchases/purchases_page.dart';
+import '../purchases/stock_control_page.dart';
 import '../reports/reports_page.dart';
 import '../settings/settings_page.dart';
 import '../staff/staff_page.dart';
@@ -17,6 +18,7 @@ class DashboardPage extends StatelessWidget {
   static const modules = <_ModuleInfo>[
     _ModuleInfo('Sales & Invoices', Icons.point_of_sale),
     _ModuleInfo('Purchases', Icons.shopping_cart),
+    _ModuleInfo('Purchase Returns & Stock Control', Icons.assignment_return),
     _ModuleInfo('Inventory & Stock', Icons.inventory_2),
     _ModuleInfo('Customers & Suppliers', Icons.people_alt),
     _ModuleInfo('Receipts & Payments', Icons.payments),
@@ -91,6 +93,7 @@ class DashboardPage extends StatelessWidget {
                           final Widget page = switch (module.title) {
                             'Sales & Invoices' => const InvoicesPage(),
                             'Purchases' => const PurchasesPage(),
+                            'Purchase Returns & Stock Control' => const StockControlPage(),
                             'Receipts & Payments' => const PaymentsPage(),
                             'Expenses' => const ExpensesPage(),
                             'GST Reports' => const ReportsPage(reportType: 'GST Reports'),
