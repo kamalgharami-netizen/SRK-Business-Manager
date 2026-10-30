@@ -9,7 +9,7 @@ class AppDatabase {
   AppDatabase._();
 
   static final AppDatabase instance = AppDatabase._();
-  static const int _databaseVersion = 5;
+  static const int _databaseVersion = 6;
   String? _databasePath;
   Database? _database;
 
@@ -67,6 +67,9 @@ class AppDatabase {
         if (oldVersion < 4) {
           await db.execute('ALTER TABLE invoice_items ADD COLUMN hsn_sac TEXT');
         }
+        if (oldVersion < 6) {
+          await db.execute('ALTER TABLE parties ADD COLUMN state TEXT');
+        }
         if (oldVersion < 5) {
           await db.execute('ALTER TABLE invoices ADD COLUMN place_of_supply TEXT');
           await db.execute("ALTER TABLE invoices ADD COLUMN tax_type TEXT NOT NULL DEFAULT 'unclassified'");
@@ -92,6 +95,7 @@ class AppDatabase {
         email TEXT,
         address TEXT,
         gstin TEXT,
+        state TEXT,
         opening_balance REAL NOT NULL DEFAULT 0,
         balance_type TEXT NOT NULL DEFAULT 'receivable'
           CHECK (balance_type IN ('receivable','payable')),
