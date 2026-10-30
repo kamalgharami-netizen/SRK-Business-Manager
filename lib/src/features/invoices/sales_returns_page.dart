@@ -68,8 +68,8 @@ class _SalesReturnsPageState extends State<SalesReturnsPage> {
         INNER JOIN invoices r ON r.id = ri.invoice_id
         WHERE r.invoice_type = 'sales_return'
           AND r.parent_invoice_id = ?
-          AND ri.product_id = ?
-      """, [invoice['id'], item['product_id']]);
+          AND ri.original_invoice_item_id = ?
+      """, [invoice['id'], item['id']]);
       final alreadyReturned = (returned.first['qty'] as num?)?.toDouble() ?? 0;
       final originalQty = (item['quantity'] as num).toDouble();
       final remaining = originalQty - alreadyReturned;
@@ -175,7 +175,7 @@ class _SalesReturnsPageState extends State<SalesReturnsPage> {
           taxTotal += tax;
           total += taxable + tax;
           prepared.add({
-            'original_item_id': line.item['id'],
+            'original_invoice_item_id': line.item['id'],
             'product_id': line.item['product_id'],
             'description': line.item['description'],
             'quantity': qty,
@@ -213,15 +213,19 @@ class _SalesReturnsPageState extends State<SalesReturnsPage> {
 
         var restoredCost = 0.0;
         for (final item in prepared) {
+          final returnItemData = Map<String, Object?>.from(item);
+          final originalItemId = returnItemData['original_invoice_item_id'] as int;
+          returnItemData.remove('original_invoice_item_id');
           final returnItemId = await txn.insert('invoice_items', {
             'invoice_id': returnId,
-            ...item..remove('original_item_id'),
+            'original_invoice_item_id': originalItemId,
+            ...returnItemData,
           });
           final productId = item['product_id'] as int;
           restoredCost += await InventoryCostService.restoreSalesReturn(
             txn,
             returnItemId: returnItemId,
-            originalInvoiceItemId: item['original_item_id'] as int,
+            originalInvoiceItemId: originalItemId,
             productId: productId,
             quantity: (item['quantity'] as num).toDouble(),
             returnedAt: now.toIso8601String(),
