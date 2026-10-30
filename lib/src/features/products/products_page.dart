@@ -34,6 +34,7 @@ class _ProductsPageState extends State<ProductsPage> {
     final name = TextEditingController(text: product?['name'] as String? ?? '');
     final sku = TextEditingController(text: product?['sku'] as String? ?? '');
     final unit = TextEditingController(text: product?['unit'] as String? ?? 'pcs');
+    final hsnSac = TextEditingController(text: product?['hsn_sac'] as String? ?? '');
     final purchasePrice = TextEditingController(text: product == null ? '' : product['purchase_price'].toString());
     final salePrice = TextEditingController(text: product == null ? '' : product['sale_price'].toString());
     final stock = TextEditingController(text: product == null ? '0' : product['current_stock'].toString());
@@ -57,6 +58,7 @@ class _ProductsPageState extends State<ProductsPage> {
                     validator: (value) => value == null || value.trim().isEmpty ? 'Enter a product name' : null,
                   ),
                   TextFormField(controller: sku, decoration: const InputDecoration(labelText: 'SKU / Code')),
+                  TextFormField(controller: hsnSac, decoration: const InputDecoration(labelText: 'HSN / SAC Code'), textCapitalization: TextCapitalization.characters),
                   TextFormField(
                     controller: unit,
                     decoration: const InputDecoration(labelText: 'Unit (pcs, kg, litre...)'),
@@ -99,6 +101,7 @@ class _ProductsPageState extends State<ProductsPage> {
         'name': name.text.trim(),
         'sku': sku.text.trim(),
         'unit': unit.text.trim(),
+        'hsn_sac': hsnSac.text.trim().toUpperCase(),
         'purchase_price': double.parse(purchasePrice.text.trim().isEmpty ? '0' : purchasePrice.text.trim()),
         'sale_price': double.parse(salePrice.text.trim().isEmpty ? '0' : salePrice.text.trim()),
         'current_stock': quantity,
@@ -117,6 +120,7 @@ class _ProductsPageState extends State<ProductsPage> {
     name.dispose();
     sku.dispose();
     unit.dispose();
+    hsnSac.dispose();
     purchasePrice.dispose();
     salePrice.dispose();
     stock.dispose();
@@ -171,7 +175,7 @@ class _ProductsPageState extends State<ProductsPage> {
                     return ListTile(
                       leading: const CircleAvatar(child: Icon(Icons.inventory_2_outlined)),
                       title: Text(product['name'] as String),
-                      subtitle: Text('Stock: $quantity ${product['unit']} • Sale: ₹$price'),
+                      subtitle: Text('Stock: $quantity ${product['unit']} • Sale: ₹$price • HSN/SAC: ${product['hsn_sac'] ?? '—'}'),
                       onTap: () => _showProductForm(product: product),
                       trailing: IconButton(
                         tooltip: 'Delete product',
