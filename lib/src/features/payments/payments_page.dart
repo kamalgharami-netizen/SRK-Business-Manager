@@ -234,7 +234,7 @@ class _PaymentsPageState extends State<PaymentsPage> {
               'party_id': effectivePartyId,
               'invoice_id': invoiceId,
               'payment_type': type,
-              'payment_date': paymentDate
+              'payment_date': paymentDate,
               'amount': value,
               'mode': mode,
               'reference': reference.text.trim(),
@@ -254,7 +254,7 @@ class _PaymentsPageState extends State<PaymentsPage> {
               'party_id': effectivePartyId,
               'invoice_id': null,
               'payment_type': type,
-              'payment_date': DateTime.now().toIso8601String(),
+              'payment_date': paymentDate,
               'amount': value,
               'mode': mode,
               'reference': reference.text.trim(),
