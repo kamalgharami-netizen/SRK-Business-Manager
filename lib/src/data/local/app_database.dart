@@ -9,7 +9,7 @@ class AppDatabase {
   AppDatabase._();
 
   static final AppDatabase instance = AppDatabase._();
-  static const int _databaseVersion = 3;
+  static const int _databaseVersion = 4;
   String? _databasePath;
   Database? _database;
 
@@ -63,6 +63,9 @@ class AppDatabase {
           )''');
           await db.execute('CREATE INDEX idx_stock_movements_product ON stock_movements(product_id)');
           await db.execute('CREATE INDEX idx_invoices_parent ON invoices(parent_invoice_id)');
+        }
+        if (oldVersion < 4) {
+          await db.execute('ALTER TABLE invoice_items ADD COLUMN hsn_sac TEXT');
         }
       },
     );
