@@ -47,9 +47,19 @@ class _SettingsPageState extends State<SettingsPage> {
   }
 
   Future<void> _save() async {
-    if (!IndianStates.all.contains(_state.text)) {
+    final selectedState = _state.text.trim();
+    final gstin = _gstin.text.trim().toUpperCase();
+    if (!IndianStates.all.contains(selectedState)) {
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(content: Text('Select a valid GST registration state.')),
+      );
+      return;
+    }
+    if (gstin.isNotEmpty && !IndianStates.gstinMatchesState(gstin, selectedState)) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('GSTIN format or its State Code does not match the selected GST registration state.'),
+        ),
       );
       return;
     }
@@ -58,8 +68,8 @@ class _SettingsPageState extends State<SettingsPage> {
       'company_name': _name.text.trim(),
       'company_phone': _phone.text.trim(),
       'company_address': _address.text.trim(),
-      'company_gstin': _gstin.text.trim().toUpperCase(),
-      'company_state': _state.text.trim(),
+      'company_gstin': gstin,
+      'company_state': selectedState,
     };
     await db.transaction((txn) async {
       for (final entry in values.entries) {
