@@ -9,7 +9,7 @@ class AppDatabase {
   AppDatabase._();
 
   static final AppDatabase instance = AppDatabase._();
-  static const int _databaseVersion = 2;
+  static const int _databaseVersion = 3;
   String? _databasePath;
   Database? _database;
 
@@ -48,6 +48,21 @@ class AppDatabase {
             is_active INTEGER NOT NULL DEFAULT 1,
             created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
           )''');
+        }
+        if (oldVersion < 3) {
+          await db.execute('ALTER TABLE invoices ADD COLUMN parent_invoice_id INTEGER');
+          await db.execute('''CREATE TABLE stock_movements (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            product_id INTEGER NOT NULL,
+            movement_type TEXT NOT NULL CHECK (movement_type IN ('purchase_return','adjustment')),
+            quantity_change REAL NOT NULL,
+            reference TEXT,
+            notes TEXT,
+            created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+            FOREIGN KEY (product_id) REFERENCES products(id) ON DELETE RESTRICT
+          )''');
+          await db.execute('CREATE INDEX idx_stock_movements_product ON stock_movements(product_id)');
+          await db.execute('CREATE INDEX idx_invoices_parent ON invoices(parent_invoice_id)');
         }
       },
     );
@@ -200,6 +215,18 @@ class AppDatabase {
     await db.execute('CREATE INDEX idx_invoices_party ON invoices(party_id)');
     await db.execute('CREATE INDEX idx_payments_date ON payments(payment_date)');
     await db.execute('CREATE INDEX idx_sync_queue_created ON sync_queue(created_at)');
+    await db.execute('CREATE INDEX idx_invoices_parent ON invoices(parent_invoice_id)');
+    await db.execute('''CREATE TABLE stock_movements (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      product_id INTEGER NOT NULL,
+      movement_type TEXT NOT NULL CHECK (movement_type IN ('purchase_return','adjustment')),
+      quantity_change REAL NOT NULL,
+      reference TEXT,
+      notes TEXT,
+      created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+      FOREIGN KEY (product_id) REFERENCES products(id) ON DELETE RESTRICT
+    )''');
+    await db.execute('CREATE INDEX idx_stock_movements_product ON stock_movements(product_id)');
   }
 
   Future<String> createBackup() async {
