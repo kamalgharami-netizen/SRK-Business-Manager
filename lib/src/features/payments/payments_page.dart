@@ -164,7 +164,7 @@ class _PaymentsPageState extends State<PaymentsPage> {
       try {
         await db.transaction((txn) async {
           int? effectivePartyId = partyId;
-          int? savedPaymentId;
+          late int savedPaymentId;
           final paymentDate = DateTime.now().toIso8601String();
 
           if (partyId != null) {
@@ -262,9 +262,6 @@ class _PaymentsPageState extends State<PaymentsPage> {
             });
           }
 
-          if (savedPaymentId == null) {
-            throw StateError('Payment record was not created.');
-          }
           await AccountingService.postPayment(
             txn,
             paymentId: savedPaymentId,
