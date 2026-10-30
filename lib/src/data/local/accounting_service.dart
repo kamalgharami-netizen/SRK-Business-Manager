@@ -24,6 +24,33 @@ class AccountingService {
     await _post(txn, sourceType: 'purchase_invoice', sourceId: invoiceId, date: date, memo: 'Purchase invoice $invoiceNumber', lines: lines);
   }
 
+  static Future<void> postPurchaseReturn(Transaction txn, {required int returnId, required String returnNumber, required String date, required double subtotal, required double tax, required double total}) async {
+    final lines = <Map<String, Object?>>[
+      if (total > 0) {'code': '2000', 'debit': total, 'credit': 0.0, 'description': 'Supplier payable reduced'},
+      if (subtotal > 0) {'code': '1200', 'debit': 0.0, 'credit': subtotal, 'description': 'Inventory returned to supplier'},
+      if (tax > 0) {'code': '1300', 'debit': 0.0, 'credit': tax, 'description': 'Input GST reversed'},
+    ];
+    await _post(txn, sourceType: 'purchase_return', sourceId: returnId, date: date, memo: 'Purchase return $returnNumber', lines: lines);
+  }
+
+  static Future<void> postStockAdjustment(Transaction txn, {required int movementId, required String date, required String reason, required double quantityChange, required double inventoryCost}) async {
+    if (!inventoryCost.isFinite || inventoryCost < 0 || quantityChange == 0) {
+      throw StateError('Stock adjustment accounting values are invalid.');
+    }
+    if (inventoryCost <= 0) return;
+    final isIncrease = quantityChange > 0;
+    final lines = isIncrease
+        ? <Map<String, Object?>>[
+            {'code': '1200', 'debit': inventoryCost, 'credit': 0.0, 'description': 'Inventory added by adjustment'},
+            {'code': '4100', 'debit': 0.0, 'credit': inventoryCost, 'description': 'Stock adjustment gain: $reason'},
+          ]
+        : <Map<String, Object?>>[
+            {'code': '5200', 'debit': inventoryCost, 'credit': 0.0, 'description': 'Stock adjustment loss: $reason'},
+            {'code': '1200', 'debit': 0.0, 'credit': inventoryCost, 'description': 'Inventory removed by adjustment'},
+          ];
+    await _post(txn, sourceType: 'stock_adjustment', sourceId: movementId, date: date, memo: 'Stock adjustment: $reason', lines: lines);
+  }
+
   static Future<void> postPayment(Transaction txn, {required int paymentId, required String date, required String paymentType, required String mode, required double amount, required String? reference}) async {
     final cashCode = mode.toLowerCase() == 'cash' ? '1000' : '1010';
     final isReceipt = paymentType == 'receipt';
