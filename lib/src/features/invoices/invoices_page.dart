@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 
 import '../../data/local/app_database.dart';
+import '../../data/local/accounting_service.dart';
 import '../../data/indian_states.dart';
 import 'invoice_pdf_service.dart';
 
@@ -283,6 +284,15 @@ class _InvoicesPageState extends State<InvoicesPage> {
               [item['quantity'], now.toIso8601String(), item['product_id']],
             );
           }
+          await AccountingService.postSalesInvoice(
+            txn,
+            invoiceId: invoiceId,
+            invoiceNumber: invoiceNumber,
+            date: now.toIso8601String(),
+            subtotal: subtotal,
+            tax: taxTotal,
+            total: subtotal + taxTotal,
+          );
         });
         await _loadInvoices();
         if (mounted) {
