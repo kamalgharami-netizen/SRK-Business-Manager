@@ -9,7 +9,7 @@ class AppDatabase {
   AppDatabase._();
 
   static final AppDatabase instance = AppDatabase._();
-  static const int _databaseVersion = 9;
+  static const int _databaseVersion = 10;
   String? _databasePath;
   Database? _database;
 
@@ -63,6 +63,7 @@ class AppDatabase {
           )''');
           await db.execute('CREATE INDEX idx_stock_movements_product ON stock_movements(product_id)');
           await db.execute('CREATE INDEX idx_invoices_parent ON invoices(parent_invoice_id)');
+    await db.execute('CREATE INDEX idx_invoice_items_original ON invoice_items(original_invoice_item_id)');
         }
         if (oldVersion < 4) {
           await db.execute('ALTER TABLE invoice_items ADD COLUMN hsn_sac TEXT');
@@ -91,6 +92,10 @@ class AppDatabase {
           await db.execute('ALTER TABLE invoice_items ADD COLUMN cost_of_goods_sold REAL NOT NULL DEFAULT 0');
           await _createInventoryCostSchema(db);
           await _seedLegacyInventoryCostLayers(db);
+        }
+        if (oldVersion < 10) {
+          await db.execute('ALTER TABLE invoice_items ADD COLUMN original_invoice_item_id INTEGER');
+          await db.execute('CREATE INDEX idx_invoice_items_original ON invoice_items(original_invoice_item_id)');
         }
       },
     );
@@ -182,6 +187,7 @@ class AppDatabase {
         igst_amount REAL NOT NULL DEFAULT 0,
         line_total REAL NOT NULL,
         cost_of_goods_sold REAL NOT NULL DEFAULT 0,
+        original_invoice_item_id INTEGER,
         FOREIGN KEY (invoice_id) REFERENCES invoices(id) ON DELETE CASCADE,
         FOREIGN KEY (product_id) REFERENCES products(id) ON DELETE SET NULL
       )
