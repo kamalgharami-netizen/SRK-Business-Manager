@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 
 import '../../data/local/app_database.dart';
+import '../../data/indian_states.dart';
 import '../invoices/invoice_pdf_service.dart';
 
 class PurchasesPage extends StatefulWidget {
@@ -69,6 +70,12 @@ class _PurchasesPageState extends State<PurchasesPage> {
       );
       return;
     }
+    if (!IndianStates.all.contains(businessState)) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Select a valid GST registration state in Settings.')),
+      );
+      return;
+    }
     final placeOfSupply = TextEditingController(text: businessState);
     int? supplierId;
     final lines = <_PurchaseLine>[_PurchaseLine()];
@@ -115,16 +122,25 @@ class _PurchasesPageState extends State<PurchasesPage> {
                         )).toList(),
                         onChanged: (value) => refreshDialog(() => supplierId = value),
                       ),
-                      TextFormField(
-                        controller: placeOfSupply,
+                      DropdownButtonFormField<String>(
+                        initialValue: IndianStates.all.contains(placeOfSupply.text)
+                            ? placeOfSupply.text
+                            : null,
                         decoration: const InputDecoration(
                           labelText: 'Place of Supply state *',
-                          helperText: 'Enter the Place of Supply shown on supplier tax invoice.',
+                          helperText: 'Select the Place of Supply shown on supplier tax invoice.',
                         ),
-                        validator: (value) => value == null || value.trim().isEmpty
-                            ? 'Enter Place of Supply state'
+                        items: IndianStates.all.map((state) => DropdownMenuItem<String>(
+                          value: state,
+                          child: Text(state),
+                        )).toList(),
+                        validator: (value) => value == null
+                            ? 'Select Place of Supply state'
                             : null,
-                        onChanged: (_) => refreshDialog(() {}),
+                        onChanged: (value) {
+                          placeOfSupply.text = value ?? '';
+                          refreshDialog(() {});
+                        },
                       ),
                       const SizedBox(height: 16),
                       Text('Purchase items', style: Theme.of(dialogContext).textTheme.titleMedium),
