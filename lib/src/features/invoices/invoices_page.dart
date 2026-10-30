@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 
 import '../../data/local/app_database.dart';
 import '../../data/local/accounting_service.dart';
+import '../../data/local/inventory_cost_service.dart';
 import '../../data/indian_states.dart';
 import 'invoice_pdf_service.dart';
 
@@ -277,8 +278,16 @@ class _InvoicesPageState extends State<InvoicesPage> {
             'notes': notes.text.trim(),
           });
 
+          var totalCogs = 0.0;
           for (final item in prepared) {
-            await txn.insert('invoice_items', {'invoice_id': invoiceId, ...item});
+            final invoiceItemId = await txn.insert('invoice_items', {'invoice_id': invoiceId, ...item});
+            totalCogs += await InventoryCostService.consumeForSale(
+              txn,
+              invoiceItemId: invoiceItemId,
+              productId: item['product_id'] as int,
+              quantity: (item['quantity'] as num).toDouble(),
+              soldAt: now.toIso8601String(),
+            );
             await txn.rawUpdate(
               'UPDATE products SET current_stock = current_stock - ?, updated_at = ? WHERE id = ?',
               [item['quantity'], now.toIso8601String(), item['product_id']],
@@ -292,6 +301,7 @@ class _InvoicesPageState extends State<InvoicesPage> {
             subtotal: subtotal,
             tax: taxTotal,
             total: subtotal + taxTotal,
+            costOfGoodsSold: totalCogs,
           );
         });
         await _loadInvoices();
