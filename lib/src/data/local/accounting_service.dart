@@ -10,7 +10,7 @@ class AccountingService {
       if (subtotal > 0) {'code': '4000', 'debit': 0.0, 'credit': subtotal, 'description': 'Sales revenue'},
       if (tax > 0) {'code': '2100', 'debit': 0.0, 'credit': tax, 'description': 'Output GST payable'},
     ];
-    await _post(txn, sourceType: 'sales_invoice', sourceId: invoiceId, sourceNumber: invoiceNumber, date: date, memo: 'Sales invoice $invoiceNumber', lines: lines);
+    await _post(txn, sourceType: 'sales_invoice', sourceId: invoiceId, date: date, memo: 'Sales invoice $invoiceNumber', lines: lines);
   }
 
   static Future<void> postPurchaseInvoice(Transaction txn, {required int invoiceId, required String invoiceNumber, required String date, required double subtotal, required double tax, required double total}) async {
@@ -19,7 +19,7 @@ class AccountingService {
       if (tax > 0) {'code': '1300', 'debit': tax, 'credit': 0.0, 'description': 'Input GST recorded'},
       if (total > 0) {'code': '2000', 'debit': 0.0, 'credit': total, 'description': 'Supplier payable'},
     ];
-    await _post(txn, sourceType: 'purchase_invoice', sourceId: invoiceId, sourceNumber: invoiceNumber, date: date, memo: 'Purchase invoice $invoiceNumber', lines: lines);
+    await _post(txn, sourceType: 'purchase_invoice', sourceId: invoiceId, date: date, memo: 'Purchase invoice $invoiceNumber', lines: lines);
   }
 
   static Future<void> postPayment(Transaction txn, {required int paymentId, required String date, required String paymentType, required String mode, required double amount, required String? reference}) async {
@@ -34,12 +34,12 @@ class AccountingService {
         {'code': cashCode, 'debit': 0.0, 'credit': amount, 'description': 'Money paid'},
       ],
     ];
-    await _post(txn, sourceType: isReceipt ? 'receipt' : 'payment', sourceId: paymentId, sourceNumber: 'PAY-$paymentId', date: date, memo: reference?.trim().isNotEmpty == true ? reference!.trim() : (isReceipt ? 'Customer receipt' : 'Supplier payment'), lines: lines);
+    await _post(txn, sourceType: isReceipt ? 'receipt' : 'payment', sourceId: paymentId, date: date, memo: reference?.trim().isNotEmpty == true ? reference!.trim() : (isReceipt ? 'Customer receipt' : 'Supplier payment'), lines: lines);
   }
 
   static Future<void> postExpense(Transaction txn, {required int expenseId, required String date, required String category, required String description, required String mode, required double amount}) async {
     final cashCode = mode.toLowerCase() == 'cash' ? '1000' : '1010';
-    await _post(txn, sourceType: 'expense', sourceId: expenseId, sourceNumber: 'EXP-$expenseId', date: date, memo: '$category: $description', lines: [
+    await _post(txn, sourceType: 'expense', sourceId: expenseId, date: date, memo: '$category: $description', lines: [
       {'code': '5200', 'debit': amount, 'credit': 0.0, 'description': category},
       {'code': cashCode, 'debit': 0.0, 'credit': amount, 'description': 'Expense paid'},
     ]);
@@ -49,7 +49,7 @@ class AccountingService {
     await txn.update('journal_entries', {'status': 'void'}, where: 'source_type = ? AND source_id = ? AND status = ?', whereArgs: [sourceType, sourceId, 'posted']);
   }
 
-  static Future<void> _post(Transaction txn, {required String sourceType, required int sourceId, required String sourceNumber, required String date, required String memo, required List<Map<String, Object?>> lines}) async {
+  static Future<void> _post(Transaction txn, {required String sourceType, required int sourceId, required String date, required String memo, required List<Map<String, Object?>> lines}) async {
     if (lines.length < 2) throw StateError('A journal entry must contain at least two ledger lines.');
     final debit = lines.fold<double>(0, (sum, line) => sum + (line['debit'] as num).toDouble());
     final credit = lines.fold<double>(0, (sum, line) => sum + (line['credit'] as num).toDouble());
