@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import 'package:sqflite/sqflite.dart' show ConflictAlgorithm;
 
 import '../../data/local/app_database.dart';
+import '../../data/indian_states.dart';
 
 class SettingsPage extends StatefulWidget {
   const SettingsPage({super.key});
@@ -46,6 +47,12 @@ class _SettingsPageState extends State<SettingsPage> {
   }
 
   Future<void> _save() async {
+    if (!IndianStates.all.contains(_state.text)) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Select a valid GST registration state.')),
+      );
+      return;
+    }
     final db = await AppDatabase.instance.database;
     final values = {
       'company_name': _name.text.trim(),
@@ -185,12 +192,22 @@ class _SettingsPageState extends State<SettingsPage> {
                     decoration: const InputDecoration(labelText: 'GSTIN'),
                     textCapitalization: TextCapitalization.characters,
                   ),
-                  TextField(
-                    controller: _state,
+                  DropdownButtonFormField<String>(
+                    initialValue: IndianStates.all.contains(_state.text)
+                        ? _state.text
+                        : null,
                     decoration: const InputDecoration(
                       labelText: 'GST registration state *',
-                      helperText: 'Enter the state exactly as used in GST records, e.g. West Bengal.',
+                      helperText: 'Select the state shown in your GST registration.',
                     ),
+                    items: IndianStates.all.map((state) => DropdownMenuItem<String>(
+                      value: state,
+                      child: Text(state),
+                    )).toList(),
+                    validator: (value) => value == null
+                        ? 'Select GST registration state'
+                        : null,
+                    onChanged: (value) => _state.text = value ?? '',
                   ),
                   TextField(
                     controller: _address,
