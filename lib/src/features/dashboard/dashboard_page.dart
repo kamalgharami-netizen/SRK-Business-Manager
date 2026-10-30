@@ -78,7 +78,7 @@ class DashboardPage extends StatelessWidget {
                         title: Text(module.title, style: const TextStyle(fontWeight: FontWeight.w600)),
                         trailing: const Icon(Icons.chevron_right),
                         onTap: () => Navigator.of(context).push(MaterialPageRoute<void>(
-                          builder: (_) => ModulePlaceholderPage(module: module),
+                          builder: (_) => _ModulePlaceholderPage(module: module),
                         )),
                       ),
                     );
@@ -133,8 +133,8 @@ class _SummaryCard extends StatelessWidget {
   }
 }
 
-class ModulePlaceholderPage extends StatelessWidget {
-  const ModulePlaceholderPage({super.key, required this.module});
+class _ModulePlaceholderPage extends StatelessWidget {
+  const _ModulePlaceholderPage({super.key, required this.module});
   final _ModuleInfo module;
 
   @override
