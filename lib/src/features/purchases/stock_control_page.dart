@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 
 import '../../data/local/app_database.dart';
+import '../../data/local/accounting_service.dart';
 import '../../data/local/inventory_cost_service.dart';
 import '../invoices/invoice_pdf_service.dart';
 
@@ -351,6 +352,15 @@ class _StockControlPageState extends State<StockControlPage> {
               'created_at': now.toIso8601String(),
             });
           }
+          await AccountingService.postPurchaseReturn(
+            txn,
+            returnId: returnId,
+            returnNumber: returnNumber,
+            date: now.toIso8601String(),
+            subtotal: subtotal,
+            tax: taxTotal,
+            total: subtotal + taxTotal,
+          );
         });
         _message('Purchase return saved and stock reduced for all selected items.');
         await _loadMovements();
@@ -578,7 +588,11 @@ class _StockControlPageState extends State<StockControlPage> {
             throw StateError('Stock cannot become negative.');
           }
           final now = DateTime.now();
+          double adjustmentCost;
           if (signedQty > 0) {
+            final selected = products.firstWhere((row) => row['id'] == productId);
+            adjustmentCost = qty *
+                (selected['purchase_price'] as num).toDouble();
             await InventoryCostService.addAdjustmentLayer(
               txn,
               productId: productId!,
@@ -586,7 +600,7 @@ class _StockControlPageState extends State<StockControlPage> {
               adjustedAt: now.toIso8601String(),
             );
           } else {
-            await InventoryCostService.removeStockAtFifo(
+            adjustmentCost = await InventoryCostService.removeStockAtFifo(
               txn,
               productId: productId!,
               quantity: -signedQty,
@@ -597,7 +611,7 @@ class _StockControlPageState extends State<StockControlPage> {
             'UPDATE products SET current_stock = current_stock + ?, updated_at = ? WHERE id = ?',
             [signedQty, now.toIso8601String(), productId],
           );
-          await txn.insert('stock_movements', {
+          final movementId = await txn.insert('stock_movements', {
             'product_id': productId,
             'movement_type': 'adjustment',
             'quantity_change': signedQty,
@@ -605,6 +619,14 @@ class _StockControlPageState extends State<StockControlPage> {
             'notes': reason.text.trim(),
             'created_at': now.toIso8601String(),
           });
+          await AccountingService.postStockAdjustment(
+            txn,
+            movementId: movementId,
+            date: now.toIso8601String(),
+            reason: reason.text.trim(),
+            quantityChange: signedQty,
+            inventoryCost: adjustmentCost,
+          );
         });
         _message('Stock adjusted successfully.');
         await _loadMovements();
