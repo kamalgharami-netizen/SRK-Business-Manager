@@ -191,6 +191,7 @@ class _PurchasesPageState extends State<PurchasesPage> {
             preparedItems.add({
               'product_id': line.productId,
               'description': product['name'] as String,
+              'hsn_sac': product['hsn_sac'],
               'quantity': quantity,
               'unit': product['unit'] as String? ?? 'pcs',
               'rate': rate,
