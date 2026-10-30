@@ -82,6 +82,10 @@ class InvoicePdfService {
                 ),
                 pw.Text('Date: $invoiceDate'),
                 pw.Text('$partyLabel: $partyName'),
+                if ((invoice['place_of_supply']?.toString() ?? '').isNotEmpty)
+                  pw.Text('Place of Supply: ${invoice['place_of_supply']}'),
+                if ((invoice['tax_type']?.toString() ?? '').isNotEmpty)
+                  pw.Text('Tax type: ${invoice['tax_type']}'),
                 if ((invoice['original_invoice_number']?.toString() ?? '').isNotEmpty)
                   pw.Text('Original purchase: ${invoice['original_invoice_number']}'),
               ],
