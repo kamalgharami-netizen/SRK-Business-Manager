@@ -2,6 +2,17 @@ import 'package:flutter/material.dart';
 
 import '../../data/local/app_database.dart';
 
+
+class _ReturnLine {
+  _ReturnLine({required this.item, required this.available});
+  final Map<String, Object?> item;
+  final double available;
+  bool selected = false;
+  final TextEditingController quantity = TextEditingController(text: '1');
+
+  void dispose() => quantity.dispose();
+}
+
 class StockControlPage extends StatefulWidget {
   const StockControlPage({super.key});
 
@@ -35,6 +46,7 @@ class _StockControlPageState extends State<StockControlPage> {
     });
   }
 
+
   Future<void> _purchaseReturn() async {
     final db = await AppDatabase.instance.database;
     final purchases = await db.rawQuery('''
@@ -51,12 +63,57 @@ class _StockControlPageState extends State<StockControlPage> {
     }
 
     int? invoiceId;
-    int? itemId;
-    double availableQuantity = 0;
-    final quantity = TextEditingController(text: '1');
+    List<_ReturnLine> lines = [];
     final notes = TextEditingController();
     final formKey = GlobalKey<FormState>();
-    List<Map<String, Object?>> invoiceItems = [];
+
+    Future<void> loadItems(int? selectedInvoiceId) async {
+      for (final line in lines) {
+        line.dispose();
+      }
+      lines = [];
+      if (selectedInvoiceId == null) return;
+      final items = await db.query(
+        'invoice_items',
+        where: 'invoice_id = ?',
+        whereArgs: [selectedInvoiceId],
+        orderBy: 'id',
+      );
+      final returnedRows = await db.rawQuery('''
+        SELECT ri.product_id, COALESCE(SUM(ri.quantity), 0) AS returned
+        FROM invoices r
+        JOIN invoice_items ri ON ri.invoice_id = r.id
+        WHERE r.invoice_type = 'purchase_return'
+          AND r.parent_invoice_id = ?
+        GROUP BY ri.product_id
+      ''', [selectedInvoiceId]);
+      final returned = <int, double>{
+        for (final row in returnedRows)
+          row['product_id'] as int: (row['returned'] as num).toDouble(),
+      };
+      final purchased = <int, double>{};
+      for (final item in items) {
+        final id = item['product_id'] as int?;
+        if (id != null) {
+          purchased[id] = (purchased[id] ?? 0) +
+              (item['quantity'] as num).toDouble();
+        }
+      }
+      final remaining = <int, double>{
+        for (final entry in purchased.entries)
+          entry.key: entry.value - (returned[entry.key] ?? 0),
+      };
+      for (final item in items) {
+        final id = item['product_id'] as int?;
+        final lineRemaining = id == null ? 0.0 : (remaining[id] ?? 0);
+        final available = lineRemaining.clamp(
+          0.0,
+          (item['quantity'] as num).toDouble(),
+        ).toDouble();
+        if (id != null) remaining[id] = lineRemaining - available;
+        lines.add(_ReturnLine(item: item, available: available));
+      }
+    }
 
     final saved = await showDialog<bool>(
       context: context,
@@ -65,7 +122,7 @@ class _StockControlPageState extends State<StockControlPage> {
         builder: (dialogContext, refresh) => AlertDialog(
           title: const Text('Purchase return'),
           content: SizedBox(
-            width: 480,
+            width: 560,
             child: Form(
               key: formKey,
               child: SingleChildScrollView(
@@ -75,71 +132,81 @@ class _StockControlPageState extends State<StockControlPage> {
                   children: [
                     DropdownButtonFormField<int>(
                       initialValue: invoiceId,
-                      decoration: const InputDecoration(labelText: 'Original purchase invoice *'),
+                      decoration: const InputDecoration(
+                        labelText: 'Original purchase invoice *',
+                      ),
                       items: purchases.map((row) => DropdownMenuItem<int>(
                         value: row['id'] as int,
-                        child: Text('${row['invoice_number']} • ${row['supplier_name'] ?? 'Supplier not selected'}'),
+                        child: Text(
+                          row['invoice_number'].toString() + ' • ' +
+                              (row['supplier_name']?.toString() ??
+                                  'Supplier not selected'),
+                          overflow: TextOverflow.ellipsis,
+                        ),
                       )).toList(),
-                      validator: (value) => value == null ? 'Select the original purchase' : null,
+                      validator: (value) =>
+                          value == null ? 'Select the original purchase' : null,
                       onChanged: (value) async {
                         invoiceId = value;
-                        itemId = null;
-                        invoiceItems = await db.query(
-                          'invoice_items',
-                          where: 'invoice_id = ?',
-                          whereArgs: [value],
-                          orderBy: 'id',
-                        );
+                        await loadItems(value);
                         refresh(() {});
                       },
                     ),
                     const SizedBox(height: 12),
-                    DropdownButtonFormField<int>(
-                      key: ValueKey(invoiceId),
-                      initialValue: itemId,
-                      decoration: const InputDecoration(labelText: 'Product to return *'),
-                      items: invoiceItems.map((row) => DropdownMenuItem<int>(
-                        value: row['id'] as int,
-                        child: Text('${row['description']} • Qty ${row['quantity']}'),
-                      )).toList(),
-                      validator: (value) => value == null ? 'Select a purchase item' : null,
-                      onChanged: (value) async {
-                        itemId = value;
-                        availableQuantity = 0;
-                        if (invoiceId != null && value != null) {
-                          final selected = invoiceItems.firstWhere((row) => row['id'] == value);
-                          final previous = await db.rawQuery('''
-                            SELECT COALESCE(SUM(ri.quantity), 0) AS returned
-                            FROM invoices r
-                            JOIN invoice_items ri ON ri.invoice_id = r.id
-                            WHERE r.invoice_type = 'purchase_return'
-                              AND r.parent_invoice_id = ?
-                              AND ri.product_id = ?
-                          ''', [invoiceId, selected['product_id']]);
-                          availableQuantity = (selected['quantity'] as num).toDouble() -
-                              ((previous.first['returned'] as num).toDouble());
-                        }
-                        refresh(() {});
-                      },
-                    ),
-                    if (itemId != null)
-                      Padding(
-                        padding: const EdgeInsets.only(top: 8),
-                        child: Text('Returnable quantity: ${availableQuantity.toStringAsFixed(3)}'),
+                    if (invoiceId != null && lines.isEmpty)
+                      const Text('No items found in this purchase.'),
+                    for (final line in lines)
+                      Card(
+                        margin: const EdgeInsets.only(bottom: 8),
+                        child: Padding(
+                          padding: const EdgeInsets.all(10),
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.stretch,
+                            children: [
+                              CheckboxListTile(
+                                contentPadding: EdgeInsets.zero,
+                                value: line.selected,
+                                title: Text(
+                                  line.item['description']?.toString() ?? 'Product',
+                                ),
+                                subtitle: Text(
+                                  'Purchased: ' +
+                                      line.item['quantity'].toString() +
+                                      ' • Returnable: ' +
+                                      line.available.toStringAsFixed(3),
+                                ),
+                                onChanged: line.available <= 0
+                                    ? null
+                                    : (value) => refresh(
+                                          () => line.selected = value ?? false,
+                                        ),
+                              ),
+                              if (line.selected)
+                                TextFormField(
+                                  controller: line.quantity,
+                                  decoration: const InputDecoration(
+                                    labelText: 'Return quantity *',
+                                  ),
+                                  keyboardType: const TextInputType.numberWithOptions(
+                                    decimal: true,
+                                  ),
+                                  validator: (value) {
+                                    final parsed = double.tryParse(value ?? '');
+                                    if (parsed == null ||
+                                        !parsed.isFinite ||
+                                        parsed <= 0) {
+                                      return 'Enter a quantity greater than zero';
+                                    }
+                                    if (parsed > line.available) {
+                                      return 'Exceeds remaining quantity';
+                                    }
+                                    return null;
+                                  },
+                                ),
+                            ],
+                          ),
+                        ),
                       ),
-                    TextFormField(
-                      controller: quantity,
-                      decoration: const InputDecoration(labelText: 'Return quantity *'),
-                      keyboardType: const TextInputType.numberWithOptions(decimal: true),
-                      validator: (value) {
-                        final parsed = double.tryParse(value ?? '');
-                        if (parsed == null || !parsed.isFinite || parsed <= 0) {
-                          return 'Enter a quantity greater than zero';
-                        }
-                        if (parsed > availableQuantity) return 'Exceeds returnable quantity';
-                        return null;
-                      },
-                    ),
                     TextFormField(
                       controller: notes,
                       decoration: const InputDecoration(labelText: 'Reason / notes'),
@@ -151,12 +218,18 @@ class _StockControlPageState extends State<StockControlPage> {
             ),
           ),
           actions: [
-            TextButton(onPressed: () => Navigator.pop(dialogContext, false), child: const Text('Cancel')),
+            TextButton(
+              onPressed: () => Navigator.pop(dialogContext, false),
+              child: const Text('Cancel'),
+            ),
             FilledButton(
               onPressed: () {
-                if (formKey.currentState?.validate() ?? false) {
-                  Navigator.pop(dialogContext, true);
+                if (!(formKey.currentState?.validate() ?? false)) return;
+                if (!lines.any((line) => line.selected)) {
+                  _message('Select at least one item to return.');
+                  return;
                 }
+                Navigator.pop(dialogContext, true);
               },
               child: const Text('Save return'),
             ),
@@ -165,87 +238,119 @@ class _StockControlPageState extends State<StockControlPage> {
       ),
     );
 
-    if (saved == true && invoiceId != null && itemId != null) {
+    if (saved == true && invoiceId != null) {
       try {
         await db.transaction((txn) async {
           final original = purchases.firstWhere((row) => row['id'] == invoiceId);
-          final originalItem = invoiceItems.firstWhere((row) => row['id'] == itemId);
-          final returnQty = double.parse(quantity.text.trim());
-          final previous = await txn.rawQuery('''
-            SELECT COALESCE(SUM(ri.quantity), 0) AS returned
-            FROM invoices r
-            JOIN invoice_items ri ON ri.invoice_id = r.id
-            WHERE r.invoice_type = 'purchase_return'
-              AND r.parent_invoice_id = ?
-              AND ri.product_id = ?
-          ''', [invoiceId, originalItem['product_id']]);
-          final alreadyReturned = (previous.first['returned'] as num).toDouble();
-          final purchasedQty = (originalItem['quantity'] as num).toDouble();
-          if (returnQty <= 0 || alreadyReturned + returnQty > purchasedQty) {
-            throw StateError('Return quantity exceeds the remaining quantity on this purchase.');
+          final selectedLines = lines.where((line) => line.selected).toList();
+          final returnItems = <Map<String, Object?>>[];
+          final totalsByProduct = <int, double>{};
+          double subtotal = 0;
+          double taxTotal = 0;
+
+          for (final line in selectedLines) {
+            final item = line.item;
+            final productId = item['product_id'] as int;
+            final qty = double.parse(line.quantity.text.trim());
+            final rate = (item['rate'] as num).toDouble();
+            final gst = (item['gst_rate'] as num).toDouble();
+            final base = qty * rate;
+            final tax = base * gst / 100;
+            if (!qty.isFinite || qty <= 0 || !base.isFinite || !tax.isFinite) {
+              throw StateError('One or more return item values are invalid.');
+            }
+            totalsByProduct[productId] = (totalsByProduct[productId] ?? 0) + qty;
+            subtotal += base;
+            taxTotal += tax;
+            returnItems.add({
+              'product_id': productId,
+              'description': item['description'],
+              'quantity': qty,
+              'unit': item['unit'],
+              'rate': rate,
+              'discount': 0,
+              'gst_rate': gst,
+              'tax_amount': tax,
+              'line_total': base + tax,
+            });
           }
-          final stockRows = await txn.query(
-            'products',
-            columns: ['current_stock'],
-            where: 'id = ?',
-            whereArgs: [originalItem['product_id']],
-          );
-          if (stockRows.isEmpty ||
-              (stockRows.first['current_stock'] as num).toDouble() < returnQty) {
-            throw StateError('Insufficient current stock to process this return.');
+
+          for (final entry in totalsByProduct.entries) {
+            final purchasedRows = await txn.rawQuery('''
+              SELECT COALESCE(SUM(quantity), 0) AS total
+              FROM invoice_items
+              WHERE invoice_id = ? AND product_id = ?
+            ''', [invoiceId, entry.key]);
+            final returnedRows = await txn.rawQuery('''
+              SELECT COALESCE(SUM(ri.quantity), 0) AS total
+              FROM invoices r
+              JOIN invoice_items ri ON ri.invoice_id = r.id
+              WHERE r.invoice_type = 'purchase_return'
+                AND r.parent_invoice_id = ? AND ri.product_id = ?
+            ''', [invoiceId, entry.key]);
+            final bought = (purchasedRows.first['total'] as num).toDouble();
+            final already = (returnedRows.first['total'] as num).toDouble();
+            if (entry.value <= 0 || already + entry.value > bought) {
+              throw StateError('Return quantity exceeds the remaining purchase quantity.');
+            }
+            final stock = await txn.query(
+              'products',
+              columns: ['current_stock'],
+              where: 'id = ?',
+              whereArgs: [entry.key],
+            );
+            if (stock.isEmpty ||
+                (stock.first['current_stock'] as num).toDouble() < entry.value) {
+              throw StateError('Insufficient current stock for a returned item.');
+            }
           }
-          final rate = (originalItem['rate'] as num).toDouble();
-          final gstRate = (originalItem['gst_rate'] as num).toDouble();
-          final base = returnQty * rate;
-          final tax = base * gstRate / 100;
+
           final now = DateTime.now();
-          final returnNumber = 'PR-${now.microsecondsSinceEpoch}';
-          final returnInvoiceId = await txn.insert('invoices', {
+          final returnNumber = 'PR-' + now.microsecondsSinceEpoch.toString();
+          final returnId = await txn.insert('invoices', {
             'invoice_number': returnNumber,
             'invoice_type': 'purchase_return',
             'parent_invoice_id': invoiceId,
             'party_id': original['party_id'],
             'invoice_date': now.toIso8601String(),
-            'subtotal': base,
-            'tax_total': tax,
-            'grand_total': base + tax,
+            'subtotal': subtotal,
+            'tax_total': taxTotal,
+            'grand_total': subtotal + taxTotal,
             'amount_paid': 0,
             'status': 'recorded',
-            'notes': 'Return against ${original['invoice_number']}. ${notes.text.trim()}'.trim(),
+            'notes': ('Return against ' + original['invoice_number'].toString() +
+                '. ' + notes.text.trim()).trim(),
           });
-          await txn.insert('invoice_items', {
-            'invoice_id': returnInvoiceId,
-            'product_id': originalItem['product_id'],
-            'description': originalItem['description'],
-            'quantity': returnQty,
-            'unit': originalItem['unit'],
-            'rate': rate,
-            'discount': 0,
-            'gst_rate': gstRate,
-            'tax_amount': tax,
-            'line_total': base + tax,
-          });
-          await txn.rawUpdate(
-            'UPDATE products SET current_stock = current_stock - ?, updated_at = ? WHERE id = ?',
-            [returnQty, now.toIso8601String(), originalItem['product_id']],
-          );
-          await txn.insert('stock_movements', {
-            'product_id': originalItem['product_id'],
-            'movement_type': 'purchase_return',
-            'quantity_change': -returnQty,
-            'reference': returnNumber,
-            'notes': 'Against ${original['invoice_number']}. ${notes.text.trim()}'.trim(),
-            'created_at': now.toIso8601String(),
-          });
+
+          for (final item in returnItems) {
+            await txn.insert('invoice_items', {'invoice_id': returnId, ...item});
+            final productId = item['product_id'] as int;
+            final qty = (item['quantity'] as num).toDouble();
+            await txn.rawUpdate(
+              'UPDATE products SET current_stock = current_stock - ?, updated_at = ? WHERE id = ?',
+              [qty, now.toIso8601String(), productId],
+            );
+            await txn.insert('stock_movements', {
+              'product_id': productId,
+              'movement_type': 'purchase_return',
+              'quantity_change': -qty,
+              'reference': returnNumber,
+              'notes': ('Against ' + original['invoice_number'].toString() +
+                  '. ' + notes.text.trim()).trim(),
+              'created_at': now.toIso8601String(),
+            });
+          }
         });
-        _message('Purchase return saved and stock reduced.');
+        _message('Purchase return saved and stock reduced for all selected items.');
         await _loadMovements();
       } catch (error) {
-        _message('Could not save purchase return: $error');
+        _message('Could not save purchase return: ' + error.toString());
       }
     }
 
-    quantity.dispose();
+    for (final line in lines) {
+      line.dispose();
+    }
     notes.dispose();
   }
 
