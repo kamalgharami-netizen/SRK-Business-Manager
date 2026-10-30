@@ -16,6 +16,7 @@ class _SettingsPageState extends State<SettingsPage> {
   final _phone = TextEditingController();
   final _address = TextEditingController();
   final _gstin = TextEditingController();
+  final _state = TextEditingController();
 
   bool _loading = true;
   bool _restoring = false;
@@ -39,6 +40,7 @@ class _SettingsPageState extends State<SettingsPage> {
     _phone.text = values['company_phone'] ?? '';
     _address.text = values['company_address'] ?? '';
     _gstin.text = values['company_gstin'] ?? '';
+    _state.text = values['company_state'] ?? '';
     if (!mounted) return;
     setState(() => _loading = false);
   }
@@ -50,6 +52,7 @@ class _SettingsPageState extends State<SettingsPage> {
       'company_phone': _phone.text.trim(),
       'company_address': _address.text.trim(),
       'company_gstin': _gstin.text.trim().toUpperCase(),
+      'company_state': _state.text.trim(),
     };
     await db.transaction((txn) async {
       for (final entry in values.entries) {
@@ -151,6 +154,7 @@ class _SettingsPageState extends State<SettingsPage> {
     _phone.dispose();
     _address.dispose();
     _gstin.dispose();
+    _state.dispose();
     super.dispose();
   }
 
@@ -180,6 +184,13 @@ class _SettingsPageState extends State<SettingsPage> {
                     controller: _gstin,
                     decoration: const InputDecoration(labelText: 'GSTIN'),
                     textCapitalization: TextCapitalization.characters,
+                  ),
+                  TextField(
+                    controller: _state,
+                    decoration: const InputDecoration(
+                      labelText: 'GST registration state *',
+                      helperText: 'Enter the state exactly as used in GST records, e.g. West Bengal.',
+                    ),
                   ),
                   TextField(
                     controller: _address,
