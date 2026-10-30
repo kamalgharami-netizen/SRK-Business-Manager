@@ -109,4 +109,92 @@ class InventoryCostService {
     );
     return totalCost;
   }
+  /// Adds manually received stock at an estimated purchase-price cost.
+  static Future<void> addAdjustmentLayer(
+    Transaction txn, {
+    required int productId,
+    required double quantity,
+    required String adjustedAt,
+  }) async {
+    if (quantity <= 0 || !quantity.isFinite) {
+      throw StateError('Adjustment quantity must be positive.');
+    }
+    final rows = await txn.query(
+      'products',
+      columns: ['purchase_price'],
+      where: 'id = ?',
+      whereArgs: [productId],
+      limit: 1,
+    );
+    if (rows.isEmpty) throw StateError('Product cost information is missing.');
+    final cost = (rows.first['purchase_price'] as num).toDouble();
+    if (!cost.isFinite || cost < 0) throw StateError('Product purchase price is invalid.');
+    await txn.insert('inventory_cost_layers', {
+      'product_id': productId,
+      'source_type': 'stock_adjustment',
+      'source_id': null,
+      'received_at': adjustedAt,
+      'quantity_received': quantity,
+      'quantity_remaining': quantity,
+      'unit_cost': cost,
+      'is_estimated': 1,
+    });
+  }
+
+  /// Removes stock from oldest FIFO layers; missing legacy cost is estimated.
+  static Future<double> removeStockAtFifo(
+    Transaction txn, {
+    required int productId,
+    required double quantity,
+    required String removedAt,
+  }) async {
+    if (quantity <= 0 || !quantity.isFinite) {
+      throw StateError('Removal quantity must be positive.');
+    }
+    var remaining = quantity;
+    var totalCost = 0.0;
+    final layers = await txn.query(
+      'inventory_cost_layers',
+      where: 'product_id = ? AND quantity_remaining > 0',
+      whereArgs: [productId],
+      orderBy: 'received_at ASC, id ASC',
+    );
+    for (final layer in layers) {
+      if (remaining <= 0.0000001) break;
+      final available = (layer['quantity_remaining'] as num).toDouble();
+      final used = available < remaining ? available : remaining;
+      final unitCost = (layer['unit_cost'] as num).toDouble();
+      await txn.rawUpdate(
+        'UPDATE inventory_cost_layers SET quantity_remaining = quantity_remaining - ? WHERE id = ?',
+        [used, layer['id']],
+      );
+      totalCost += used * unitCost;
+      remaining -= used;
+    }
+    if (remaining > 0.0000001) {
+      final rows = await txn.query(
+        'products',
+        columns: ['purchase_price'],
+        where: 'id = ?',
+        whereArgs: [productId],
+        limit: 1,
+      );
+      if (rows.isEmpty) throw StateError('Product cost information is missing.');
+      final cost = (rows.first['purchase_price'] as num).toDouble();
+      if (!cost.isFinite || cost < 0) throw StateError('Product purchase price is invalid.');
+      await txn.insert('inventory_cost_layers', {
+        'product_id': productId,
+        'source_type': 'legacy_fallback',
+        'source_id': null,
+        'received_at': removedAt,
+        'quantity_received': remaining,
+        'quantity_remaining': 0,
+        'unit_cost': cost,
+        'is_estimated': 1,
+      });
+      totalCost += remaining * cost;
+    }
+    return totalCost;
+  }
+
 }
