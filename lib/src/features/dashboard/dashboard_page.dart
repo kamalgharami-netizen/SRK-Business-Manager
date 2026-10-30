@@ -4,6 +4,7 @@ import '../expenses/expenses_page.dart';
 import '../invoices/invoices_page.dart';
 import '../payments/payments_page.dart';
 import '../purchases/purchases_page.dart';
+import '../reports/reports_page.dart';
 import '../parties/parties_page.dart';
 import '../products/products_page.dart';
 
@@ -90,6 +91,9 @@ class DashboardPage extends StatelessWidget {
                             'Purchases' => const PurchasesPage(),
                             'Receipts & Payments' => const PaymentsPage(),
                             'Expenses' => const ExpensesPage(),
+                            'GST Reports' => const ReportsPage(reportType: 'GST Reports'),
+                            'Accounting & Ledgers' => const ReportsPage(reportType: 'Accounting & Ledgers'),
+                            'Business Reports' => const ReportsPage(reportType: 'Business Reports'),
                             'Customers & Suppliers' => const PartiesPage(),
                             'Inventory & Stock' => const ProductsPage(),
                             _ => _ModulePlaceholderPage(module: module),
