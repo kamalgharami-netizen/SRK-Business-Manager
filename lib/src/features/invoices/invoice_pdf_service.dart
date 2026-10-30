@@ -123,7 +123,7 @@ class InvoicePdfService {
                   pw.Padding(
                     padding: const pw.EdgeInsets.all(7),
                     child: pw.Text(
-                      item['description']?.toString() ?? '',
+                      '${item['description']?.toString() ?? ''}${(item['hsn_sac']?.toString() ?? '').isEmpty ? '' : '\nHSN/SAC: ${item['hsn_sac']}'}',
                       style: const pw.TextStyle(fontSize: 9),
                     ),
                   ),
@@ -169,6 +169,9 @@ class InvoicePdfService {
               children: [
                 _totalLine('Taxable subtotal', subtotal),
                 _totalLine('GST', tax),
+                _totalLine('CGST', (invoice['cgst_total'] as num?)?.toDouble() ?? 0),
+                _totalLine('SGST', (invoice['sgst_total'] as num?)?.toDouble() ?? 0),
+                _totalLine('IGST', (invoice['igst_total'] as num?)?.toDouble() ?? 0),
                 pw.Divider(),
                 _totalLine(isPurchaseReturn ? 'Return total' : 'Grand total', total, bold: true),
                 if (!isPurchaseReturn) ...[
