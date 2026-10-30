@@ -24,7 +24,7 @@ class _InvoicesPageState extends State<InvoicesPage> {
   Future<void> _loadInvoices() async {
     final db = await AppDatabase.instance.database;
     final rows = await db.rawQuery('''
-      SELECT invoices.*, parties.name AS party_name
+      SELECT invoices.*, parties.name AS party_name,\n             parties.gstin AS party_gstin, parties.state AS party_state
       FROM invoices
       LEFT JOIN parties ON parties.id = invoices.party_id
       WHERE invoices.invoice_type = 'sale'
@@ -123,6 +123,9 @@ class _InvoicesPageState extends State<InvoicesPage> {
                         )).toList(),
                         onChanged: (value) => refreshDialog(() => selectedPartyId = value),
                       ),
+                      if (selectedPartyId != null) ...[
+                        _partyTaxDetails(parties.firstWhere((party) => party['id'] == selectedPartyId)),
+                      ],
                       DropdownButtonFormField<String>(
                         initialValue: IndianStates.all.contains(placeOfSupply.text)
                             ? placeOfSupply.text
@@ -386,6 +389,22 @@ class _InvoicesPageState extends State<InvoicesPage> {
     );
   }
 
+  Widget _partyTaxDetails(Map<String, Object?> party) {
+    final gstin = (party['gstin']?.toString() ?? '').trim();
+    final state = (party['state']?.toString() ?? '').trim();
+    if (gstin.isEmpty && state.isEmpty) return const SizedBox.shrink();
+    return Padding(
+      padding: const EdgeInsets.only(top: 4, bottom: 8),
+      child: Text(
+        [
+          if (state.isNotEmpty) 'State: $state',
+          if (gstin.isNotEmpty) 'GSTIN: $gstin',
+        ].join('  |  '),
+        style: const TextStyle(fontSize: 12, color: Colors.blueGrey),
+      ),
+    );
+  }
+
   Widget _totalRow(String label, double amount, {bool bold = false}) {
     return Padding(
       padding: const EdgeInsets.symmetric(vertical: 3),
@@ -426,6 +445,10 @@ class _InvoicesPageState extends State<InvoicesPage> {
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
               Text('Customer: ${invoice['party_name'] ?? 'Walk-in customer'}'),
+              if ((invoice['party_gstin']?.toString() ?? '').isNotEmpty)
+                Text('Customer GSTIN: ${invoice['party_gstin']}'),
+              if ((invoice['party_state']?.toString() ?? '').isNotEmpty)
+                Text('Customer State: ${invoice['party_state']}'),
               Text('Date: ${(invoice['invoice_date'] as String).split('T').first}'),
               Text('Place of Supply: ${invoice['place_of_supply'] ?? 'Not recorded'}'),
               Text('Tax type: ${invoice['tax_type'] ?? 'Not classified'}'),
