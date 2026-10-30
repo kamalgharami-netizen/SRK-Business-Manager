@@ -1,0 +1,80 @@
+import 'package:sqflite_common_ffi/sqflite_ffi.dart';
+
+/// Creates balanced, source-linked double-entry journal entries.
+class AccountingService {
+  AccountingService._();
+
+  static Future<void> postSalesInvoice(Transaction txn, {required int invoiceId, required String invoiceNumber, required String date, required double subtotal, required double tax, required double total}) async {
+    final lines = <Map<String, Object?>>[
+      if (total > 0) {'code': '1100', 'debit': total, 'credit': 0.0, 'description': 'Customer receivable'},
+      if (subtotal > 0) {'code': '4000', 'debit': 0.0, 'credit': subtotal, 'description': 'Sales revenue'},
+      if (tax > 0) {'code': '2100', 'debit': 0.0, 'credit': tax, 'description': 'Output GST payable'},
+    ];
+    await _post(txn, sourceType: 'sales_invoice', sourceId: invoiceId, sourceNumber: invoiceNumber, date: date, memo: 'Sales invoice $invoiceNumber', lines: lines);
+  }
+
+  static Future<void> postPurchaseInvoice(Transaction txn, {required int invoiceId, required String invoiceNumber, required String date, required double subtotal, required double tax, required double total}) async {
+    final lines = <Map<String, Object?>>[
+      if (subtotal > 0) {'code': '1200', 'debit': subtotal, 'credit': 0.0, 'description': 'Inventory acquired'},
+      if (tax > 0) {'code': '1300', 'debit': tax, 'credit': 0.0, 'description': 'Input GST recorded'},
+      if (total > 0) {'code': '2000', 'debit': 0.0, 'credit': total, 'description': 'Supplier payable'},
+    ];
+    await _post(txn, sourceType: 'purchase_invoice', sourceId: invoiceId, sourceNumber: invoiceNumber, date: date, memo: 'Purchase invoice $invoiceNumber', lines: lines);
+  }
+
+  static Future<void> postPayment(Transaction txn, {required int paymentId, required String date, required String paymentType, required String mode, required double amount, required String? reference}) async {
+    final cashCode = mode.toLowerCase() == 'cash' ? '1000' : '1010';
+    final isReceipt = paymentType == 'receipt';
+    final lines = <Map<String, Object?>>[
+      if (isReceipt) ...[
+        {'code': cashCode, 'debit': amount, 'credit': 0.0, 'description': 'Money received'},
+        {'code': '1100', 'debit': 0.0, 'credit': amount, 'description': 'Customer balance reduced'},
+      ] else ...[
+        {'code': '2000', 'debit': amount, 'credit': 0.0, 'description': 'Supplier balance reduced'},
+        {'code': cashCode, 'debit': 0.0, 'credit': amount, 'description': 'Money paid'},
+      ],
+    ];
+    await _post(txn, sourceType: isReceipt ? 'receipt' : 'payment', sourceId: paymentId, sourceNumber: 'PAY-$paymentId', date: date, memo: reference?.trim().isNotEmpty == true ? reference!.trim() : (isReceipt ? 'Customer receipt' : 'Supplier payment'), lines: lines);
+  }
+
+  static Future<void> postExpense(Transaction txn, {required int expenseId, required String date, required String category, required String description, required String mode, required double amount}) async {
+    final cashCode = mode.toLowerCase() == 'cash' ? '1000' : '1010';
+    await _post(txn, sourceType: 'expense', sourceId: expenseId, sourceNumber: 'EXP-$expenseId', date: date, memo: '$category: $description', lines: [
+      {'code': '5200', 'debit': amount, 'credit': 0.0, 'description': category},
+      {'code': cashCode, 'debit': 0.0, 'credit': amount, 'description': 'Expense paid'},
+    ]);
+  }
+
+  static Future<void> voidSource(Transaction txn, {required String sourceType, required int sourceId}) async {
+    await txn.update('journal_entries', {'status': 'void'}, where: 'source_type = ? AND source_id = ? AND status = ?', whereArgs: [sourceType, sourceId, 'posted']);
+  }
+
+  static Future<void> _post(Transaction txn, {required String sourceType, required int sourceId, required String sourceNumber, required String date, required String memo, required List<Map<String, Object?>> lines}) async {
+    if (lines.length < 2) throw StateError('A journal entry must contain at least two ledger lines.');
+    final debit = lines.fold<double>(0, (sum, line) => sum + (line['debit'] as num).toDouble());
+    final credit = lines.fold<double>(0, (sum, line) => sum + (line['credit'] as num).toDouble());
+    if (!debit.isFinite || !credit.isFinite || debit <= 0 || (debit - credit).abs() > 0.005) {
+      throw StateError('Journal entry is not balanced. Debit and credit must match.');
+    }
+    final entryId = await txn.insert('journal_entries', {
+      'entry_number': 'JE-\${DateTime.now().microsecondsSinceEpoch}',
+      'entry_date': date,
+      'source_type': sourceType,
+      'source_id': sourceId,
+      'memo': memo,
+      'status': 'draft',
+    });
+    for (final line in lines) {
+      final account = await txn.query('accounts', columns: ['id'], where: 'account_code = ? AND is_active = 1', whereArgs: [line['code']], limit: 1);
+      if (account.isEmpty) throw StateError('Required ledger account \${line['code']} is missing or inactive.');
+      await txn.insert('journal_lines', {
+        'journal_entry_id': entryId,
+        'account_id': account.first['id'],
+        'description': line['description'],
+        'debit': line['debit'],
+        'credit': line['credit'],
+      });
+    }
+    await txn.update('journal_entries', {'status': 'posted'}, where: 'id = ?', whereArgs: [entryId]);
+  }
+}
