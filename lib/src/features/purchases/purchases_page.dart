@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 
 import '../../data/local/app_database.dart';
+import '../invoices/invoice_pdf_service.dart';
 
 class PurchasesPage extends StatefulWidget {
   const PurchasesPage({super.key});
@@ -369,6 +370,91 @@ class _PurchasesPageState extends State<PurchasesPage> {
     );
   }
 
+
+  Future<void> _showPurchaseDetails(Map<String, Object?> invoice) async {
+    final db = await AppDatabase.instance.database;
+    final items = await db.query(
+      'invoice_items',
+      where: 'invoice_id = ?',
+      whereArgs: [invoice['id']],
+    );
+    final settingsRows = await db.query('app_settings');
+    final business = <String, String>{
+      for (final row in settingsRows)
+        row['setting_key'] as String: row['setting_value'] as String,
+    };
+    if (!mounted) return;
+
+    await showDialog<void>(
+      context: context,
+      builder: (dialogContext) => AlertDialog(
+        title: Text(invoice['invoice_number'] as String),
+        content: SizedBox(
+          width: 480,
+          child: SingleChildScrollView(
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text('Supplier: ${invoice['party_name'] ?? 'Supplier not selected'}'),
+                Text('Date: ${(invoice['invoice_date'] as String).split('T').first}'),
+                const Divider(),
+                for (final item in items)
+                  ListTile(
+                    contentPadding: EdgeInsets.zero,
+                    title: Text(item['description']?.toString() ?? ''),
+                    subtitle: Text(
+                      '${item['quantity']} ${item['unit']} × ₹${item['rate']}  |  GST ${item['gst_rate']}%',
+                    ),
+                    trailing: Text(
+                      '₹${((item['line_total'] as num?)?.toDouble() ?? 0).toStringAsFixed(2)}',
+                    ),
+                  ),
+                const Divider(),
+                _totalRow('Taxable subtotal', (invoice['subtotal'] as num?)?.toDouble() ?? 0),
+                _totalRow('GST', (invoice['tax_total'] as num?)?.toDouble() ?? 0),
+                _totalRow(
+                  'Grand total',
+                  (invoice['grand_total'] as num?)?.toDouble() ?? 0,
+                  bold: true,
+                ),
+                Text('Status: ${invoice['status'] ?? 'unpaid'}'),
+                if ((invoice['notes']?.toString() ?? '').trim().isNotEmpty)
+                  Text('Notes: ${invoice['notes']}'),
+              ],
+            ),
+          ),
+        ),
+        actions: [
+          TextButton.icon(
+            onPressed: () async {
+              try {
+                await InvoicePdfService.printInvoice(
+                  invoice: invoice,
+                  items: items,
+                  business: business,
+                  isPurchase: true,
+                );
+              } catch (error) {
+                if (mounted) {
+                  ScaffoldMessenger.of(this.context).showSnackBar(
+                    SnackBar(content: Text('Could not create purchase PDF: $error')),
+                  );
+                }
+              }
+            },
+            icon: const Icon(Icons.picture_as_pdf),
+            label: const Text('PDF / Print'),
+          ),
+          TextButton(
+            onPressed: () => Navigator.pop(dialogContext),
+            child: const Text('Close'),
+          ),
+        ],
+      ),
+    );
+  }
+
   @override
   Widget build(BuildContext context) => Scaffold(
     appBar: AppBar(title: const Text('Purchases')),
@@ -392,9 +478,10 @@ class _PurchasesPageState extends State<PurchasesPage> {
                     leading: const CircleAvatar(child: Icon(Icons.shopping_cart)),
                     title: Text(row['invoice_number'] as String),
                     subtitle: Text(
-                      '${row['party_name'] ?? 'Supplier not selected'} • ${(row['invoice_date'] as String).split('T').first}',
+                      '${row['party_name'] ?? 'Supplier not selected'} • ${(row['invoice_date'] as String).split('T').first} • ${row['status'] ?? 'unpaid'}',
                     ),
                     trailing: Text('₹${total.toStringAsFixed(2)}'),
+                    onTap: () => _showPurchaseDetails(row),
                   );
                 },
               ),
