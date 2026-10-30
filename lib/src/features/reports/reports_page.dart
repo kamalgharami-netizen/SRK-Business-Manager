@@ -20,6 +20,10 @@ class _ReportsPageState extends State<ReportsPage> {
   double _trialCredit = 0;
   double _profitIncome = 0;
   double _profitExpense = 0;
+  List<Map<String, Object?>> _balanceSheetRows = [];
+  double _balanceAssets = 0;
+  double _balanceLiabilities = 0;
+  double _balanceEquity = 0;
   DateTime? _startDate;
   DateTime? _endDate;
 
@@ -123,6 +127,10 @@ class _ReportsPageState extends State<ReportsPage> {
     double trialCredit = 0;
     double profitIncome = 0;
     double profitExpense = 0;
+    double balanceAssets = 0;
+    double balanceLiabilities = 0;
+    double balanceEquity = 0;
+    final balanceSheetRows = <Map<String, Object?>>[];
     for (final row in journalRows) {
       final debit = (row['total_debit'] as num).toDouble();
       final credit = (row['total_credit'] as num).toDouble();
@@ -131,7 +139,20 @@ class _ReportsPageState extends State<ReportsPage> {
       if (difference < 0) trialCredit += -difference;
       if (row['account_type'] == 'income') profitIncome += -difference;
       if (row['account_type'] == 'expense') profitExpense += difference;
+      final type = row['account_type'];
+      final balance = type == 'asset' || type == 'expense' ? difference : -difference;
+      if (type == 'asset') {
+        balanceAssets += balance;
+        balanceSheetRows.add({...row, 'balance': balance});
+      } else if (type == 'liability') {
+        balanceLiabilities += balance;
+        balanceSheetRows.add({...row, 'balance': balance});
+      } else if (type == 'equity') {
+        balanceEquity += balance;
+        balanceSheetRows.add({...row, 'balance': balance});
+      }
     }
+    final currentPeriodEarnings = profitIncome - profitExpense;
     if (!mounted) return;
     setState(() {
       _summary = {
@@ -151,6 +172,10 @@ class _ReportsPageState extends State<ReportsPage> {
       _trialCredit = trialCredit;
       _profitIncome = profitIncome;
       _profitExpense = profitExpense;
+      _balanceSheetRows = balanceSheetRows;
+      _balanceAssets = balanceAssets;
+      _balanceLiabilities = balanceLiabilities;
+      _balanceEquity = balanceEquity + currentPeriodEarnings;
       _loading = false;
     });
   }
@@ -272,6 +297,35 @@ class _ReportsPageState extends State<ReportsPage> {
                 )),
             ],
             const Text('This Trial Balance includes only posted journal entries created by the new accounting workflow. Opening balances and older transactions have not been imported.'),
+          ] else if (title == 'Balance Sheet') ...[
+            _metric('Total assets', _money(_balanceAssets), Icons.account_balance_wallet),
+            _metric('Total liabilities', _money(_balanceLiabilities), Icons.receipt_long),
+            _metric('Owner equity + current earnings', _money(_balanceEquity), Icons.pie_chart),
+            _metric('Liabilities + equity', _money(_balanceLiabilities + _balanceEquity), Icons.balance),
+            _metric('Balance difference', _money((_balanceAssets - _balanceLiabilities - _balanceEquity).abs()), Icons.rule),
+            const SizedBox(height: 12),
+            Text('Assets', style: Theme.of(context).textTheme.titleMedium),
+            for (final row in _balanceSheetRows)
+              if (row['account_type'] == 'asset')
+                Card(child: ListTile(
+                  title: Text('${row['account_code']} • ${row['account_name']}'),
+                  trailing: Text(_money((row['balance'] as num).toDouble())),
+                )),
+            Text('Liabilities', style: Theme.of(context).textTheme.titleMedium),
+            for (final row in _balanceSheetRows)
+              if (row['account_type'] == 'liability')
+                Card(child: ListTile(
+                  title: Text('${row['account_code']} • ${row['account_name']}'),
+                  trailing: Text(_money((row['balance'] as num).toDouble())),
+                )),
+            Text('Equity', style: Theme.of(context).textTheme.titleMedium),
+            for (final row in _balanceSheetRows)
+              if (row['account_type'] == 'equity')
+                Card(child: ListTile(
+                  title: Text('${row['account_code']} • ${row['account_name']}'),
+                  trailing: Text(_money((row['balance'] as num).toDouble())),
+                )),
+            const Text('Preliminary balance sheet from posted journal entries only. It excludes unposted transactions, unrecorded depreciation, return adjustments and legacy transactions not migrated to the accounting ledger. Current earnings are added to equity for presentation. Verify balances before statutory or lending use.'),
           ] else if (title == 'Profit & Loss') ...[
             _metric('Recorded income', _money(_profitIncome), Icons.trending_up),
             _metric('Recorded expenses', _money(_profitExpense), Icons.receipt_long),
