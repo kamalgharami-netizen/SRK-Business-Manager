@@ -10,6 +10,7 @@ class InvoicePdfService {
     required List<Map<String, Object?>> items,
     required Map<String, String> business,
     bool isPurchase = false,
+    bool isPurchaseReturn = false,
   }) async {
     final document = pw.Document();
     final companyName = business['company_name']?.trim().isNotEmpty == true
@@ -20,8 +21,10 @@ class InvoicePdfService {
         (invoice['invoice_date']?.toString() ?? '').split('T').first;
     final partyName = invoice['party_name']?.toString() ??
         (isPurchase ? 'Supplier not selected' : 'Walk-in customer');
-    final documentTitle = isPurchase ? 'PURCHASE INVOICE' : 'TAX INVOICE';
-    final partyLabel = isPurchase ? 'Supplier' : 'Customer';
+    final documentTitle = isPurchaseReturn
+        ? 'PURCHASE RETURN'
+        : (isPurchase ? 'PURCHASE INVOICE' : 'TAX INVOICE');
+    final partyLabel = (isPurchase || isPurchaseReturn) ? 'Supplier' : 'Customer';
     final subtotal = (invoice['subtotal'] as num?)?.toDouble() ?? 0;
     final tax = (invoice['tax_total'] as num?)?.toDouble() ?? 0;
     final total = (invoice['grand_total'] as num?)?.toDouble() ?? 0;
@@ -79,6 +82,8 @@ class InvoicePdfService {
                 ),
                 pw.Text('Date: $invoiceDate'),
                 pw.Text('$partyLabel: $partyName'),
+                if ((invoice['original_invoice_number']?.toString() ?? '').isNotEmpty)
+                  pw.Text('Original purchase: ${invoice['original_invoice_number']}'),
               ],
             ),
             pw.Text('Status: ${invoice['status'] ?? 'unpaid'}'),
@@ -165,9 +170,11 @@ class InvoicePdfService {
                 _totalLine('Taxable subtotal', subtotal),
                 _totalLine('GST', tax),
                 pw.Divider(),
-                _totalLine('Grand total', total, bold: true),
-                _totalLine('Amount received', paid),
-                _totalLine('Balance due', balance, bold: true),
+                _totalLine(isPurchaseReturn ? 'Return total' : 'Grand total', total, bold: true),
+                if (!isPurchaseReturn) ...[
+                  _totalLine('Amount received', paid),
+                  _totalLine('Balance due', balance, bold: true),
+                ],
               ],
             ),
           ),
@@ -186,7 +193,7 @@ class InvoicePdfService {
 
     await Printing.layoutPdf(
       onLayout: (format) async => document.save(),
-      name: '${isPurchase ? 'Purchase' : 'Invoice'}-$invoiceNumber.pdf',
+      name: '${isPurchaseReturn ? 'Purchase-Return' : (isPurchase ? 'Purchase' : 'Invoice')}-$invoiceNumber.pdf',
     );
   }
 
