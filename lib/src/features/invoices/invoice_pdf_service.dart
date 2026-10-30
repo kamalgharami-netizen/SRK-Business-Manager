@@ -82,6 +82,10 @@ class InvoicePdfService {
                 ),
                 pw.Text('Date: $invoiceDate'),
                 pw.Text('$partyLabel: $partyName'),
+                if ((invoice['party_gstin']?.toString() ?? '').isNotEmpty)
+                  pw.Text('$partyLabel GSTIN: ${invoice['party_gstin']}'),
+                if ((invoice['party_state']?.toString() ?? '').isNotEmpty)
+                  pw.Text('$partyLabel State: ${invoice['party_state']}'),
                 if ((invoice['place_of_supply']?.toString() ?? '').isNotEmpty)
                   pw.Text('Place of Supply: ${invoice['place_of_supply']}'),
                 if ((invoice['tax_type']?.toString() ?? '').isNotEmpty)
