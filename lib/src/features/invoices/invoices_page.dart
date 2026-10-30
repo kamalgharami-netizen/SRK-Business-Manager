@@ -186,6 +186,7 @@ class _InvoicesPageState extends State<InvoicesPage> {
             prepared.add({
               'product_id': line.productId,
               'description': product['name'] as String,
+              'hsn_sac': product['hsn_sac'],
               'quantity': quantity,
               'unit': product['unit'] as String? ?? 'pcs',
               'rate': rate,
