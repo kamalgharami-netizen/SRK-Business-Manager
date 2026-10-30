@@ -12,6 +12,8 @@ class _ReportsPageState extends State<ReportsPage> {
   bool _loading = true;
   Map<String, Object?> _summary = {};
   List<Map<String, Object?>> _rows = [];
+  List<Map<String, Object?>> _stockRows = [];
+  double _stockValue = 0;
   DateTime? _startDate;
   DateTime? _endDate;
 
@@ -66,6 +68,20 @@ class _ReportsPageState extends State<ReportsPage> {
     );
     final expense = await db.rawQuery("SELECT COALESCE(SUM(amount),0) AS total, COUNT(*) AS count FROM expenses");
     final payments = await db.rawQuery("SELECT COALESCE(SUM(CASE WHEN payment_type='receipt' THEN amount ELSE 0 END),0) AS receipts, COALESCE(SUM(CASE WHEN payment_type='payment' THEN amount ELSE 0 END),0) AS payments FROM payments");
+    final stockRows = await db.rawQuery("""
+      SELECT id, name, current_stock, unit, purchase_price
+      FROM products
+      WHERE (is_service = 0 OR is_service IS NULL)
+        AND current_stock > 0
+      ORDER BY name COLLATE NOCASE
+    """);
+    final stockValue = stockRows.fold<double>(
+      0,
+      (total, row) =>
+          total +
+          ((row['current_stock'] as num?)?.toDouble() ?? 0) *
+              ((row['purchase_price'] as num?)?.toDouble() ?? 0),
+    );
     final partyRows = await db.rawQuery("""
       SELECT p.id, p.name, p.party_type,
         COALESCE((SELECT SUM(i.grand_total - i.amount_paid) FROM invoices i WHERE i.party_id=p.id AND i.invoice_type='sale'),0) AS receivable,
@@ -83,6 +99,8 @@ class _ReportsPageState extends State<ReportsPage> {
         'receipts': payments.first['receipts'], 'payments': payments.first['payments'],
       };
       _rows = partyRows;
+      _stockRows = stockRows;
+      _stockValue = stockValue;
       _loading = false;
     });
   }
@@ -155,6 +173,36 @@ class _ReportsPageState extends State<ReportsPage> {
             _metric('Net GST (output less input)', _money(_number('salesTax') - _number('purchaseTax')), Icons.account_balance),
             const SizedBox(height: 8),
             const Text('HSN/SAC codes are stored with product details and copied to new invoice items. This is a bookkeeping summary, not a GST return or filing calculation. Verify tax treatment and eligibility before filing.'),
+          ] else if (title == 'Stock Valuation') ...[
+            _metric('Estimated stock value', _money(_stockValue), Icons.inventory_2),
+            _metric('Products with available stock', '${_stockRows.length}', Icons.category),
+            const SizedBox(height: 12),
+            Text('Product-wise stock valuation', style: Theme.of(context).textTheme.titleMedium),
+            const SizedBox(height: 8),
+            if (_stockRows.isEmpty)
+              const Card(child: Padding(
+                padding: EdgeInsets.all(16),
+                child: Text('No stock quantity is currently available.'),
+              ))
+            else
+              for (final row in _stockRows)
+                Card(child: ListTile(
+                  title: Text(row['name'] as String),
+                  subtitle: Text(
+                    'Quantity: ${row['current_stock']} ${row['unit']} × Purchase cost: ${_money((row['purchase_price'] as num?)?.toDouble() ?? 0)}',
+                  ),
+                  trailing: Text(
+                    _money(
+                      ((row['current_stock'] as num?)?.toDouble() ?? 0) *
+                      ((row['purchase_price'] as num?)?.toDouble() ?? 0),
+                    ),
+                    style: const TextStyle(fontWeight: FontWeight.bold),
+                  ),
+                )),
+            const SizedBox(height: 8),
+            const Text(
+              'This is an estimate based on the purchase price currently saved in each product record. It is not a FIFO or weighted-average inventory valuation and does not include accounting adjustments.',
+            ),
           ] else if (title == 'Accounting & Ledgers') ...[
             _metric('Customer receipts', _money(_number('receipts')), Icons.call_received),
             _metric('Supplier / other payments', _money(_number('payments')), Icons.call_made),
