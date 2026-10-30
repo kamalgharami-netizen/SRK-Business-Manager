@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 
+import '../invoices/invoices_page.dart';
 import '../parties/parties_page.dart';
 import '../products/products_page.dart';
 
@@ -82,6 +83,7 @@ class DashboardPage extends StatelessWidget {
                         trailing: const Icon(Icons.chevron_right),
                         onTap: () {
                           final Widget page = switch (module.title) {
+                            'Sales & Invoices' => const InvoicesPage(),
                             'Customers & Suppliers' => const PartiesPage(),
                             'Inventory & Stock' => const ProductsPage(),
                             _ => _ModulePlaceholderPage(module: module),
