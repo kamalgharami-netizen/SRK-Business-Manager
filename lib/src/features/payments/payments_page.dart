@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import '../../data/local/app_database.dart';
+import '../../data/local/accounting_service.dart';
 
 class PaymentsPage extends StatefulWidget {
   const PaymentsPage({super.key});
@@ -163,6 +164,8 @@ class _PaymentsPageState extends State<PaymentsPage> {
       try {
         await db.transaction((txn) async {
           int? effectivePartyId = partyId;
+          int? savedPaymentId;
+          final paymentDate = DateTime.now().toIso8601String();
 
           if (partyId != null) {
             final selectedParties = await txn.query(
@@ -227,11 +230,11 @@ class _PaymentsPageState extends State<PaymentsPage> {
             }
 
             final updatedPaid = (alreadyPaid + value).clamp(0, total).toDouble();
-            await txn.insert('payments', {
+            savedPaymentId = await txn.insert('payments', {
               'party_id': effectivePartyId,
               'invoice_id': invoiceId,
               'payment_type': type,
-              'payment_date': DateTime.now().toIso8601String(),
+              'payment_date': paymentDate
               'amount': value,
               'mode': mode,
               'reference': reference.text.trim(),
@@ -247,7 +250,7 @@ class _PaymentsPageState extends State<PaymentsPage> {
               whereArgs: [invoiceId],
             );
           } else {
-            await txn.insert('payments', {
+            savedPaymentId = await txn.insert('payments', {
               'party_id': effectivePartyId,
               'invoice_id': null,
               'payment_type': type,
@@ -258,6 +261,19 @@ class _PaymentsPageState extends State<PaymentsPage> {
               'notes': notes.text.trim(),
             });
           }
+
+          if (savedPaymentId == null) {
+            throw StateError('Payment record was not created.');
+          }
+          await AccountingService.postPayment(
+            txn,
+            paymentId: savedPaymentId,
+            date: paymentDate,
+            paymentType: type,
+            mode: mode,
+            amount: value,
+            reference: reference.text,
+          );
         });
 
         await _load();
