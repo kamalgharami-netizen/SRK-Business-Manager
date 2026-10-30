@@ -182,6 +182,17 @@ class AppDatabase {
       )
     ''');
 
+    await db.execute('''
+      CREATE TABLE staff_members (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        display_name TEXT NOT NULL,
+        role TEXT NOT NULL DEFAULT 'staff',
+        phone TEXT,
+        is_active INTEGER NOT NULL DEFAULT 1,
+        created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+      )
+    ''');
+
     await db.execute('CREATE INDEX idx_parties_name ON parties(name)');
     await db.execute('CREATE INDEX idx_products_name ON products(name)');
     await db.execute('CREATE INDEX idx_products_barcode ON products(barcode)');
@@ -205,6 +216,96 @@ class AppDatabase {
     final target = File(p.join(backupDir.path, 'srk-backup-$stamp.db'));
     await source.copy(target.path);
     return target.path;
+  }
+
+  /// Restores a verified SQLite backup while preserving the current database.
+  /// A safety copy is created before replacing the active database.
+  Future<String> restoreBackup(String backupPath) async {
+    await database; // Initialise the platform-specific database factory.
+    final source = File(backupPath);
+    if (!await source.exists()) {
+      throw StateError('Selected backup file does not exist');
+    }
+
+    final activePath = _databasePath;
+    if (activePath == null) {
+      throw StateError('Active database path is unavailable');
+    }
+    if (p.equals(p.normalize(p.absolute(backupPath)),
+        p.normalize(p.absolute(activePath)))) {
+      throw StateError('The selected file is already the active database');
+    }
+
+    final handle = await source.open();
+    try {
+      final header = await handle.read(16);
+      const sqliteHeader = <int>[
+        83, 81, 76, 105, 116, 101, 32, 102, 111, 114, 109, 97, 116, 32, 51, 0
+      ];
+      if (header.length != sqliteHeader.length) {
+        throw FormatException('This is not a valid SQLite backup');
+      }
+      for (var i = 0; i < sqliteHeader.length; i++) {
+        if (header[i] != sqliteHeader[i]) {
+          throw FormatException('This is not a valid SQLite backup');
+        }
+      }
+    } finally {
+      await handle.close();
+    }
+
+    final validationDb = await databaseFactory.openDatabase(
+      source.path,
+      options: OpenDatabaseOptions(readOnly: true),
+    );
+    try {
+      final integrity = await validationDb.rawQuery('PRAGMA integrity_check');
+      if (integrity.isEmpty || integrity.first.values.first != 'ok') {
+        throw FormatException('Backup database failed its integrity check');
+      }
+      final tables = await validationDb.rawQuery(
+        "SELECT name FROM sqlite_master WHERE type = 'table'",
+      );
+      final names = tables.map((row) => row['name']).whereType<String>().toSet();
+      const requiredTables = {
+        'parties', 'products', 'invoices', 'invoice_items',
+        'payments', 'expenses', 'app_settings'
+      };
+      if (!names.containsAll(requiredTables)) {
+        throw FormatException('Backup is missing required application tables');
+      }
+    } finally {
+      await validationDb.close();
+    }
+
+    final documents = await getApplicationDocumentsDirectory();
+    final safetyDir = Directory(
+      p.join(documents.path, 'SRK Business Manager', 'Backups'),
+    );
+    await safetyDir.create(recursive: true);
+    final stamp = DateTime.now().toIso8601String()
+        .replaceAll(':', '-').replaceAll('.', '-');
+    final safetyCopy = File(p.join(safetyDir.path, 'before-restore-$stamp.db'));
+
+    await _database!.rawQuery('PRAGMA wal_checkpoint(FULL)');
+    await File(activePath).copy(safetyCopy.path);
+    await close();
+
+    final walFile = File('$activePath-wal');
+    final shmFile = File('$activePath-shm');
+    if (await walFile.exists()) await walFile.delete();
+    if (await shmFile.exists()) await shmFile.delete();
+
+    try {
+      await source.copy(activePath);
+      await database; // Reopen and apply any required schema migration.
+      return safetyCopy.path;
+    } catch (_) {
+      await close();
+      await safetyCopy.copy(activePath);
+      await database;
+      rethrow;
+    }
   }
 
   Future<void> close() async {
