@@ -247,8 +247,10 @@ class _ReportsPageState extends State<ReportsPage> {
                   ),
                 )),
             const SizedBox(height: 8),
-            const Text(
-              'Valuation uses FIFO cost layers for recorded purchases. Existing stock at the time of upgrade is initialized using the saved product purchase price and is marked as estimated. Purchase returns and manual stock adjustments are not yet fully reflected in FIFO cost layers.',
+            Text(
+              _stockValueHasEstimates
+                  ? 'FIFO valuation uses recorded purchase costs where available. Existing stock at upgrade and any legacy fallback cost are estimated from the saved product purchase price. Purchase returns and manual stock adjustments are not yet fully reflected in FIFO cost layers.'
+                  : 'FIFO valuation uses recorded purchase cost layers. Purchase returns and manual stock adjustments are not yet fully reflected in FIFO cost layers.',
             ),
           ] else if (title == 'Trial Balance') ...[
             _metric('Total debit balances', _money(_trialDebit), Icons.south),
@@ -288,7 +290,7 @@ class _ReportsPageState extends State<ReportsPage> {
                         : (row['total_debit'] as num).toDouble() - (row['total_credit'] as num).toDouble(),
                     )),
                   )),
-            const Text('Preliminary report only: purchases are recorded as inventory assets; cost of goods sold, opening balances, depreciation, returns and legacy transactions are not yet fully accounted for. Do not use this as a statutory financial statement.'),
+            const Text('Preliminary report only: FIFO cost of goods sold is posted for new sales. Legacy transactions, opening balances, depreciation, purchase/sales returns and stock adjustments are not yet fully accounted for. Do not use this as a statutory financial statement.'),
           ] else if (title == 'Accounting & Ledgers') ...[
             _metric('Customer receipts', _money(_number('receipts')), Icons.call_received),
             _metric('Supplier / other payments', _money(_number('payments')), Icons.call_made),
