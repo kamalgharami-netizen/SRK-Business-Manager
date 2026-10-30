@@ -9,7 +9,7 @@ class AppDatabase {
   AppDatabase._();
 
   static final AppDatabase instance = AppDatabase._();
-  static const int _databaseVersion = 7;
+  static const int _databaseVersion = 8;
   String? _databasePath;
   Database? _database;
 
@@ -82,6 +82,9 @@ class AppDatabase {
         }
         if (oldVersion < 7) {
           await _createAccountingSchema(db);
+          await _seedDefaultAccounts(db);
+        }
+        if (oldVersion < 8) {
           await _seedDefaultAccounts(db);
         }
       },
@@ -332,6 +335,7 @@ class AppDatabase {
       {'account_code': '2100', 'account_name': 'Output GST', 'account_type': 'liability', 'normal_balance': 'credit'},
       {'account_code': '3000', 'account_name': 'Owner Capital', 'account_type': 'equity', 'normal_balance': 'credit'},
       {'account_code': '3100', 'account_name': 'Retained Earnings', 'account_type': 'equity', 'normal_balance': 'credit'},
+      {'account_code': '3200', 'account_name': 'Opening Balance Equity', 'account_type': 'equity', 'normal_balance': 'credit'},
       {'account_code': '4000', 'account_name': 'Sales Revenue', 'account_type': 'income', 'normal_balance': 'credit'},
       {'account_code': '4100', 'account_name': 'Other Income', 'account_type': 'income', 'normal_balance': 'credit'},
       {'account_code': '5000', 'account_name': 'Cost of Goods Sold', 'account_type': 'expense', 'normal_balance': 'debit'},
