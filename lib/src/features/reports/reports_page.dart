@@ -57,11 +57,11 @@ class _ReportsPageState extends State<ReportsPage> {
     }
     final dateClause = where.isEmpty ? '' : ' AND ${where.join(' AND ')}';
     final sales = await db.rawQuery(
-      "SELECT COALESCE(SUM(grand_total),0) AS total, COALESCE(SUM(tax_total),0) AS tax, COUNT(*) AS count FROM invoices WHERE invoice_type='sale'$dateClause",
+      "SELECT COALESCE(SUM(grand_total),0) AS total, COALESCE(SUM(tax_total),0) AS tax, COALESCE(SUM(cgst_total),0) AS cgst, COALESCE(SUM(sgst_total),0) AS sgst, COALESCE(SUM(igst_total),0) AS igst, COUNT(*) AS count FROM invoices WHERE invoice_type='sale'$dateClause",
       args,
     );
     final purchases = await db.rawQuery(
-      "SELECT COALESCE(SUM(grand_total),0) AS total, COALESCE(SUM(tax_total),0) AS tax, COUNT(*) AS count FROM invoices WHERE invoice_type='purchase'$dateClause",
+      "SELECT COALESCE(SUM(grand_total),0) AS total, COALESCE(SUM(tax_total),0) AS tax, COALESCE(SUM(cgst_total),0) AS cgst, COALESCE(SUM(sgst_total),0) AS sgst, COALESCE(SUM(igst_total),0) AS igst, COUNT(*) AS count FROM invoices WHERE invoice_type='purchase'$dateClause",
       args,
     );
     final expense = await db.rawQuery("SELECT COALESCE(SUM(amount),0) AS total, COUNT(*) AS count FROM expenses");
@@ -76,8 +76,9 @@ class _ReportsPageState extends State<ReportsPage> {
     setState(() {
       _summary = {
         'sales': sales.first['total'], 'salesTax': sales.first['tax'],
+        'salesCgst': sales.first['cgst'], 'salesSgst': sales.first['sgst'], 'salesIgst': sales.first['igst'],
         'salesCount': sales.first['count'], 'purchases': purchases.first['total'],
-        'purchaseTax': purchases.first['tax'], 'purchaseCount': purchases.first['count'],
+        'purchaseTax': purchases.first['tax'], 'purchaseCgst': purchases.first['cgst'], 'purchaseSgst': purchases.first['sgst'], 'purchaseIgst': purchases.first['igst'], 'purchaseCount': purchases.first['count'],
         'expenses': expense.first['total'], 'expenseCount': expense.first['count'],
         'receipts': payments.first['receipts'], 'payments': payments.first['payments'],
       };
@@ -143,8 +144,14 @@ class _ReportsPageState extends State<ReportsPage> {
               : 'Period: ${_startDate == null ? 'Beginning' : _date(_startDate!)} to ${_endDate == null ? 'Latest' : _date(_endDate!)}'),
             _metric('Sales taxable + tax total', _money(_number('sales')), Icons.point_of_sale),
             _metric('Output GST on sales', _money(_number('salesTax')), Icons.south),
+            _metric('Output CGST', _money(_number('salesCgst')), Icons.south),
+            _metric('Output SGST', _money(_number('salesSgst')), Icons.south),
+            _metric('Output IGST', _money(_number('salesIgst')), Icons.south),
             _metric('Purchase taxable + tax total', _money(_number('purchases')), Icons.shopping_cart),
             _metric('Input GST on purchases', _money(_number('purchaseTax')), Icons.north),
+            _metric('Input CGST', _money(_number('purchaseCgst')), Icons.north),
+            _metric('Input SGST', _money(_number('purchaseSgst')), Icons.north),
+            _metric('Input IGST', _money(_number('purchaseIgst')), Icons.north),
             _metric('Net GST (output less input)', _money(_number('salesTax') - _number('purchaseTax')), Icons.account_balance),
             const SizedBox(height: 8),
             const Text('HSN/SAC codes are stored with product details and copied to new invoice items. This is a bookkeeping summary, not a GST return or filing calculation. Verify tax treatment and eligibility before filing.'),
