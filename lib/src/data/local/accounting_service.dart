@@ -15,6 +15,26 @@ class AccountingService {
     await _post(txn, sourceType: 'sales_invoice', sourceId: invoiceId, date: date, memo: 'Sales invoice $invoiceNumber', lines: lines);
   }
 
+
+  static Future<void> postSalesReturn(Transaction txn, {
+    required int returnId,
+    required String returnNumber,
+    required String date,
+    required double subtotal,
+    required double tax,
+    required double total,
+    required double costOfGoodsReturned,
+  }) async {
+    final lines = <Map<String, Object?>>[
+      if (subtotal > 0) {'code': '4000', 'debit': subtotal, 'credit': 0.0, 'description': 'Sales revenue reversed'},
+      if (tax > 0) {'code': '2100', 'debit': tax, 'credit': 0.0, 'description': 'Output GST reversed'},
+      if (total > 0) {'code': '1100', 'debit': 0.0, 'credit': total, 'description': 'Customer credit for sales return'},
+      if (costOfGoodsReturned > 0) {'code': '1200', 'debit': costOfGoodsReturned, 'credit': 0.0, 'description': 'Returned goods restored to inventory at original FIFO cost'},
+      if (costOfGoodsReturned > 0) {'code': '5000', 'debit': 0.0, 'credit': costOfGoodsReturned, 'description': 'Cost of goods sold reversed'},
+    ];
+    await _post(txn, sourceType: 'sales_return', sourceId: returnId, date: date, memo: 'Sales return $returnNumber', lines: lines);
+  }
+
   static Future<void> postPurchaseInvoice(Transaction txn, {required int invoiceId, required String invoiceNumber, required String date, required double subtotal, required double tax, required double total}) async {
     final lines = <Map<String, Object?>>[
       if (subtotal > 0) {'code': '1200', 'debit': subtotal, 'credit': 0.0, 'description': 'Inventory acquired'},
