@@ -9,7 +9,8 @@ class AppDatabase {
   AppDatabase._();
 
   static final AppDatabase instance = AppDatabase._();
-  static const int _databaseVersion = 1;
+  static const int _databaseVersion = 2;
+  String? _databasePath;
   Database? _database;
 
   Future<Database> get database async {
@@ -27,6 +28,8 @@ class AppDatabase {
       'srk_business_manager.db',
     );
 
+    _databasePath = databasePath;
+    await Directory(p.dirname(databasePath)).create(recursive: true);
     _database = await openDatabase(
       databasePath,
       version: _databaseVersion,
@@ -35,6 +38,18 @@ class AppDatabase {
         await db.execute('PRAGMA journal_mode = WAL');
       },
       onCreate: _createSchema,
+      onUpgrade: (db, oldVersion, newVersion) async {
+        if (oldVersion < 2) {
+          await db.execute('''CREATE TABLE staff_members (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            display_name TEXT NOT NULL,
+            role TEXT NOT NULL DEFAULT 'staff',
+            phone TEXT,
+            is_active INTEGER NOT NULL DEFAULT 1,
+            created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+          )''');
+        }
+      },
     );
     return _database!;
   }
@@ -174,6 +189,22 @@ class AppDatabase {
     await db.execute('CREATE INDEX idx_invoices_party ON invoices(party_id)');
     await db.execute('CREATE INDEX idx_payments_date ON payments(payment_date)');
     await db.execute('CREATE INDEX idx_sync_queue_created ON sync_queue(created_at)');
+  }
+
+  Future<String> createBackup() async {
+    final db = await database;
+    await db.rawQuery('PRAGMA wal_checkpoint(FULL)');
+    final sourcePath = _databasePath;
+    if (sourcePath == null) throw StateError('Database path is unavailable');
+    final source = File(sourcePath);
+    if (!await source.exists()) throw StateError('Database file does not exist');
+    final documents = await getApplicationDocumentsDirectory();
+    final backupDir = Directory(p.join(documents.path, 'SRK Business Manager', 'Backups'));
+    await backupDir.create(recursive: true);
+    final stamp = DateTime.now().toIso8601String().replaceAll(':', '-').replaceAll('.', '-');
+    final target = File(p.join(backupDir.path, 'srk-backup-$stamp.db'));
+    await source.copy(target.path);
+    return target.path;
   }
 
   Future<void> close() async {
