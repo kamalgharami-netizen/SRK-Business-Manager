@@ -14,6 +14,11 @@ class _ReportsPageState extends State<ReportsPage> {
   List<Map<String, Object?>> _rows = [];
   List<Map<String, Object?>> _stockRows = [];
   double _stockValue = 0;
+  List<Map<String, Object?>> _journalRows = [];
+  double _trialDebit = 0;
+  double _trialCredit = 0;
+  double _profitIncome = 0;
+  double _profitExpense = 0;
   DateTime? _startDate;
   DateTime? _endDate;
 
@@ -88,6 +93,35 @@ class _ReportsPageState extends State<ReportsPage> {
         COALESCE((SELECT SUM(i.grand_total - i.amount_paid) FROM invoices i WHERE i.party_id=p.id AND i.invoice_type='purchase'),0) AS payable
       FROM parties p ORDER BY p.name COLLATE NOCASE
     """);
+    final journalRows = await db.rawQuery("""
+      SELECT a.id, a.account_code, a.account_name, a.account_type,
+        COALESCE(j.total_debit, 0) AS total_debit,
+        COALESCE(j.total_credit, 0) AS total_credit
+      FROM accounts a
+      LEFT JOIN (
+        SELECT jl.account_id, SUM(jl.debit) AS total_debit,
+          SUM(jl.credit) AS total_credit
+        FROM journal_lines jl
+        INNER JOIN journal_entries je ON je.id = jl.journal_entry_id
+        WHERE je.status = 'posted'
+        GROUP BY jl.account_id
+      ) j ON j.account_id = a.id
+      WHERE a.is_active = 1
+      ORDER BY a.account_code
+    """);
+    double trialDebit = 0;
+    double trialCredit = 0;
+    double profitIncome = 0;
+    double profitExpense = 0;
+    for (final row in journalRows) {
+      final debit = (row['total_debit'] as num).toDouble();
+      final credit = (row['total_credit'] as num).toDouble();
+      final difference = debit - credit;
+      if (difference > 0) trialDebit += difference;
+      if (difference < 0) trialCredit += -difference;
+      if (row['account_type'] == 'income') profitIncome += -difference;
+      if (row['account_type'] == 'expense') profitExpense += difference;
+    }
     if (!mounted) return;
     setState(() {
       _summary = {
@@ -101,6 +135,11 @@ class _ReportsPageState extends State<ReportsPage> {
       _rows = partyRows;
       _stockRows = stockRows;
       _stockValue = stockValue;
+      _journalRows = journalRows;
+      _trialDebit = trialDebit;
+      _trialCredit = trialCredit;
+      _profitIncome = profitIncome;
+      _profitExpense = profitExpense;
       _loading = false;
     });
   }
@@ -203,6 +242,45 @@ class _ReportsPageState extends State<ReportsPage> {
             const Text(
               'This is an estimate based on the purchase price currently saved in each product record. It is not a FIFO or weighted-average inventory valuation and does not include accounting adjustments.',
             ),
+          ] else if (title == 'Trial Balance') ...[
+            _metric('Total debit balances', _money(_trialDebit), Icons.south),
+            _metric('Total credit balances', _money(_trialCredit), Icons.north),
+            _metric('Difference', _money((_trialDebit - _trialCredit).abs()), Icons.balance),
+            const SizedBox(height: 12),
+            Text('Account-wise balances', style: Theme.of(context).textTheme.titleMedium),
+            for (final row in _journalRows) ...[
+              if (((row['total_debit'] as num).toDouble() - (row['total_credit'] as num).toDouble()).abs() > 0.005)
+                Card(child: ListTile(
+                  title: Text('${row['account_code']} • ${row['account_name']}'),
+                  subtitle: Text(row['account_type'] as String),
+                  trailing: Text(
+                    (row['total_debit'] as num) > (row['total_credit'] as num)
+                      ? 'Dr ${_money((row['total_debit'] as num).toDouble() - (row['total_credit'] as num).toDouble())}'
+                      : 'Cr ${_money((row['total_credit'] as num).toDouble() - (row['total_debit'] as num).toDouble())}',
+                    style: const TextStyle(fontWeight: FontWeight.bold),
+                  ),
+                )),
+            ],
+            const Text('This Trial Balance includes only posted journal entries created by the new accounting workflow. Opening balances and older transactions have not been imported.'),
+          ] else if (title == 'Profit & Loss') ...[
+            _metric('Recorded income', _money(_profitIncome), Icons.trending_up),
+            _metric('Recorded expenses', _money(_profitExpense), Icons.receipt_long),
+            _metric('Preliminary net result', _money(_profitIncome - _profitExpense), Icons.analytics),
+            const SizedBox(height: 8),
+            Text('Income and expense ledger accounts', style: Theme.of(context).textTheme.titleMedium),
+            for (final row in _journalRows)
+              if (row['account_type'] == 'income' || row['account_type'] == 'expense')
+                if (((row['total_debit'] as num).toDouble() - (row['total_credit'] as num).toDouble()).abs() > 0.005)
+                  Card(child: ListTile(
+                    title: Text('${row['account_code']} • ${row['account_name']}'),
+                    subtitle: Text(row['account_type'] as String),
+                    trailing: Text(_money(
+                      row['account_type'] == 'income'
+                        ? (row['total_credit'] as num).toDouble() - (row['total_debit'] as num).toDouble()
+                        : (row['total_debit'] as num).toDouble() - (row['total_credit'] as num).toDouble(),
+                    )),
+                  )),
+            const Text('Preliminary report only: purchases are recorded as inventory assets; cost of goods sold, opening balances, depreciation, returns and legacy transactions are not yet fully accounted for. Do not use this as a statutory financial statement.'),
           ] else if (title == 'Accounting & Ledgers') ...[
             _metric('Customer receipts', _money(_number('receipts')), Icons.call_received),
             _metric('Supplier / other payments', _money(_number('payments')), Icons.call_made),
