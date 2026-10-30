@@ -42,18 +42,49 @@ class _PurchasesPageState extends State<PurchasesPage> {
     final gst = TextEditingController(text: ((products.first['gst_rate'] as num?) ?? 0).toString());
     final note = TextEditingController();
     final key = GlobalKey<FormState>();
-    final saved = await showDialog<bool>(context: context, builder: (ctx) => StatefulBuilder(builder: (ctx, refresh) => AlertDialog(
-      title: const Text('Record purchase'),
-      content: SizedBox(width: 440, child: Form(key: key, child: SingleChildScrollView(child: Column(mainAxisSize: MainAxisSize.min, children: [
-        DropdownButtonFormField<int>(initialValue: supplierId, decoration: const InputDecoration(labelText: 'Supplier (optional)'), items: suppliers.map((p) => DropdownMenuItem(value: p['id'] as int, child: Text(p['name'] as String))).toList(), onChanged: (v) => refresh(() => supplierId = v)),
-        DropdownButtonFormField<int>(initialValue: productId, decoration: const InputDecoration(labelText: 'Product'), items: products.map((p) => DropdownMenuItem(value: p['id'] as int, child: Text(p['name'] as String))).toList(), onChanged: (v) => refresh(() { productId = v; final p = products.firstWhere((x) => x['id'] == v); rate.text = ((p['purchase_price'] as num?) ?? 0).toString(); gst.text = ((p['gst_rate'] as num?) ?? 0).toString(); })),
-        TextFormField(controller: qty, decoration: const InputDecoration(labelText: 'Quantity'), keyboardType: const TextInputType.numberWithOptions(decimal: true), validator: (v) { final n = double.tryParse(v ?? ''); return n == null || n <= 0 ? 'Enter quantity greater than zero' : null; }),
-        TextFormField(controller: rate, decoration: const InputDecoration(labelText: 'Purchase rate (₹)'), keyboardType: const TextInputType.numberWithOptions(decimal: true), validator: (v) { final n = double.tryParse(v ?? ''); return n == null || n < 0 ? 'Enter a valid rate' : null; }),
-        TextFormField(controller: gst, decoration: const InputDecoration(labelText: 'GST (%)'), keyboardType: const TextInputType.numberWithOptions(decimal: true), validator: (v) { final n = double.tryParse(v ?? ''); return n == null || n < 0 || n > 100 ? 'Enter GST between 0 and 100' : null; }),
-        TextFormField(controller: note, decoration: const InputDecoration(labelText: 'Notes')),
-      ]))),
-      actions: [TextButton(onPressed: () => Navigator.pop(ctx, false), child: const Text('Cancel')), FilledButton(onPressed: () { if (key.currentState!.validate()) Navigator.pop(ctx, true); }, child: const Text('Save purchase'))],
-    )));
+    final saved = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => StatefulBuilder(
+        builder: (ctx, refresh) => AlertDialog(
+          title: const Text('Record purchase'),
+          content: SizedBox(
+            width: 440,
+            child: Form(
+              key: key,
+              child: SingleChildScrollView(
+                child: Column(mainAxisSize: MainAxisSize.min, children: [
+                  DropdownButtonFormField<int>(
+                    initialValue: supplierId,
+                    decoration: const InputDecoration(labelText: 'Supplier (optional)'),
+                    items: suppliers.map((p) => DropdownMenuItem(value: p['id'] as int, child: Text(p['name'] as String))).toList(),
+                    onChanged: (v) => refresh(() => supplierId = v),
+                  ),
+                  DropdownButtonFormField<int>(
+                    initialValue: productId,
+                    decoration: const InputDecoration(labelText: 'Product'),
+                    items: products.map((p) => DropdownMenuItem(value: p['id'] as int, child: Text(p['name'] as String))).toList(),
+                    onChanged: (v) => refresh(() {
+                      productId = v;
+                      final p = products.firstWhere((x) => x['id'] == v);
+                      rate.text = ((p['purchase_price'] as num?) ?? 0).toString();
+                      gst.text = ((p['gst_rate'] as num?) ?? 0).toString();
+                    }),
+                  ),
+                  TextFormField(controller: qty, decoration: const InputDecoration(labelText: 'Quantity'), keyboardType: const TextInputType.numberWithOptions(decimal: true), validator: (v) { final n = double.tryParse(v ?? ''); return n == null || n <= 0 ? 'Enter quantity greater than zero' : null; }),
+                  TextFormField(controller: rate, decoration: const InputDecoration(labelText: 'Purchase rate (₹)'), keyboardType: const TextInputType.numberWithOptions(decimal: true), validator: (v) { final n = double.tryParse(v ?? ''); return n == null || n < 0 ? 'Enter a valid rate' : null; }),
+                  TextFormField(controller: gst, decoration: const InputDecoration(labelText: 'GST (%)'), keyboardType: const TextInputType.numberWithOptions(decimal: true), validator: (v) { final n = double.tryParse(v ?? ''); return n == null || n < 0 || n > 100 ? 'Enter GST between 0 and 100' : null; }),
+                  TextFormField(controller: note, decoration: const InputDecoration(labelText: 'Notes')),
+                ]),
+              ),
+            ),
+          ),
+          actions: [
+            TextButton(onPressed: () => Navigator.pop(ctx, false), child: const Text('Cancel')),
+            FilledButton(onPressed: () { if (key.currentState!.validate()) Navigator.pop(ctx, true); }, child: const Text('Save purchase')),
+          ],
+        ),
+      ),
+    );
     if (saved == true && productId != null) {
       final product = products.firstWhere((p) => p['id'] == productId);
       final quantity = double.parse(qty.text);
@@ -81,7 +112,10 @@ class _PurchasesPageState extends State<PurchasesPage> {
       });
       await _load();
     }
-    qty.dispose(); rate.dispose(); gst.dispose(); note.dispose();
+    qty.dispose();
+    rate.dispose();
+    gst.dispose();
+    note.dispose();
   }
 
   @override
@@ -90,9 +124,20 @@ class _PurchasesPageState extends State<PurchasesPage> {
     floatingActionButton: FloatingActionButton.extended(onPressed: _add, icon: const Icon(Icons.add), label: const Text('Record purchase')),
     body: _loading ? const Center(child: CircularProgressIndicator()) : _rows.isEmpty
       ? const Center(child: Text('No purchases recorded yet.'))
-      : ListView.separated(padding: const EdgeInsets.all(16), itemCount: _rows.length, separatorBuilder: (_, i) => const Divider(), itemBuilder: (ctx, i) {
-        final row = _rows[i]; final total = (row['grand_total'] as num).toDouble();
-        return ListTile(leading: const CircleAvatar(child: Icon(Icons.shopping_cart)), title: Text(row['invoice_number'] as String), subtitle: Text('${row['party_name'] ?? 'Supplier not selected'} • ${(row['invoice_date'] as String).split('T').first}'), trailing: Text('₹${total.toStringAsFixed(2)}'));
-      }),
+      : ListView.separated(
+          padding: const EdgeInsets.all(16),
+          itemCount: _rows.length,
+          separatorBuilder: (_, i) => const Divider(),
+          itemBuilder: (ctx, i) {
+            final row = _rows[i];
+            final total = (row['grand_total'] as num).toDouble();
+            return ListTile(
+              leading: const CircleAvatar(child: Icon(Icons.shopping_cart)),
+              title: Text(row['invoice_number'] as String),
+              subtitle: Text('${row['party_name'] ?? 'Supplier not selected'} • ${(row['invoice_date'] as String).split('T').first}'),
+              trailing: Text('₹${total.toStringAsFixed(2)}'),
+            );
+          },
+        ),
   );
 }
