@@ -86,7 +86,7 @@ class _AccountsPageState extends State<AccountsPage> {
                 ),
                 const SizedBox(height: 10),
                 DropdownButtonFormField<String>(
-                  value: type,
+                  initialValue: type,
                   decoration: const InputDecoration(labelText: 'Account type'),
                   items: const [
                     DropdownMenuItem(value: 'asset', child: Text('Asset')),
@@ -341,7 +341,7 @@ class _AccountsPageState extends State<AccountsPage> {
                                   Expanded(
                                     flex: 2,
                                     child: DropdownButtonFormField<String>(
-                                      value: _sides[account['id'] as int],
+                                      initialValue: _sides[account['id'] as int],
                                       decoration: const InputDecoration(isDense: true, border: OutlineInputBorder()),
                                       items: const [
                                         DropdownMenuItem(value: 'debit', child: Text('Dr')),
