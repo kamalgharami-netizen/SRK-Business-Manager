@@ -243,11 +243,11 @@ class AppDatabase {
         83, 81, 76, 105, 116, 101, 32, 102, 111, 114, 109, 97, 116, 32, 51, 0
       ];
       if (header.length != sqliteHeader.length) {
-        throw FormatException('This is not a valid SQLite backup');
+        throw const FormatException('This is not a valid SQLite backup');
       }
       for (var i = 0; i < sqliteHeader.length; i++) {
         if (header[i] != sqliteHeader[i]) {
-          throw FormatException('This is not a valid SQLite backup');
+          throw const FormatException('This is not a valid SQLite backup');
         }
       }
     } finally {
@@ -261,7 +261,7 @@ class AppDatabase {
     try {
       final integrity = await validationDb.rawQuery('PRAGMA integrity_check');
       if (integrity.isEmpty || integrity.first.values.first != 'ok') {
-        throw FormatException('Backup database failed its integrity check');
+        throw const FormatException('Backup database failed its integrity check');
       }
       final tables = await validationDb.rawQuery(
         "SELECT name FROM sqlite_master WHERE type = 'table'",
@@ -272,7 +272,7 @@ class AppDatabase {
         'payments', 'expenses', 'app_settings'
       };
       if (!names.containsAll(requiredTables)) {
-        throw FormatException('Backup is missing required application tables');
+        throw const FormatException('Backup is missing required application tables');
       }
     } finally {
       await validationDb.close();
