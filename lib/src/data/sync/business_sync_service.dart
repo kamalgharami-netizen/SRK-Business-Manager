@@ -74,7 +74,20 @@ class BusinessSyncService {
           'is_deleted': operationType == 'delete',
           'updated_by': _client.auth.currentUser?.id,
         };
-        final expectedRevision = await database.getSyncRevision(entityType: entityType, recordId: recordId);
+        var expectedRevision = await database.getSyncRevision(entityType: entityType, recordId: recordId);
+        if (expectedRevision == null) {
+          // Upgrade path: discover an existing cloud revision before the first
+          // version-aware write, avoiding a duplicate insert on older installs.
+          final existing = await _client.from('business_records')
+              .select('updated_at')
+              .eq('business_id', businessId)
+              .eq('entity_type', entityType)
+              .eq('record_id', recordId)
+              .limit(1);
+          if (existing.isNotEmpty) {
+            expectedRevision = existing.first['updated_at'] as String;
+          }
+        }
         String confirmedRevision;
         if (expectedRevision == null) {
           final inserted = await _client.from('business_records').insert(values).select('updated_at').single();
