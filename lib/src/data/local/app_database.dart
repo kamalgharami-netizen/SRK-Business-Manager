@@ -11,7 +11,7 @@ class AppDatabase {
   AppDatabase._();
 
   static final AppDatabase instance = AppDatabase._();
-  static const int _databaseVersion = 14;
+  static const int _databaseVersion = 15;
   String? _databasePath;
   String? _activeBusinessId;
   Database? _database;
@@ -147,6 +147,14 @@ class AppDatabase {
           await db.execute('ALTER TABLE expenses ADD COLUMN sync_id TEXT');
           await _backfillSyncIds(db, 'expenses');
           await db.execute('CREATE UNIQUE INDEX idx_expenses_sync_id ON expenses(sync_id)');
+        }
+        if (oldVersion < 15) {
+          await db.execute('''CREATE TABLE sync_metadata (
+            entity_type TEXT NOT NULL,
+            record_id TEXT NOT NULL,
+            remote_updated_at TEXT NOT NULL,
+            PRIMARY KEY (entity_type, record_id)
+          )''');
         }
         if (oldVersion < 11) {
           await db.execute('ALTER TABLE stock_movements RENAME TO stock_movements_old');
@@ -371,6 +379,15 @@ class AppDatabase {
         created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
         retry_count INTEGER NOT NULL DEFAULT 0,
         last_error TEXT
+      )
+    ''');
+
+    await db.execute('''
+      CREATE TABLE sync_metadata (
+        entity_type TEXT NOT NULL,
+        record_id TEXT NOT NULL,
+        remote_updated_at TEXT NOT NULL,
+        PRIMARY KEY (entity_type, record_id)
       )
     ''');
 
@@ -620,6 +637,40 @@ class AppDatabase {
     return db.rawUpdate(
       'UPDATE sync_queue SET retry_count = retry_count + 1, last_error = ? WHERE id = ?',
       [message.length > 1000 ? message.substring(0, 1000) : message, id],
+    );
+  }
+
+  /// Returns the last cloud revision observed for a local record.
+  Future<String?> getSyncRevision({
+    required String entityType,
+    required String recordId,
+  }) async {
+    final db = await database;
+    final rows = await db.query(
+      'sync_metadata',
+      columns: ['remote_updated_at'],
+      where: 'entity_type = ? AND record_id = ?',
+      whereArgs: [entityType, recordId],
+      limit: 1,
+    );
+    return rows.isEmpty ? null : rows.first['remote_updated_at'] as String?;
+  }
+
+  /// Stores the server revision only after a confirmed upload or pull.
+  Future<void> saveSyncRevision({
+    required String entityType,
+    required String recordId,
+    required String remoteUpdatedAt,
+  }) async {
+    final db = await database;
+    await db.insert(
+      'sync_metadata',
+      {
+        'entity_type': entityType,
+        'record_id': recordId,
+        'remote_updated_at': remoteUpdatedAt,
+      },
+      conflictAlgorithm: ConflictAlgorithm.replace,
     );
   }
 
