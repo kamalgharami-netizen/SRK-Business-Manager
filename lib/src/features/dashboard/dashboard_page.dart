@@ -1,5 +1,6 @@
 import 'dart:async';
 
+import 'package:connectivity_plus/connectivity_plus.dart';
 import 'package:flutter/material.dart';
 
 import '../../data/local/app_database.dart';
@@ -33,6 +34,7 @@ class _DashboardPageState extends State<DashboardPage> with WidgetsBindingObserv
   bool _syncing = false;
   bool _appIsResumed = true;
   Timer? _autoSyncTimer;
+  StreamSubscription<List<ConnectivityResult>>? _connectivitySubscription;
 
   @override
   void initState() {
@@ -46,6 +48,22 @@ class _DashboardPageState extends State<DashboardPage> with WidgetsBindingObserv
         unawaited(_syncNow(showFeedback: false));
       }
     });
+    if (widget.cloudConfigured) {
+      _connectivitySubscription = Connectivity().onConnectivityChanged.listen(
+        (results) {
+          final hasConnection = results.any(
+            (result) => result != ConnectivityResult.none,
+          );
+          if (hasConnection && _appIsResumed && mounted) {
+            unawaited(_syncNow(showFeedback: false));
+          }
+        },
+        onError: (_) {
+          // Periodic and lifecycle retries remain available if the platform
+          // cannot provide connectivity events.
+        },
+      );
+    }
   }
 
   @override
@@ -59,6 +77,7 @@ class _DashboardPageState extends State<DashboardPage> with WidgetsBindingObserv
   @override
   void dispose() {
     _autoSyncTimer?.cancel();
+    _connectivitySubscription?.cancel();
     WidgetsBinding.instance.removeObserver(this);
     super.dispose();
   }
