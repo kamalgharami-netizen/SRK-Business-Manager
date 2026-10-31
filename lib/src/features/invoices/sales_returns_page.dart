@@ -323,7 +323,7 @@ class _SalesReturnsPageState extends State<SalesReturnsPage> {
         final returnRows = await txn.query('invoices', where: 'id = ?', whereArgs: [returnId], limit: 1);
         final partyId = invoice['party_id'] as int?;
         final partyRows = partyId == null ? <Map<String, Object?>>[] : await txn.query('parties', columns: ['sync_id'], where: 'id = ?', whereArgs: [partyId], limit: 1);
-        final returnPayload = Map<String, dynamic>.from(returnRows.single)..remove('id')..remove('party_id')..remove('parent_invoice_id')..['party_sync_id'] = partyRows.isEmpty ? null : partyRows.first['sync_id']..['parent_invoice_sync_id'] = originalInvoiceSyncId..['items'] = syncedReturnItems;
+        final returnPayload = Map<String, dynamic>.from(returnRows.single)..remove('id')..remove('party_id')..remove('parent_invoice_id')..['party_sync_id'] = (partyRows.isEmpty ? null : partyRows.first['sync_id'])..['parent_invoice_sync_id'] = originalInvoiceSyncId..['items'] = syncedReturnItems;
         await AppDatabase.instance.enqueueSyncOperation(executor: txn, tableName: 'invoices', recordId: returnSyncId, operation: 'insert', payload: returnPayload);
       });
       await _syncIfConfigured();
