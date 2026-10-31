@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 
 import '../../data/local/app_database.dart';
+import '../../data/sync/business_sync_service.dart';
 
 class ProductsPage extends StatefulWidget {
   const ProductsPage({super.key});
@@ -17,6 +18,19 @@ class _ProductsPageState extends State<ProductsPage> {
   void initState() {
     super.initState();
     _loadProducts();
+  }
+
+  Future<void> _syncIfConfigured() async {
+    final businessId = AppDatabase.instance.activeBusinessId;
+    if (businessId == null) return;
+    try {
+      await BusinessSyncService(businessId: businessId).syncNow();
+    } catch (error) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('Cloud sync unavailable; changes remain saved locally. $error')),
+      );
+    }
   }
 
   Future<void> _loadProducts() async {
@@ -134,6 +148,7 @@ class _ProductsPageState extends State<ProductsPage> {
           );
         }
       });
+      await _syncIfConfigured();
       await _loadProducts();
     }
 
@@ -179,6 +194,7 @@ class _ProductsPageState extends State<ProductsPage> {
       );
       await txn.delete('products', where: 'id = ?', whereArgs: [product['id']]);
     });
+    await _syncIfConfigured();
     await _loadProducts();
   }
 
