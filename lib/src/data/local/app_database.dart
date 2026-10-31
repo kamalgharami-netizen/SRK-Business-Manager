@@ -14,7 +14,7 @@ class AppDatabase {
   AppDatabase._();
 
   static final AppDatabase instance = AppDatabase._();
-  static const int _databaseVersion = 17;
+  static const int _databaseVersion = 18;
   String? _databasePath;
   String? _activeBusinessId;
   Database? _database;
@@ -177,6 +177,28 @@ class AppDatabase {
             remote_revision TEXT NOT NULL,
             resolved_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
           )''');
+        }
+
+        if (oldVersion < 18) {
+          await db.execute('ALTER TABLE payments ADD COLUMN sync_id TEXT');
+          await db.execute('CREATE UNIQUE INDEX idx_payments_sync_id ON payments(sync_id)');
+          final legacyPayments = await db.query('payments', orderBy: 'id ASC');
+          for (final row in legacyPayments) {
+            final syncId = createSyncId();
+            await db.update('payments', {'sync_id': syncId}, where: 'id = ?', whereArgs: [row['id']]);
+            final partyId = row['party_id'] as int?;
+            final invoiceId = row['invoice_id'] as int?;
+            final partyRows = partyId == null ? <Map<String, Object?>>[] : await db.query('parties', columns: ['sync_id'], where: 'id = ?', whereArgs: [partyId], limit: 1);
+            final invoiceRows = invoiceId == null ? <Map<String, Object?>>[] : await db.query('invoices', columns: ['sync_id'], where: 'id = ?', whereArgs: [invoiceId], limit: 1);
+            final payload = Map<String, dynamic>.from(row)
+              ..remove('id')
+              ..remove('party_id')
+              ..remove('invoice_id')
+              ..['sync_id'] = syncId
+              ..['party_sync_id'] = partyRows.isEmpty ? null : partyRows.first['sync_id']
+              ..['invoice_sync_id'] = invoiceRows.isEmpty ? null : invoiceRows.first['sync_id'];
+            await db.insert('sync_queue', {'table_name': 'payments', 'record_id': syncId, 'operation': 'insert', 'payload': jsonEncode(payload)});
+          }
         }
         if (oldVersion < 11) {
           await db.execute('ALTER TABLE stock_movements RENAME TO stock_movements_old');
@@ -366,6 +388,7 @@ class AppDatabase {
     await db.execute('''
       CREATE TABLE payments (
         id INTEGER PRIMARY KEY AUTOINCREMENT,
+        sync_id TEXT UNIQUE,
         party_id INTEGER,
         invoice_id INTEGER,
         payment_type TEXT NOT NULL CHECK (payment_type IN ('receipt','payment')),
@@ -763,13 +786,50 @@ class AppDatabase {
     required bool isDeleted,
   }) async {
     if (tableName != 'parties' && tableName != 'products' &&
-        tableName != 'expenses' && tableName != 'invoices') {
+        tableName != 'expenses' && tableName != 'invoices' && tableName != 'payments') {
       throw ArgumentError.value(tableName, 'tableName');
     }
     final db = await database;
     await db.transaction((txn) async {
       if (isDeleted) {
         await txn.delete(tableName, where: 'sync_id = ?', whereArgs: [recordId]);
+        return;
+      }
+
+      if (tableName == 'payments') {
+        final partySyncId = payload['party_sync_id'] as String?;
+        final invoiceSyncId = payload['invoice_sync_id'] as String?;
+        int? localPartyId;
+        int? localInvoiceId;
+        if (partySyncId != null && partySyncId.isNotEmpty) {
+          final rows = await txn.query('parties', columns: ['id'], where: 'sync_id = ?', whereArgs: [partySyncId], limit: 1);
+          if (rows.isEmpty) throw StateError('Payment party is not available on this device yet.');
+          localPartyId = rows.first['id'] as int;
+        }
+        if (invoiceSyncId != null && invoiceSyncId.isNotEmpty) {
+          final rows = await txn.query('invoices', columns: ['id'], where: 'sync_id = ?', whereArgs: [invoiceSyncId], limit: 1);
+          if (rows.isEmpty) throw StateError('Payment invoice is not available on this device yet.');
+          localInvoiceId = rows.first['id'] as int;
+        }
+        final existing = await txn.query('payments', columns: ['id'], where: 'sync_id = ?', whereArgs: [recordId], limit: 1);
+        if (existing.isNotEmpty) return;
+        final values = Map<String, dynamic>.from(payload)
+          ..remove('id')
+          ..remove('party_sync_id')
+          ..remove('invoice_sync_id')
+          ..['party_id'] = localPartyId
+          ..['invoice_id'] = localInvoiceId
+          ..['sync_id'] = recordId;
+        final localPaymentId = await txn.insert('payments', values);
+        await AccountingService.postPayment(
+          txn,
+          paymentId: localPaymentId,
+          date: payload['payment_date'] as String,
+          paymentType: payload['payment_type'] as String,
+          mode: payload['mode'] as String? ?? 'cash',
+          amount: (payload['amount'] as num).toDouble(),
+          reference: payload['reference'] as String?,
+        );
         return;
       }
 

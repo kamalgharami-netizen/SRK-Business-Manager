@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import '../../data/local/app_database.dart';
 import '../../data/local/accounting_service.dart';
+import '../../data/sync/business_sync_service.dart';
 
 class PaymentsPage extends StatefulWidget {
   const PaymentsPage({super.key});
@@ -16,6 +17,16 @@ class _PaymentsPageState extends State<PaymentsPage> {
   void initState() {
     super.initState();
     _load();
+  }
+
+  Future<void> _syncIfConfigured() async {
+    final businessId = AppDatabase.instance.activeBusinessId;
+    if (businessId == null) return;
+    try {
+      await BusinessSyncService(businessId: businessId).syncNow();
+    } catch (_) {
+      // Keep the saved transaction locally; its queue entry remains available for retry.
+    }
   }
 
   Future<void> _load() async {
@@ -230,7 +241,9 @@ class _PaymentsPageState extends State<PaymentsPage> {
             }
 
             final updatedPaid = (alreadyPaid + value).clamp(0, total).toDouble();
+            final paymentSyncId = AppDatabase.instance.createSyncId();
             savedPaymentId = await txn.insert('payments', {
+              'sync_id': paymentSyncId,
               'party_id': effectivePartyId,
               'invoice_id': invoiceId,
               'payment_type': type,
@@ -250,7 +263,9 @@ class _PaymentsPageState extends State<PaymentsPage> {
               whereArgs: [invoiceId],
             );
           } else {
+            final paymentSyncId = AppDatabase.instance.createSyncId();
             savedPaymentId = await txn.insert('payments', {
+              'sync_id': paymentSyncId,
               'party_id': effectivePartyId,
               'invoice_id': null,
               'payment_type': type,
@@ -271,8 +286,81 @@ class _PaymentsPageState extends State<PaymentsPage> {
             amount: value,
             reference: reference.text,
           );
+
+          final paymentRows = await txn.query(
+            'payments',
+            where: 'id = ?',
+            whereArgs: [savedPaymentId],
+            limit: 1,
+          );
+          final payment = Map<String, dynamic>.from(paymentRows.single);
+          final paymentSyncId = payment['sync_id'] as String;
+          final partyRows = effectivePartyId == null
+              ? <Map<String, Object?>>[]
+              : await txn.query('parties', columns: ['sync_id'], where: 'id = ?', whereArgs: [effectivePartyId], limit: 1);
+          final partySyncId = partyRows.isEmpty ? null : partyRows.first['sync_id'] as String?;
+          if (effectivePartyId != null && (partySyncId == null || partySyncId.isEmpty)) {
+            throw StateError('Selected party is missing its cloud sync identifier.');
+          }
+          String? invoiceSyncId;
+          if (invoiceId != null) {
+            final invoiceRows = await txn.query('invoices', where: 'id = ?', whereArgs: [invoiceId], limit: 1);
+            if (invoiceRows.isEmpty) throw StateError('Linked invoice is no longer available.');
+            final invoice = Map<String, dynamic>.from(invoiceRows.single);
+            invoiceSyncId = invoice['sync_id'] as String?;
+            if (invoiceSyncId == null || invoiceSyncId.isEmpty) {
+              throw StateError('Linked invoice is missing its cloud sync identifier.');
+            }
+            final invoicePartyId = invoice['party_id'] as int?;
+            final invoicePartyRows = invoicePartyId == null
+                ? <Map<String, Object?>>[]
+                : await txn.query('parties', columns: ['sync_id'], where: 'id = ?', whereArgs: [invoicePartyId], limit: 1);
+            final rawItems = await txn.query('invoice_items', where: 'invoice_id = ?', whereArgs: [invoiceId], orderBy: 'id ASC');
+            final syncedItems = <Map<String, dynamic>>[];
+            for (final rawItem in rawItems) {
+              final item = Map<String, dynamic>.from(rawItem);
+              final productId = item.remove('product_id') as int?;
+              item.remove('id');
+              item.remove('invoice_id');
+              final productRows = productId == null
+                  ? <Map<String, Object?>>[]
+                  : await txn.query('products', columns: ['sync_id'], where: 'id = ?', whereArgs: [productId], limit: 1);
+              final productSyncId = productRows.isEmpty ? null : productRows.first['sync_id'] as String?;
+              if (productSyncId == null || productSyncId.isEmpty) {
+                throw StateError('An invoice item product is missing its cloud sync identifier.');
+              }
+              item['product_sync_id'] = productSyncId;
+              syncedItems.add(item);
+            }
+            final invoicePayload = Map<String, dynamic>.from(invoice)
+              ..remove('id')
+              ..remove('party_id')
+              ..['party_sync_id'] = invoicePartyRows.isEmpty ? null : invoicePartyRows.first['sync_id']
+              ..['items'] = syncedItems;
+            await AppDatabase.instance.enqueueSyncOperation(
+              executor: txn,
+              tableName: 'invoices',
+              recordId: invoiceSyncId,
+              operation: 'update',
+              payload: invoicePayload,
+            );
+          }
+          payment
+            ..remove('id')
+            ..remove('party_id')
+            ..remove('invoice_id')
+            ..['party_sync_id'] = partySyncId
+            ..['invoice_sync_id'] = invoiceSyncId;
+          await AppDatabase.instance.enqueueSyncOperation(
+            executor: txn,
+            tableName: 'payments',
+            recordId: paymentSyncId,
+            operation: 'insert',
+            payload: payment,
+          );
         });
 
+        await _syncIfConfigured();
         await _load();
         if (mounted) {
           ScaffoldMessenger.of(context).showSnackBar(

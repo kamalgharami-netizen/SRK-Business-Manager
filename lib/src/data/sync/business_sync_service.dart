@@ -133,7 +133,7 @@ class BusinessSyncService {
       final queueId = operation['id'] as int;
       try {
         final entityType = operation['table_name'] as String;
-        if (entityType != 'parties' && entityType != 'products' && entityType != 'expenses' && entityType != 'invoices') {
+        if (entityType != 'parties' && entityType != 'products' && entityType != 'expenses' && entityType != 'invoices' && entityType != 'payments') {
           throw StateError('Unsupported sync entity: $entityType');
         }
 
@@ -209,7 +209,7 @@ class BusinessSyncService {
     var downloaded = 0;
     var failed = 0;
 
-    for (final entityType in const ['parties', 'products', 'expenses', 'invoices']) {
+    for (final entityType in const ['parties', 'products', 'expenses', 'invoices', 'payments']) {
       var offset = 0;
       while (true) {
         final rows = await _client
