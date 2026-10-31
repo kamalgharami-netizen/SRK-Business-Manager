@@ -233,10 +233,21 @@ class InventoryCostService {
     }
     var remaining = quantity;
     var totalCost = 0.0;
+    final sourceItems = await txn.rawQuery(
+      'SELECT COUNT(*) AS item_count FROM invoice_items WHERE invoice_id = ? AND product_id = ?',
+      [purchaseInvoiceId, productId],
+    );
+    final hasSingleProductLine =
+        ((sourceItems.first['item_count'] as num?)?.toInt() ?? 0) == 1;
     final layers = await txn.query(
       'inventory_cost_layers',
-      where: "product_id = ? AND source_type = 'purchase' AND source_id = ? AND source_item_id = ? AND quantity_remaining > 0",
-      whereArgs: [productId, purchaseInvoiceId, purchaseInvoiceItemId],
+      where: "product_id = ? AND source_type = 'purchase' AND source_id = ? AND quantity_remaining > 0 AND (source_item_id = ? OR (source_item_id IS NULL AND ? = 1))",
+      whereArgs: [
+        productId,
+        purchaseInvoiceId,
+        purchaseInvoiceItemId,
+        hasSingleProductLine ? 1 : 0,
+      ],
       orderBy: 'received_at ASC, id ASC',
     );
     for (final layer in layers) {
