@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import '../../data/local/app_database.dart';
 import '../../data/local/accounting_service.dart';
+import '../../data/sync/business_sync_service.dart';
 
 class ExpensesPage extends StatefulWidget {
   const ExpensesPage({super.key});
@@ -13,6 +14,16 @@ class _ExpensesPageState extends State<ExpensesPage> {
   bool _loading = true;
   @override
   void initState() { super.initState(); _load(); }
+  Future<void> _syncIfConfigured() async {
+    final businessId = AppDatabase.instance.activeBusinessId;
+    if (businessId == null) return;
+    try {
+      await BusinessSyncService(businessId: businessId).syncNow();
+    } catch (_) {
+      // Keep expense entry fully usable offline; the durable queue retries later.
+    }
+  }
+
   Future<void> _load() async {
     final db = await AppDatabase.instance.database;
     final rows = await db.query('expenses', orderBy: 'expense_date DESC, id DESC');
@@ -40,13 +51,28 @@ class _ExpensesPageState extends State<ExpensesPage> {
       final db = await AppDatabase.instance.database;
       await db.transaction((txn) async {
         final expenseDate = DateTime.now().toIso8601String();
+        final syncId = AppDatabase.instance.createSyncId();
         final expenseId = await txn.insert('expenses', {
+          'sync_id': syncId,
           'expense_date': expenseDate,
           'category': category.text.trim(),
           'description': description.text.trim(),
           'amount': double.parse(amount.text),
           'payment_mode': mode,
         });
+        final savedRows = await txn.query(
+          'expenses',
+          where: 'id = ?',
+          whereArgs: [expenseId],
+          limit: 1,
+        );
+        await AppDatabase.instance.enqueueSyncOperation(
+          executor: txn,
+          tableName: 'expenses',
+          recordId: syncId,
+          operation: 'insert',
+          payload: Map<String, dynamic>.from(savedRows.single),
+        );
         await AccountingService.postExpense(
           txn,
           expenseId: expenseId,
@@ -57,6 +83,7 @@ class _ExpensesPageState extends State<ExpensesPage> {
           amount: double.parse(amount.text),
         );
       });
+      await _syncIfConfigured();
       await _load();
     }
     category.dispose(); description.dispose(); amount.dispose();
@@ -75,8 +102,19 @@ class _ExpensesPageState extends State<ExpensesPage> {
         sourceType: 'expense',
         sourceId: row['id'] as int,
       );
+      final syncId = row['sync_id'] as String?;
+      if (syncId != null && syncId.isNotEmpty) {
+        await AppDatabase.instance.enqueueSyncOperation(
+          executor: txn,
+          tableName: 'expenses',
+          recordId: syncId,
+          operation: 'delete',
+          payload: Map<String, dynamic>.from(row),
+        );
+      }
       await txn.delete('expenses', where: 'id = ?', whereArgs: [row['id']]);
     });
+    await _syncIfConfigured();
     await _load();
   }
 
