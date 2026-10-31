@@ -14,37 +14,11 @@ class AppDatabase {
   String? _activeBusinessId;
   Database? _database;
 
-  /// Opens an isolated local SQLite database for the selected cloud business.
-  /// Existing default/local data is left untouched in the original database.
+  /// Opens a separate offline database for a selected business UUID.
   Future<void> openBusinessDatabase(String businessId) async {
-    final normalizedId = businessId.trim().toLowerCase();
-    final compactId = normalizedId.replaceAll('-', '');
-    final hasUuidHyphens = normalizedId.length == 36 &&
-        normalizedId[8] == '-' &&
-        normalizedId[13] == '-' &&
-        normalizedId[18] == '-' &&
-        normalizedId[23] == '-';
-    if (!hasUuidHyphens || compactId.length != 32 ||
-        !RegExp(r'^[0-9a-f]+').hasMatch(compactId)) {
-      throw const FormatException('Invalid business identifier.');
-    }
-    if (_activeBusinessId == normalizedId && _database != null) return;
-    await close();
-    _activeBusinessId = normalizedId;
-    await database;
-  }
-
-  /// Returns to the original device-local database (without deleting it).
-  Future<void> useLocalDatabase() async {
-    if (_activeBusinessId == null && _database != null) return;
-    await close();
-    _activeBusinessId = null;
-    await database;
-  }
-
-  String? get activeBusinessId => _activeBusinessId;
-
-  Future<Database> get database async {
+    final id = businessId.trim().toLowerCase();
+    final validUuid = RegExp(
+      r'^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}
     if (_database != null) return _database!;
 
     if (Platform.isWindows || Platform.isLinux || Platform.isMacOS) {
@@ -520,12 +494,14 @@ class AppDatabase {
     final source = File(sourcePath);
     if (!await source.exists()) throw StateError('Database file does not exist');
     final documents = await getApplicationDocumentsDirectory();
-    final backupDir = Directory(p.join(
-      documents.path,
-      'SRK Business Manager',
-      'Backups',
-      _activeBusinessId ?? 'local',
-    ));
+    final backupDir = Directory(
+      p.join(
+        documents.path,
+        'SRK Business Manager',
+        'Backups',
+        _activeBusinessId ?? 'local',
+      ),
+    );
     await backupDir.create(recursive: true);
     final stamp = DateTime.now().toIso8601String().replaceAll(':', '-').replaceAll('.', '-');
     final target = File(p.join(backupDir.path, 'srk-backup-$stamp.db'));
@@ -603,7 +579,7 @@ class AppDatabase {
       if (backupScope != expectedScope &&
           !(backupScope == null && expectedScope == 'local')) {
         throw const FormatException(
-          'This backup belongs to a different business or has no verified business identity.',
+          'Backup belongs to a different business or has no verified business identity.',
         );
       }
     } finally {
@@ -650,17 +626,18 @@ class AppDatabase {
     _database = null;
   }
 }
-)
-        .hasMatch(normalizedId)) {
+,
+    ).hasMatch(id);
+    if (!validUuid) {
       throw const FormatException('Invalid business identifier.');
     }
-    if (_activeBusinessId == normalizedId && _database != null) return;
+    if (_activeBusinessId == id && _database != null) return;
     await close();
-    _activeBusinessId = normalizedId;
+    _activeBusinessId = id;
     await database;
   }
 
-  /// Returns to the original device-local database (without deleting it).
+  /// Reopens the original device-local database without deleting it.
   Future<void> useLocalDatabase() async {
     if (_activeBusinessId == null && _database != null) return;
     await close();
