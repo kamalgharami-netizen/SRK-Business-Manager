@@ -427,6 +427,24 @@ class _StockControlPageState extends State<StockControlPage> {
             tax: taxTotal,
             total: subtotal + taxTotal,
           );
+          final returnRows = await txn.query('invoices', where: 'id = ?', whereArgs: [returnId], limit: 1);
+          final supplierId = original['party_id'] as int?;
+          final supplierRows = supplierId == null ? <Map<String, Object?>>[] : await txn.query('parties', columns: ['sync_id'], where: 'id = ?', whereArgs: [supplierId], limit: 1);
+          final supplierSyncId = supplierRows.isEmpty ? null : supplierRows.first['sync_id'] as String?;
+          final invoicePayload = Map<String, dynamic>.from(returnRows.single)
+            ..remove('id')
+            ..remove('party_id')
+            ..remove('parent_invoice_id')
+            ..['party_sync_id'] = supplierSyncId
+            ..['parent_invoice_sync_id'] = parentSyncId
+            ..['items'] = syncedReturnItems;
+          await AppDatabase.instance.enqueueSyncOperation(
+            executor: txn,
+            tableName: 'invoices',
+            recordId: returnSyncId,
+            operation: 'insert',
+            payload: invoicePayload,
+          );
         });
         await _syncIfConfigured();
         _message('Purchase return saved and stock reduced for all selected items.');
