@@ -97,6 +97,32 @@ void main() {
       expect(await db.query('journal_lines'), isEmpty);
     });
 
+
+    test('prevents duplicate posted journal entries for the same source', () async {
+      final db = await _openAccountingDatabase();
+      addTearDown(db.close);
+
+      Future<void> postInvoice() => db.transaction(
+            (txn) => AccountingService.postSalesInvoice(
+              txn,
+              invoiceId: 10,
+              invoiceNumber: 'INV-010',
+              date: '2026-10-31',
+              subtotal: 1000,
+              tax: 180,
+              total: 1180,
+            ),
+          );
+
+      await postInvoice();
+      await expectLater(postInvoice(), throwsA(isA<StateError>()));
+
+      final entries = await db.query('journal_entries');
+      expect(entries, hasLength(1));
+      expect(entries.single['status'], 'posted');
+      expect(await db.query('journal_lines'), hasLength(3));
+    });
+
     test('rejects an expense with a negative amount', () async {
       final db = await _openAccountingDatabase();
       addTearDown(db.close);

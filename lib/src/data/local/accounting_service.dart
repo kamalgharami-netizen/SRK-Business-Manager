@@ -99,6 +99,16 @@ class AccountingService {
   }
 
   static Future<void> _post(Transaction txn, {required String sourceType, required int sourceId, required String date, required String memo, required List<Map<String, Object?>> lines}) async {
+    final existing = await txn.query(
+      'journal_entries',
+      columns: ['id'],
+      where: 'source_type = ? AND source_id = ? AND status = ?',
+      whereArgs: [sourceType, sourceId, 'posted'],
+      limit: 1,
+    );
+    if (existing.isNotEmpty) {
+      throw StateError('This source transaction already has a posted journal entry. Void the existing entry before reposting.');
+    }
     if (lines.length < 2) throw StateError('A journal entry must contain at least two ledger lines.');
     final debit = lines.fold<double>(0, (sum, line) => sum + (line['debit'] as num).toDouble());
     final credit = lines.fold<double>(0, (sum, line) => sum + (line['credit'] as num).toDouble());
