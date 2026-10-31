@@ -1024,7 +1024,10 @@ class AppDatabase {
 
   Future<String> createBackup() async {
     final db = await database;
-    await db.rawQuery('PRAGMA wal_checkpoint(FULL)');
+    final checkpoint = await db.rawQuery('PRAGMA wal_checkpoint(FULL)');
+    if (checkpoint.isNotEmpty && (checkpoint.first['busy'] as num? ?? 0) != 0) {
+      throw StateError('Database is busy; backup was not created. Please retry.');
+    }
     final sourcePath = _databasePath;
     if (sourcePath == null) throw StateError('Database path is unavailable');
     final source = File(sourcePath);
@@ -1042,6 +1045,36 @@ class AppDatabase {
     final stamp = DateTime.now().toIso8601String().replaceAll(':', '-').replaceAll('.', '-');
     final target = File(p.join(backupDir.path, 'srk-backup-$stamp.db'));
     await source.copy(target.path);
+    // Verify the copied file before reporting success to the user.
+    final copiedDb = await databaseFactory.openDatabase(
+      target.path,
+      options: OpenDatabaseOptions(readOnly: true),
+    );
+    try {
+      final integrity = await copiedDb.rawQuery('PRAGMA integrity_check');
+      if (integrity.isEmpty || integrity.first.values.first != 'ok') {
+        throw const FormatException('Created backup failed its integrity check.');
+      }
+      final scopeRows = await copiedDb.query(
+        'app_settings',
+        columns: ['setting_value'],
+        where: 'setting_key = ?',
+        whereArgs: ['database_scope'],
+        limit: 1,
+      );
+      final backupScope = scopeRows.isEmpty
+          ? null
+          : scopeRows.first['setting_value'] as String?;
+      final expectedScope = _activeBusinessId ?? 'local';
+      if (backupScope != expectedScope) {
+        throw const FormatException('Created backup has an unexpected business identity.');
+      }
+    } catch (_) {
+      await target.delete();
+      rethrow;
+    } finally {
+      await copiedDb.close();
+    }
     return target.path;
   }
 
@@ -1096,7 +1129,7 @@ class AppDatabase {
       final names = tables.map((row) => row['name']).whereType<String>().toSet();
       const requiredTables = {
         'parties', 'products', 'invoices', 'invoice_items',
-        'payments', 'expenses', 'app_settings'
+        'payments', 'expenses', 'stock_movements', 'app_settings'
       };
       if (!names.containsAll(requiredTables)) {
         throw const FormatException('Backup is missing required application tables');
