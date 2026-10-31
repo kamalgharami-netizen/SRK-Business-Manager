@@ -6,6 +6,9 @@ import 'package:path/path.dart' as p;
 import 'package:path_provider/path_provider.dart';
 import 'package:sqflite_common_ffi/sqflite_ffi.dart';
 
+import 'accounting_service.dart';
+import 'inventory_cost_service.dart';
+
 /// Local-first database shared by the Windows and Android applications.
 class AppDatabase {
   AppDatabase._();
@@ -800,6 +803,11 @@ class AppDatabase {
           whereArgs: [recordId],
           limit: 1,
         );
+        final isPurchaseInvoice = payload['invoice_type'] == 'purchase';
+        // Purchase entries are immutable in the current UI. Do not rebuild their
+        // line rows on every full pull: cost layers refer to those local row IDs.
+        if (existing.isNotEmpty && isPurchaseInvoice) return;
+        final isNewInvoice = existing.isEmpty;
         int localInvoiceId;
         if (existing.isEmpty) {
           localInvoiceId = await txn.insert('invoices', values);
@@ -820,6 +828,18 @@ class AppDatabase {
           item.remove('invoice_id');
           int? localProductId;
           if (productSyncId != null && productSyncId.isNotEmpty) {
+            if (isPurchaseInvoice) {
+              final pendingProduct = await txn.query(
+                'sync_queue',
+                columns: ['id'],
+                where: 'table_name = ? AND record_id = ?',
+                whereArgs: ['products', productSyncId],
+                limit: 1,
+              );
+              if (pendingProduct.isNotEmpty) {
+                throw StateError('A purchase product has pending local changes; retry sync after resolving them.');
+              }
+            }
             final productRows = await txn.query(
               'products',
               columns: ['id'],
@@ -832,9 +852,34 @@ class AppDatabase {
             }
             localProductId = productRows.first['id'] as int;
           }
+          if (isPurchaseInvoice && localProductId == null) {
+            throw StateError('A purchase item is missing its cloud product link.');
+          }
           item['product_id'] = localProductId;
           item['invoice_id'] = localInvoiceId;
-          await txn.insert('invoice_items', item);
+          final localItemId = await txn.insert('invoice_items', item);
+          if (isPurchaseInvoice && isNewInvoice) {
+            await InventoryCostService.receivePurchase(
+              txn,
+              productId: localProductId!,
+              invoiceId: localInvoiceId,
+              purchaseItemId: localItemId,
+              quantity: (item['quantity'] as num).toDouble(),
+              unitCost: (item['rate'] as num).toDouble(),
+              receivedAt: payload['invoice_date'] as String? ?? DateTime.now().toIso8601String(),
+            );
+          }
+        }
+        if (isPurchaseInvoice && isNewInvoice) {
+          await AccountingService.postPurchaseInvoice(
+            txn,
+            invoiceId: localInvoiceId,
+            invoiceNumber: payload['invoice_number'] as String,
+            date: payload['invoice_date'] as String,
+            subtotal: (payload['subtotal'] as num).toDouble(),
+            tax: (payload['tax_total'] as num).toDouble(),
+            total: (payload['grand_total'] as num).toDouble(),
+          );
         }
         return;
       }

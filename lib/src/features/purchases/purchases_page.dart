@@ -4,6 +4,7 @@ import '../../data/local/app_database.dart';
 import '../../data/local/accounting_service.dart';
 import '../../data/local/inventory_cost_service.dart';
 import '../../data/indian_states.dart';
+import '../../data/sync/business_sync_service.dart';
 import '../invoices/invoice_pdf_service.dart';
 
 class PurchasesPage extends StatefulWidget {
@@ -16,6 +17,16 @@ class PurchasesPage extends StatefulWidget {
 class _PurchasesPageState extends State<PurchasesPage> {
   List<Map<String, Object?>> _rows = [];
   bool _loading = true;
+
+  Future<void> _syncIfConfigured() async {
+    final businessId = AppDatabase.instance.activeBusinessId;
+    if (businessId == null) return;
+    try {
+      await BusinessSyncService(businessId: businessId).syncNow();
+    } catch (_) {
+      // Purchases remain saved locally; queued changes retry on the next sync.
+    }
+  }
 
   @override
   void initState() {
@@ -265,7 +276,9 @@ class _PurchasesPageState extends State<PurchasesPage> {
             });
           }
 
+          final invoiceSyncId = AppDatabase.instance.createSyncId();
           final invoiceId = await txn.insert('invoices', {
+            'sync_id': invoiceSyncId,
             'invoice_number': invoiceNumber,
             'invoice_type': 'purchase',
             'party_id': supplierId,
@@ -284,6 +297,7 @@ class _PurchasesPageState extends State<PurchasesPage> {
           });
 
           for (final item in preparedItems) {
+            item['sync_id'] = AppDatabase.instance.createSyncId();
             final purchaseItemId = await txn.insert('invoice_items', {
               'invoice_id': invoiceId,
               ...item,
@@ -306,7 +320,93 @@ class _PurchasesPageState extends State<PurchasesPage> {
                 item['product_id'],
               ],
             );
+            final productRows = await txn.query(
+              'products',
+              where: 'id = ?',
+              whereArgs: [item['product_id']],
+              limit: 1,
+            );
+            if (productRows.isEmpty) {
+              throw StateError('Purchased product could not be reloaded for sync.');
+            }
+            final product = Map<String, dynamic>.from(productRows.single);
+            final productSyncId = product['sync_id'] as String?;
+            if (productSyncId == null || productSyncId.isEmpty) {
+              throw StateError('Purchased product is missing its sync identifier.');
+            }
+            await AppDatabase.instance.enqueueSyncOperation(
+              executor: txn,
+              tableName: 'products',
+              recordId: productSyncId,
+              operation: 'update',
+              payload: product,
+            );
           }
+
+          final invoiceRows = await txn.query(
+            'invoices',
+            where: 'id = ?',
+            whereArgs: [invoiceId],
+            limit: 1,
+          );
+          final supplierRows = supplierId == null
+              ? <Map<String, Object?>>[]
+              : await txn.query(
+                  'parties',
+                  columns: ['sync_id'],
+                  where: 'id = ?',
+                  whereArgs: [supplierId],
+                  limit: 1,
+                );
+          final supplierSyncId = supplierRows.isEmpty
+              ? null
+              : supplierRows.first['sync_id'] as String?;
+          if (supplierId != null && (supplierSyncId == null || supplierSyncId.isEmpty)) {
+            throw StateError('Selected supplier is missing its sync identifier.');
+          }
+          final invoiceItems = await txn.query(
+            'invoice_items',
+            where: 'invoice_id = ?',
+            whereArgs: [invoiceId],
+            orderBy: 'id ASC',
+          );
+          final syncedItems = <Map<String, dynamic>>[];
+          for (final rawItem in invoiceItems) {
+            final item = Map<String, dynamic>.from(rawItem);
+            final productId = item.remove('product_id') as int?;
+            item.remove('id');
+            item.remove('invoice_id');
+            final productRows = productId == null
+                ? <Map<String, Object?>>[]
+                : await txn.query(
+                    'products',
+                    columns: ['sync_id'],
+                    where: 'id = ?',
+                    whereArgs: [productId],
+                    limit: 1,
+                  );
+            final productSyncId = productRows.isEmpty
+                ? null
+                : productRows.first['sync_id'] as String?;
+            if (productSyncId == null || productSyncId.isEmpty) {
+              throw StateError('A purchase item product is missing its sync identifier.');
+            }
+            item['product_sync_id'] = productSyncId;
+            syncedItems.add(item);
+          }
+          final invoicePayload = Map<String, dynamic>.from(invoiceRows.single)
+            ..remove('id')
+            ..remove('party_id')
+            ..['party_sync_id'] = supplierSyncId
+            ..['items'] = syncedItems;
+          await AppDatabase.instance.enqueueSyncOperation(
+            executor: txn,
+            tableName: 'invoices',
+            recordId: invoiceSyncId,
+            operation: 'insert',
+            payload: invoicePayload,
+          );
+
           await AccountingService.postPurchaseInvoice(
             txn,
             invoiceId: invoiceId,
@@ -318,6 +418,7 @@ class _PurchasesPageState extends State<PurchasesPage> {
           );
         });
 
+        await _syncIfConfigured();
         await _load();
         if (mounted) {
           ScaffoldMessenger.of(context).showSnackBar(
