@@ -82,6 +82,10 @@ class _SalesReturnsPageState extends State<SalesReturnsPage> {
       return;
     }
 
+    if (!mounted) {
+      for (final line in lines) { line.dispose(); }
+      return;
+    }
     final formKey = GlobalKey<FormState>();
     final confirmed = await showDialog<bool>(
       context: context,
