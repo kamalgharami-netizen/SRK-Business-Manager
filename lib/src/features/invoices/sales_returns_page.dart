@@ -163,11 +163,51 @@ class _SalesReturnsPageState extends State<SalesReturnsPage> {
         var total = 0.0;
         final prepared = <Map<String, Object?>>[];
 
+        final currentInvoice = await txn.query(
+          'invoices',
+          columns: ['id', 'invoice_type'],
+          where: 'id = ?',
+          whereArgs: [invoice['id']],
+          limit: 1,
+        );
+        if (currentInvoice.isEmpty || currentInvoice.first['invoice_type'] != 'sale') {
+          throw StateError('The original sales invoice is no longer available.');
+        }
+
         for (final line in lines) {
-          final qty = double.parse(line.quantity.text.trim());
+          final qty = double.tryParse(line.quantity.text.trim());
+          if (qty == null || !qty.isFinite || qty <= 0) {
+            throw StateError('Return quantity must be a finite number greater than zero.');
+          }
           final originalQty = (line.item['quantity'] as num).toDouble();
+          final priorRows = await txn.rawQuery(
+            """
+            SELECT COALESCE(SUM(ri.quantity), 0) AS qty
+            FROM invoice_items ri
+            INNER JOIN invoices r ON r.id = ri.invoice_id
+            WHERE r.invoice_type = 'sales_return'
+              AND r.parent_invoice_id = ?
+              AND ri.original_invoice_item_id = ?
+            """,
+            [invoice['id'], line.item['id']],
+          );
+          final alreadyReturned = (priorRows.first['qty'] as num?)?.toDouble() ?? 0;
+          if (!originalQty.isFinite || originalQty <= 0 ||
+              !alreadyReturned.isFinite || alreadyReturned < 0 ||
+              alreadyReturned + qty > originalQty + 0.0000001) {
+            throw StateError('Return quantity exceeds the remaining quantity on the original invoice.');
+          }
           final originalDiscount = (line.item['discount'] as num?)?.toDouble() ?? 0;
-          final base = qty * (line.item['rate'] as num).toDouble();
+          final rate = (line.item['rate'] as num).toDouble();
+          final originalTax = (line.item['tax_amount'] as num?)?.toDouble() ?? 0;
+          if (!rate.isFinite || rate < 0 || !originalDiscount.isFinite ||
+              originalDiscount < 0 || !originalTax.isFinite || originalTax < 0) {
+            throw StateError('Original invoice item contains invalid amount values.');
+          }
+          final base = qty * rate;
+          if (!base.isFinite) {
+            throw StateError('Return amount is too large.');
+          }
           final discount = originalQty > 0 ? originalDiscount * qty / originalQty : 0.0;
           final taxable = (base - discount).clamp(0.0, double.infinity).toDouble();
           final originalTax = (line.item['tax_amount'] as num?)?.toDouble() ?? 0;
