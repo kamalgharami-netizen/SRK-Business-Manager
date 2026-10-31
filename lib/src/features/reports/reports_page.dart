@@ -400,7 +400,7 @@ class _ReportsPageState extends State<ReportsPage> {
       final invoiceRows = await db.rawQuery(
         '''
         SELECT i.invoice_number, i.invoice_date, i.place_of_supply,
-          p.gstin AS party_gstin
+          p.gstin AS party_gstin, p.state AS party_state
         FROM invoices i
         LEFT JOIN parties p ON p.id = i.party_id
         WHERE i.invoice_type = 'sale'
