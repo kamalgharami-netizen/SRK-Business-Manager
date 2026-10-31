@@ -139,7 +139,31 @@ class AppDatabase {
         }
       },
     );
+    await _ensureDatabaseScope(_database!);
     return _database!;
+  }
+
+  Future<void> _ensureDatabaseScope(Database db) async {
+    final expectedScope = _activeBusinessId ?? 'local';
+    final rows = await db.query(
+      'app_settings',
+      columns: ['setting_value'],
+      where: 'setting_key = ?',
+      whereArgs: ['database_scope'],
+      limit: 1,
+    );
+    if (rows.isEmpty) {
+      await db.insert('app_settings', {
+        'setting_key': 'database_scope',
+        'setting_value': expectedScope,
+      });
+      return;
+    }
+    if (rows.first['setting_value'] != expectedScope) {
+      throw StateError(
+        'This database belongs to a different business. It was not opened.',
+      );
+    }
   }
 
   Future<void> _createSchema(Database db, int version) async {
@@ -470,7 +494,12 @@ class AppDatabase {
     final source = File(sourcePath);
     if (!await source.exists()) throw StateError('Database file does not exist');
     final documents = await getApplicationDocumentsDirectory();
-    final backupDir = Directory(p.join(documents.path, 'SRK Business Manager', 'Backups'));
+    final backupDir = Directory(p.join(
+      documents.path,
+      'SRK Business Manager',
+      'Backups',
+      _activeBusinessId ?? 'local',
+    ));
     await backupDir.create(recursive: true);
     final stamp = DateTime.now().toIso8601String().replaceAll(':', '-').replaceAll('.', '-');
     final target = File(p.join(backupDir.path, 'srk-backup-$stamp.db'));
@@ -534,13 +563,35 @@ class AppDatabase {
       if (!names.containsAll(requiredTables)) {
         throw const FormatException('Backup is missing required application tables');
       }
+      final scopeRows = await validationDb.query(
+        'app_settings',
+        columns: ['setting_value'],
+        where: 'setting_key = ?',
+        whereArgs: ['database_scope'],
+        limit: 1,
+      );
+      final backupScope = scopeRows.isEmpty
+          ? null
+          : scopeRows.first['setting_value'] as String?;
+      final expectedScope = _activeBusinessId ?? 'local';
+      if (backupScope != expectedScope &&
+          !(backupScope == null && expectedScope == 'local')) {
+        throw const FormatException(
+          'This backup belongs to a different business or has no verified business identity.',
+        );
+      }
     } finally {
       await validationDb.close();
     }
 
     final documents = await getApplicationDocumentsDirectory();
     final safetyDir = Directory(
-      p.join(documents.path, 'SRK Business Manager', 'Backups'),
+      p.join(
+        documents.path,
+        'SRK Business Manager',
+        'Backups',
+        _activeBusinessId ?? 'local',
+      ),
     );
     await safetyDir.create(recursive: true);
     final stamp = DateTime.now().toIso8601String()
