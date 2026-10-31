@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 
 import '../../data/local/app_database.dart';
+import '../../data/sync/business_sync_service.dart';
 
 import '../accounting/accounts_page.dart';
 
@@ -26,6 +27,7 @@ class DashboardPage extends StatefulWidget {
 
 class _DashboardPageState extends State<DashboardPage> {
   late Future<Map<String, double>> _summaryFuture;
+  bool _syncing = false;
 
   @override
   void initState() {
@@ -76,6 +78,34 @@ class _DashboardPageState extends State<DashboardPage> {
     };
   }
 
+  Future<void> _syncNow() async {
+    final businessId = AppDatabase.instance.activeBusinessId;
+    if (businessId == null || _syncing) return;
+    setState(() => _syncing = true);
+    try {
+      final result = await BusinessSyncService(
+        businessId: businessId,
+      ).syncNow();
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(
+            'Parties/products sync: ${result.uploaded} uploaded, '
+            '${result.downloaded} downloaded, '
+            '${result.uploadFailures + result.downloadFailures} failed.',
+          ),
+        ),
+      );
+    } catch (error) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('Sync unavailable; queued changes are kept. $error')),
+      );
+    } finally {
+      if (mounted) setState(() => _syncing = false);
+    }
+  }
+
   String _money(double value) => '₹${value.toStringAsFixed(2)}';
 
   static const modules = <_ModuleInfo>[
@@ -106,6 +136,17 @@ class _DashboardPageState extends State<DashboardPage> {
       appBar: AppBar(
         title: const Text('SRK Business Manager'),
         actions: [
+          IconButton(
+            tooltip: 'Sync parties and products',
+            onPressed: widget.cloudConfigured && !_syncing ? _syncNow : null,
+            icon: _syncing
+                ? const SizedBox(
+                    width: 20,
+                    height: 20,
+                    child: CircularProgressIndicator(strokeWidth: 2),
+                  )
+                : const Icon(Icons.sync),
+          ),
           Padding(
             padding: const EdgeInsets.only(right: 16),
             child: Chip(
