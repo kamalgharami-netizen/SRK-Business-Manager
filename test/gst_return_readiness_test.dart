@@ -11,6 +11,7 @@ void main() {
       'invoice_date': '2026-10-12',
       'place_of_supply': 'West Bengal',
       'party_gstin': '19ABCDE1234F1Z5',
+      'party_state': 'West Bengal',
       'items': [
         {'hsn_sac': '9983', 'taxable_value': 1000.0, 'tax_amount': 180.0},
       ],
@@ -61,6 +62,20 @@ void main() {
 
       expect(report.issues.any((issue) => issue.code == 'place_of_supply_missing'), isTrue);
       expect(report.issues.any((issue) => issue.code == 'hsn_sac_missing'), isTrue);
+      expect(report.canPrepareDraft, isFalse);
+    });
+
+    test('flags recipient GSTIN that does not match party state', () {
+      final invoice = validInvoice()..['party_state'] = 'Bihar';
+      final report = GstReturnReadiness.validateGstr1(
+        supplierGstin: '19ABCDE1234F1Z5',
+        supplierState: 'West Bengal',
+        periodStart: periodStart,
+        periodEnd: periodEnd,
+        invoices: [invoice],
+      );
+
+      expect(report.issues.any((issue) => issue.code == 'recipient_gstin_invalid'), isTrue);
       expect(report.canPrepareDraft, isFalse);
     });
 
