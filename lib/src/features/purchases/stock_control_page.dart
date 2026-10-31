@@ -375,9 +375,25 @@ class _StockControlPageState extends State<StockControlPage> {
             'notes': 'Return against ${original['invoice_number']}. ${notes.text.trim()}'.trim(),
           });
 
+          final syncedReturnItems = <Map<String, dynamic>>[];
           for (final item in returnItems) {
-            await txn.insert('invoice_items', {'invoice_id': returnId, ...item});
             final productId = item['product_id'] as int;
+            final originalRows = await txn.query('invoice_items', columns: ['sync_id'], where: 'id = ?', whereArgs: [item['original_invoice_item_id']], limit: 1);
+            final originalItemSyncId = originalRows.isEmpty ? null : originalRows.first['sync_id'] as String?;
+            final productRows = await txn.query('products', columns: ['sync_id'], where: 'id = ?', whereArgs: [productId], limit: 1);
+            final productSyncId = productRows.isEmpty ? null : productRows.first['sync_id'] as String?;
+            if (originalItemSyncId == null || originalItemSyncId.isEmpty || productSyncId == null || productSyncId.isEmpty) {
+              throw StateError('Purchase return is missing a linked cloud product or source item.');
+            }
+            final itemSyncId = AppDatabase.instance.createSyncId();
+            final localItem = Map<String, Object?>.from(item)..['sync_id'] = itemSyncId;
+            await txn.insert('invoice_items', {'invoice_id': returnId, ...localItem});
+            final syncedItem = Map<String, dynamic>.from(localItem)
+              ..remove('product_id')
+              ..remove('original_invoice_item_id')
+              ..['product_sync_id'] = productSyncId
+              ..['original_invoice_item_sync_id'] = originalItemSyncId;
+            syncedReturnItems.add(syncedItem);
             final qty = (item['quantity'] as num).toDouble();
             await InventoryCostService.removePurchaseReturnAtSource(
               txn,
