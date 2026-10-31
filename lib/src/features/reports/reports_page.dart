@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import '../../data/local/app_database.dart';
 import '../../data/local/gst_return_readiness.dart';
+import '../../data/local/gst_gstr1_classification.dart';
 
 class ReportsPage extends StatefulWidget {
   const ReportsPage({super.key, required this.reportType});
@@ -31,6 +32,7 @@ class _ReportsPageState extends State<ReportsPage> {
   DateTime? _endDate;
   bool _gstr1Checking = false;
   GstReadinessReport? _gstr1ReadinessReport;
+  Gstr1ClassificationSummary? _gstr1ClassificationSummary;
 
   @override
   void initState() { super.initState(); _load(); }
@@ -384,6 +386,7 @@ class _ReportsPageState extends State<ReportsPage> {
     setState(() {
       _gstr1Checking = true;
       _gstr1ReadinessReport = null;
+      _gstr1ClassificationSummary = null;
     });
     try {
       final db = await AppDatabase.instance.database;
@@ -399,8 +402,8 @@ class _ReportsPageState extends State<ReportsPage> {
       };
       final invoiceRows = await db.rawQuery(
         '''
-        SELECT i.invoice_number, i.invoice_date, i.place_of_supply,
-          p.gstin AS party_gstin, p.state AS party_state
+        SELECT i.id, i.invoice_number, i.invoice_date, i.place_of_supply,
+          i.grand_total, p.gstin AS party_gstin, p.state AS party_state
         FROM invoices i
         LEFT JOIN parties p ON p.id = i.party_id
         WHERE i.invoice_type = 'sale'
@@ -415,17 +418,14 @@ class _ReportsPageState extends State<ReportsPage> {
           '''
           SELECT hsn_sac, tax_amount, (line_total - tax_amount) AS taxable_value
           FROM invoice_items
-          WHERE invoice_id = (
-            SELECT id FROM invoices WHERE invoice_number = ? LIMIT 1
-          )
+          WHERE invoice_id = ?
           ORDER BY id
           ''',
-          [invoice['invoice_number']],
+          [invoice['id']],
         );
-        invoices.add({
-          ...invoice,
-          'items': itemRows,
-        });
+        final taxableValue = itemRows.fold<double>(0, (sum, item) => sum + ((item['taxable_value'] as num?)?.toDouble() ?? 0));
+        final taxAmount = itemRows.fold<double>(0, (sum, item) => sum + ((item['tax_amount'] as num?)?.toDouble() ?? 0));
+        invoices.add({...invoice, 'items': itemRows, 'invoice_value': invoice['grand_total'], 'taxable_value': taxableValue, 'tax_amount': taxAmount});
       }
       final report = GstReturnReadiness.validateGstr1(
         supplierGstin: settings['company_gstin'] ?? '',
@@ -434,8 +434,9 @@ class _ReportsPageState extends State<ReportsPage> {
         periodEnd: _endDate!,
         invoices: invoices,
       );
+      final classification = Gstr1DomesticClassifier.classify(invoices, supplierState: settings['company_state'] ?? '');
       if (!mounted) return;
-      setState(() => _gstr1ReadinessReport = report);
+      setState(() { _gstr1ReadinessReport = report; _gstr1ClassificationSummary = classification; });
     } catch (error) {
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
@@ -497,6 +498,29 @@ class _ReportsPageState extends State<ReportsPage> {
     );
   }
 
+  Widget _gstr1ClassificationCard() {
+    final summary = _gstr1ClassificationSummary;
+    if (summary == null) return const SizedBox.shrink();
+    final categories = <(Gstr1SupplyCategory, String)>[
+      (Gstr1SupplyCategory.b2b, 'B2B — নিবন্ধিত ক্রেতা'),
+      (Gstr1SupplyCategory.b2cl, 'B2CL — আন্তঃরাজ্য, ₹১ লক্ষের বেশি'),
+      (Gstr1SupplyCategory.b2cs, 'B2CS — অন্যান্য অনিবন্ধিত'),
+      (Gstr1SupplyCategory.review, 'পর্যালোচনা প্রয়োজন'),
+    ];
+    return Card(child: Padding(padding: const EdgeInsets.all(12), child: Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+        Text('GSTR-1 চালান শ্রেণিবিন্যাস', style: Theme.of(context).textTheme.titleMedium),
+        const SizedBox(height: 6),
+        for (final entry in categories)
+          ListTile(dense: true, contentPadding: EdgeInsets.zero,
+            title: Text(entry.$2),
+            subtitle: Text('চালান: ${summary.count(entry.$1)} • করযোগ্য মূল্য: ${_money(summary.taxableValue(entry.$1))} • GST: ${_money(summary.taxAmount(entry.$1))}'),
+            trailing: Text(_money(summary.invoiceValue(entry.$1)), style: const TextStyle(fontWeight: FontWeight.bold)),
+          ),
+        const Text('এই শ্রেণিবিন্যাস কেবল সংরক্ষিত domestic sale invoice-এর প্রাথমিক B2B/B2C বিভাজন। Export, SEZ, deemed export, credit/debit note, advance, e-commerce এবং অন্যান্য বিশেষ GSTR-1 টেবিল এতে অন্তর্ভুক্ত নয়। এটি GSTN upload JSON বা filing-ready return নয়।'),
+      ],
+    )));
+  }
   double _number(String key) => (_summary[key] as num?)?.toDouble() ?? 0;
   String _money(double value) => '₹${value.toStringAsFixed(2)}';
 
@@ -561,6 +585,7 @@ class _ReportsPageState extends State<ReportsPage> {
           ],
           if (title == 'GST Reports') ...[
             _gstr1ReadinessCard(),
+            _gstr1ClassificationCard(),
             _metric('Sales taxable + tax total', _money(_number('sales')), Icons.point_of_sale),
             _metric('Output GST on sales', _money(_number('salesTax')), Icons.south),
             _metric('Output CGST', _money(_number('salesCgst')), Icons.south),
