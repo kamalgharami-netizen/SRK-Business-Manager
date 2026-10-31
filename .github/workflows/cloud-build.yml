@@ -18,7 +18,7 @@ concurrency:
 
 jobs:
   android:
-    name: Android APK
+    name: Android Release APK
     runs-on: ubuntu-latest
     steps:
       - name: Checkout source code
@@ -42,19 +42,19 @@ jobs:
       - name: Run automated tests
         run: flutter test
 
-      - name: Build Android APK
-        run: flutter build apk --debug
+      - name: Build Android release APK
+        run: flutter build apk --release
 
-      - name: Upload Android APK
+      - name: Upload Android release APK
         uses: actions/upload-artifact@v4
         with:
-          name: SRK-Business-Manager-Android-APK
-          path: build/app/outputs/flutter-apk/app-debug.apk
+          name: SRK-Business-Manager-Android-Release-APK
+          path: build/app/outputs/flutter-apk/app-release.apk
           if-no-files-found: error
           retention-days: 14
 
   windows:
-    name: Windows EXE
+    name: Windows Release Package
     runs-on: windows-latest
     steps:
       - name: Checkout source code
@@ -81,10 +81,18 @@ jobs:
       - name: Build Windows application
         run: flutter build windows --release
 
-      - name: Upload Windows application folder
+      - name: Package Windows application
+        shell: pwsh
+        run: |
+          if (!(Test-Path "build/windows/x64/runner/Release/SRK Business Manager.exe")) {
+            throw "Expected Windows application executable was not found."
+          }
+          Compress-Archive -Path "build/windows/x64/runner/Release/*" -DestinationPath "build/SRK-Business-Manager-Windows-x64.zip" -Force
+
+      - name: Upload Windows release package
         uses: actions/upload-artifact@v4
         with:
-          name: SRK-Business-Manager-Windows
-          path: build/windows/x64/runner/Release/
+          name: SRK-Business-Manager-Windows-x64
+          path: build/SRK-Business-Manager-Windows-x64.zip
           if-no-files-found: error
           retention-days: 14
