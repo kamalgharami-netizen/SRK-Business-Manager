@@ -200,20 +200,6 @@ class AppDatabase {
             await db.insert('sync_queue', {'table_name': 'payments', 'record_id': syncId, 'operation': 'insert', 'payload': jsonEncode(payload)});
           }
         }
-        if (oldVersion < 19) {
-          await db.execute('ALTER TABLE stock_movements ADD COLUMN sync_id TEXT');
-          await _backfillSyncIds(db, 'stock_movements');
-          await db.execute('CREATE UNIQUE INDEX idx_stock_movements_sync_id ON stock_movements(sync_id)');
-          final legacyMovements = await db.query('stock_movements', orderBy: 'id ASC');
-          for (final row in legacyMovements) {
-            final productRows = await db.query('products', columns: ['sync_id'], where: 'id = ?', whereArgs: [row['product_id']], limit: 1);
-            final productSyncId = productRows.isEmpty ? null : productRows.first['sync_id'] as String?;
-            if (productSyncId == null || productSyncId.isEmpty) throw StateError('A legacy stock movement is missing its product cloud identifier.');
-            final syncId = row['sync_id'] as String;
-            final payload = Map<String, dynamic>.from(row)..remove('id')..remove('product_id')..['sync_id'] = syncId..['product_sync_id'] = productSyncId;
-            await db.insert('sync_queue', {'table_name': 'stock_movements', 'record_id': syncId, 'operation': 'insert', 'payload': jsonEncode(payload)});
-          }
-        }
         if (oldVersion < 11) {
           await db.execute('ALTER TABLE stock_movements RENAME TO stock_movements_old');
           await db.execute("""
@@ -238,6 +224,20 @@ class AppDatabase {
           """);
           await db.execute('DROP TABLE stock_movements_old');
           await db.execute('CREATE INDEX idx_stock_movements_product ON stock_movements(product_id)');
+        }
+        if (oldVersion < 19) {
+          await db.execute('ALTER TABLE stock_movements ADD COLUMN sync_id TEXT');
+          await _backfillSyncIds(db, 'stock_movements');
+          await db.execute('CREATE UNIQUE INDEX idx_stock_movements_sync_id ON stock_movements(sync_id)');
+          final legacyMovements = await db.query('stock_movements', orderBy: 'id ASC');
+          for (final row in legacyMovements) {
+            final productRows = await db.query('products', columns: ['sync_id'], where: 'id = ?', whereArgs: [row['product_id']], limit: 1);
+            final productSyncId = productRows.isEmpty ? null : productRows.first['sync_id'] as String?;
+            if (productSyncId == null || productSyncId.isEmpty) throw StateError('A legacy stock movement is missing its product cloud identifier.');
+            final syncId = row['sync_id'] as String;
+            final payload = Map<String, dynamic>.from(row)..remove('id')..remove('product_id')..['sync_id'] = syncId..['product_sync_id'] = productSyncId;
+            await db.insert('sync_queue', {'table_name': 'stock_movements', 'record_id': syncId, 'operation': 'insert', 'payload': jsonEncode(payload)});
+          }
         }
       },
     );
