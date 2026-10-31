@@ -430,7 +430,7 @@ class _ReportsPageState extends State<ReportsPage> {
                   ),
                 )),
             ],
-            const Text('This Trial Balance includes posted journal entries and party opening receivable/payable balances. Cash/bank opening balances and older transactions not migrated to the accounting ledger are excluded.'),
+            const Text('This Trial Balance includes posted journal entries, cash/bank and other account opening balances entered through Chart of Accounts, and party opening receivable/payable balances from Party profiles. Older transactions not migrated to the accounting ledger are excluded.'),
           ] else if (title == 'Balance Sheet') ...[
             _metric('Total assets', _money(_balanceAssets), Icons.account_balance_wallet),
             _metric('Total liabilities', _money(_balanceLiabilities), Icons.receipt_long),
@@ -459,7 +459,7 @@ class _ReportsPageState extends State<ReportsPage> {
                   title: Text('${row['account_code']} • ${row['account_name']}'),
                   trailing: Text(_money((row['balance'] as num).toDouble())),
                 )),
-            const Text('Preliminary balance sheet includes posted journal entries and party opening receivable/payable balances. It excludes cash/bank opening balances, unposted transactions, unrecorded depreciation and legacy transactions not migrated to the accounting ledger. Current earnings are added to equity for presentation. Verify balances before statutory or lending use.'),
+            const Text('Preliminary balance sheet includes posted journal entries, cash/bank and other account opening balances entered through Chart of Accounts, and party opening receivable/payable balances from Party profiles. It excludes unposted transactions, unrecorded depreciation and legacy transactions not migrated to the accounting ledger. Current earnings are added to equity for presentation. Verify balances before statutory or lending use.'),
           ] else if (title == 'Profit & Loss') ...[
             _metric('Recorded income', _money(_profitIncome), Icons.trending_up),
             _metric('Recorded expenses', _money(_profitExpense), Icons.receipt_long),
