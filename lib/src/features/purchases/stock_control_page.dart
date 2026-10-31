@@ -255,31 +255,57 @@ class _StockControlPageState extends State<StockControlPage> {
           final totalsByProduct = <int, double>{};
           double subtotal = 0;
           double taxTotal = 0;
+          double cgstTotal = 0;
+          double sgstTotal = 0;
+          double igstTotal = 0;
 
           for (final line in selectedLines) {
             final item = line.item;
             final productId = item['product_id'] as int;
             final qty = double.parse(line.quantity.text.trim());
+            final originalQty = (item['quantity'] as num).toDouble();
             final rate = (item['rate'] as num).toDouble();
             final gst = (item['gst_rate'] as num).toDouble();
+            final discount = originalQty > 0
+                ? ((item['discount'] as num?)?.toDouble() ?? 0) * qty / originalQty
+                : 0.0;
             final base = qty * rate;
-            final tax = base * gst / 100;
-            if (!qty.isFinite || qty <= 0 || !base.isFinite || !tax.isFinite) {
+            final taxable = (base - discount).clamp(0.0, double.infinity).toDouble();
+            final tax = originalQty > 0
+                ? ((item['tax_amount'] as num?)?.toDouble() ?? 0) * qty / originalQty
+                : 0.0;
+            final cgst = originalQty > 0
+                ? ((item['cgst_amount'] as num?)?.toDouble() ?? 0) * qty / originalQty
+                : 0.0;
+            final sgst = originalQty > 0
+                ? ((item['sgst_amount'] as num?)?.toDouble() ?? 0) * qty / originalQty
+                : 0.0;
+            final igst = originalQty > 0
+                ? ((item['igst_amount'] as num?)?.toDouble() ?? 0) * qty / originalQty
+                : 0.0;
+            if (!qty.isFinite || qty <= 0 || !taxable.isFinite ||
+                !tax.isFinite || !cgst.isFinite || !sgst.isFinite || !igst.isFinite) {
               throw StateError('One or more return item values are invalid.');
             }
             totalsByProduct[productId] = (totalsByProduct[productId] ?? 0) + qty;
-            subtotal += base;
+            subtotal += taxable;
             taxTotal += tax;
+            cgstTotal += cgst;
+            sgstTotal += sgst;
+            igstTotal += igst;
             returnItems.add({
               'product_id': productId,
               'description': item['description'],
               'quantity': qty,
               'unit': item['unit'],
               'rate': rate,
-              'discount': 0,
+              'discount': discount,
               'gst_rate': gst,
               'tax_amount': tax,
-              'line_total': base + tax,
+              'cgst_amount': cgst,
+              'sgst_amount': sgst,
+              'igst_amount': igst,
+              'line_total': taxable + tax,
             });
           }
 
@@ -325,6 +351,9 @@ class _StockControlPageState extends State<StockControlPage> {
             'tax_total': taxTotal,
             'grand_total': subtotal + taxTotal,
             'amount_paid': 0,
+            'cgst_total': cgstTotal,
+            'sgst_total': sgstTotal,
+            'igst_total': igstTotal,
             'status': 'recorded',
             'notes': 'Return against ${original['invoice_number']}. ${notes.text.trim()}'.trim(),
           });
