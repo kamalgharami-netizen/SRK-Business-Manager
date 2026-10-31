@@ -7,6 +7,7 @@ import 'package:path_provider/path_provider.dart';
 import 'package:sqflite_common_ffi/sqflite_ffi.dart';
 
 import 'accounting_service.dart';
+import 'payment_reconciliation.dart';
 import 'inventory_cost_service.dart';
 
 /// Local-first database shared by the Windows and Android applications.
@@ -961,20 +962,85 @@ class AppDatabase {
       if (tableName == 'payments') {
         final partySyncId = payload['party_sync_id'] as String?;
         final invoiceSyncId = payload['invoice_sync_id'] as String?;
+        final paymentType = payload['payment_type'] as String?;
+        final amountValue = payload['amount'];
+        if ((paymentType != 'receipt' && paymentType != 'payment') ||
+            amountValue is! num ||
+            !amountValue.toDouble().isFinite ||
+            amountValue <= 0) {
+          throw const FormatException('Cloud payment has an invalid type or amount.');
+        }
+
         int? localPartyId;
         int? localInvoiceId;
         if (partySyncId != null && partySyncId.isNotEmpty) {
-          final rows = await txn.query('parties', columns: ['id'], where: 'sync_id = ?', whereArgs: [partySyncId], limit: 1);
+          final rows = await txn.query(
+            'parties',
+            columns: ['id', 'party_type'],
+            where: 'sync_id = ?',
+            whereArgs: [partySyncId],
+            limit: 1,
+          );
           if (rows.isEmpty) throw StateError('Payment party is not available on this device yet.');
           localPartyId = rows.first['id'] as int;
+          final partyType = rows.first['party_type'] as String?;
+          final expectedPartyType = paymentType == 'receipt' ? 'customer' : 'supplier';
+          if (partyType != expectedPartyType && partyType != 'both') {
+            throw const FormatException('Cloud payment party type does not match the transaction.');
+          }
         }
+
+        Map<String, Object?>? linkedInvoice;
         if (invoiceSyncId != null && invoiceSyncId.isNotEmpty) {
-          final rows = await txn.query('invoices', columns: ['id'], where: 'sync_id = ?', whereArgs: [invoiceSyncId], limit: 1);
+          final rows = await txn.query(
+            'invoices',
+            where: 'sync_id = ?',
+            whereArgs: [invoiceSyncId],
+            limit: 1,
+          );
           if (rows.isEmpty) throw StateError('Payment invoice is not available on this device yet.');
-          localInvoiceId = rows.first['id'] as int;
+          linkedInvoice = rows.first;
+          localInvoiceId = linkedInvoice['id'] as int;
+          final expectedInvoiceType = paymentType == 'receipt' ? 'sale' : 'purchase';
+          if (linkedInvoice['invoice_type'] != expectedInvoiceType) {
+            throw const FormatException('Cloud payment is linked to the wrong invoice type.');
+          }
+          final invoicePartyId = linkedInvoice['party_id'] as int?;
+          if (localPartyId != null &&
+              invoicePartyId != null &&
+              localPartyId != invoicePartyId) {
+            throw const FormatException('Cloud payment party does not match its linked invoice.');
+          }
+          localPartyId ??= invoicePartyId;
         }
-        final existing = await txn.query('payments', columns: ['id'], where: 'sync_id = ?', whereArgs: [recordId], limit: 1);
+
+        final existing = await txn.query(
+          'payments',
+          columns: ['id'],
+          where: 'sync_id = ?',
+          whereArgs: [recordId],
+          limit: 1,
+        );
         if (existing.isNotEmpty) return;
+
+        double? reconciledPaid;
+        if (linkedInvoice != null && localInvoiceId != null) {
+          final existingPayments = await txn.query(
+            'payments',
+            columns: ['amount'],
+            where: 'invoice_id = ?',
+            whereArgs: [localInvoiceId],
+          );
+          reconciledPaid = PaymentReconciliation.calculatePaidAmount(
+            invoicePaidSnapshot:
+                ((linkedInvoice['amount_paid'] as num?) ?? 0).toDouble(),
+            existingLinkedPayments: existingPayments.map(
+              (row) => (row['amount'] as num).toDouble(),
+            ),
+            incomingPayment: amountValue.toDouble(),
+          );
+        }
+
         final values = Map<String, dynamic>.from(payload)
           ..remove('id')
           ..remove('party_sync_id')
@@ -983,13 +1049,33 @@ class AppDatabase {
           ..['invoice_id'] = localInvoiceId
           ..['sync_id'] = recordId;
         final localPaymentId = await txn.insert('payments', values);
+
+        if (linkedInvoice != null && localInvoiceId != null && reconciledPaid != null) {
+          final invoiceTotal =
+              ((linkedInvoice['grand_total'] as num?) ?? 0).toDouble();
+          if (!invoiceTotal.isFinite || invoiceTotal < 0) {
+            throw const FormatException('Linked invoice total is invalid.');
+          }
+          await txn.update(
+            'invoices',
+            {
+              'amount_paid': reconciledPaid,
+              'status': reconciledPaid >= invoiceTotal - 0.005
+                  ? 'paid'
+                  : (reconciledPaid > 0 ? 'partial' : 'unpaid'),
+            },
+            where: 'id = ?',
+            whereArgs: [localInvoiceId],
+          );
+        }
+
         await AccountingService.postPayment(
           txn,
           paymentId: localPaymentId,
           date: payload['payment_date'] as String,
-          paymentType: payload['payment_type'] as String,
+          paymentType: paymentType,
           mode: payload['mode'] as String? ?? 'cash',
-          amount: (payload['amount'] as num).toDouble(),
+          amount: amountValue.toDouble(),
           reference: payload['reference'] as String?,
         );
         return;
