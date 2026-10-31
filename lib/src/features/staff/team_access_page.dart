@@ -26,7 +26,7 @@ class _TeamAccessPageState extends State<TeamAccessPage>{
         _myRole=list.firstWhere((e)=>e['user_id']==me,orElse:()=>{})['role'] as String? ?? '';
         _error=null;_loading=false;
       });
-    }catch(e){if(mounted)setState(()=>{_error=e.toString(),_loading=false});}
+    }catch(e){if(mounted){setState((){_error=e.toString();_loading=false;});}}
   }
   Future<void> _add() async{
     final email=TextEditingController();String role='viewer';final key=GlobalKey<FormState>();
@@ -34,7 +34,7 @@ class _TeamAccessPageState extends State<TeamAccessPage>{
       title:const Text('Add existing cloud user'),
       content:Form(key:key,child:Column(mainAxisSize:MainAxisSize.min,children:[
         TextFormField(controller:email,keyboardType:TextInputType.emailAddress,decoration:const InputDecoration(labelText:'Registered email'),validator:(v)=>v==null||!v.contains('@')?'Enter a valid email':null),
-        DropdownButtonFormField<String>(value:role,decoration:const InputDecoration(labelText:'Role'),items:const [
+        DropdownButtonFormField<String>(initialValue:role,decoration:const InputDecoration(labelText:'Role'),items:const [
           DropdownMenuItem(value:'admin',child:Text('Admin')),DropdownMenuItem(value:'accountant',child:Text('Accountant')),DropdownMenuItem(value:'sales',child:Text('Sales')),DropdownMenuItem(value:'viewer',child:Text('Viewer')),
         ],onChanged:(v)=>refresh(()=>role=v??'viewer')),
         const Text('The person must already have registered. This does not send an invitation email.',style:TextStyle(fontSize:12)),
@@ -57,7 +57,7 @@ class _TeamAccessPageState extends State<TeamAccessPage>{
   }
   Future<void> _remove(Map<String,dynamic> m) async{
     final ok=await showDialog<bool>(context:context,builder:(ctx)=>AlertDialog(
-      title:const Text('Remove user?'),content:Text('Remove '+(m['email'] as String? ?? 'this user')+' from this business?'),
+      title:const Text('Remove user?'),content:Text('Remove ${m['email'] ?? 'this user'} from this business?'),
       actions:[TextButton(onPressed:()=>Navigator.pop(ctx,false),child:const Text('Cancel')),FilledButton(onPressed:()=>Navigator.pop(ctx,true),child:const Text('Remove'))],
     ));
     if(ok!=true)return;
@@ -71,16 +71,16 @@ class _TeamAccessPageState extends State<TeamAccessPage>{
     floatingActionButton:(_myRole=='owner'||_myRole=='admin')?FloatingActionButton.extended(
       onPressed:_busy||_members.length>=10?null:_add,icon:const Icon(Icons.person_add),label:const Text('Add user')):null,
     body:_loading?const Center(child:CircularProgressIndicator()):_error!=null?Center(child:Column(mainAxisSize:MainAxisSize.min,children:[
-      Text('Could not load team: '+_error!),OutlinedButton(onPressed:_load,child:const Text('Retry')),
+      Text('Could not load team: $_error'),OutlinedButton(onPressed:_load,child:const Text('Retry')),
     ])):Column(children:[
-      MaterialBanner(content:Text('Business accounts: '+_members.length.toString()+'/10 • Available seats: '+(10-_members.length).toString()),actions:const [SizedBox.shrink()]),
+      MaterialBanner(content:Text('Business accounts: ${_members.length}/10 • Available seats: ${10-_members.length}'),actions:const [SizedBox.shrink()]),
       if(_busy)const LinearProgressIndicator(),
       Expanded(child:ListView.separated(padding:const EdgeInsets.all(16),itemCount:_members.length,separatorBuilder:(_,i)=>const Divider(),itemBuilder:(ctx,i){
         final m=_members[i];final role=m['role'] as String? ?? 'viewer';final owner=role=='owner';
         final manage=_myRole=='owner'||(_myRole=='admin'&&!owner&&role!='admin');
         return ListTile(
           leading:CircleAvatar(child:Icon(owner?Icons.verified_user:Icons.person)),
-          title:Text((m['email'] as String?)?.isNotEmpty==true?m['email'] as String:m['user_id'] as String),
+          title:Text(((m['email'] as String?)?.isNotEmpty == true) ? m['email'] as String : m['user_id'] as String),
           subtitle:Text(role.toUpperCase()),
           trailing:manage?Wrap(spacing:4,children:[
             DropdownButton<String>(value:owner?null:role,hint:const Text('Role'),items:[
