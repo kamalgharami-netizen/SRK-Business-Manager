@@ -1029,12 +1029,14 @@ class AppDatabase {
         final invoiceType = payload['invoice_type'] as String?;
         final isPurchaseInvoice = invoiceType == 'purchase';
         final isPurchaseReturn = invoiceType == 'purchase_return';
-        // Purchase invoices and purchase returns are immutable in the current UI.
-        // Their FIFO layers and source-item links must never be replayed.
-        if (existing.isNotEmpty && (isPurchaseInvoice || isPurchaseReturn)) return;
+        final isSaleInvoice = invoiceType == 'sale';
+        final isSalesReturn = invoiceType == 'sales_return';
+        // Posted invoices and returns are immutable. Never replay their FIFO
+        // allocations or accounting journals during a repeated cloud pull.
+        if (existing.isNotEmpty && (isPurchaseInvoice || isPurchaseReturn || isSaleInvoice || isSalesReturn)) return;
         final isNewInvoice = existing.isEmpty;
         int? parentInvoiceId;
-        if (isPurchaseReturn) {
+        if (isPurchaseReturn || isSalesReturn) {
           final parentSyncId = payload['parent_invoice_sync_id'] as String?;
           if (parentSyncId == null || parentSyncId.isEmpty) {
             throw const FormatException('Purchase return is missing its original purchase link.');
@@ -1043,7 +1045,7 @@ class AppDatabase {
             'invoices',
             columns: ['id'],
             where: 'sync_id = ? AND invoice_type = ?',
-            whereArgs: [parentSyncId, 'purchase'],
+            whereArgs: [parentSyncId, isPurchaseReturn ? 'purchase' : 'sale'],
             limit: 1,
           );
           if (parentRows.isEmpty) {
@@ -1097,13 +1099,13 @@ class AppDatabase {
             }
             localProductId = productRows.first['id'] as int;
           }
-          if ((isPurchaseInvoice || isPurchaseReturn) && localProductId == null) {
+          if ((isPurchaseInvoice || isPurchaseReturn || isSaleInvoice || isSalesReturn) && localProductId == null) {
             throw StateError('A purchase item is missing its cloud product link.');
           }
           item['product_id'] = localProductId;
           item['invoice_id'] = localInvoiceId;
           final localItemId = await txn.insert('invoice_items', item);
-          if (isPurchaseReturn && isNewInvoice) {
+          if ((isPurchaseReturn || isSalesReturn) && isNewInvoice) {
             if (originalItemSyncId == null || originalItemSyncId.isEmpty) {
               throw const FormatException('Purchase return line is missing its original purchase-item link.');
             }
@@ -1115,22 +1117,21 @@ class AppDatabase {
               limit: 1,
             );
             if (originalItems.isEmpty || originalItems.first['product_id'] != localProductId) {
-              throw StateError('Original purchase item is not available or does not match the returned product.');
+              throw StateError('Original invoice item is not available or does not match the returned product.');
             }
-            item['original_invoice_item_id'] = originalItems.first['id'] as int;
-            await txn.update(
-              'invoice_items',
-              {'original_invoice_item_id': originalItems.first['id'] as int},
-              where: 'id = ?',
-              whereArgs: [localItemId],
-            );
-            await InventoryCostService.removePurchaseReturnAtSource(
-              txn,
-              productId: localProductId!,
-              purchaseInvoiceId: parentInvoiceId!,
-              purchaseInvoiceItemId: originalItems.first['id'] as int,
-              quantity: (item['quantity'] as num).toDouble(),
-            );
+            final originalItemId = originalItems.first['id'] as int;
+            item['original_invoice_item_id'] = originalItemId;
+            await txn.update('invoice_items', {'original_invoice_item_id': originalItemId}, where: 'id = ?', whereArgs: [localItemId]);
+            if (isPurchaseReturn) {
+              await InventoryCostService.removePurchaseReturnAtSource(txn, productId: localProductId!, purchaseInvoiceId: parentInvoiceId!, purchaseInvoiceItemId: originalItemId, quantity: (item['quantity'] as num).toDouble());
+            } else {
+              final restored = await InventoryCostService.restoreSalesReturn(txn, returnItemId: localItemId, originalInvoiceItemId: originalItemId, productId: localProductId!, quantity: (item['quantity'] as num).toDouble(), returnedAt: payload['invoice_date'] as String? ?? DateTime.now().toIso8601String());
+              item['cost_of_goods_sold'] = restored;
+            }
+          }
+          if (isSaleInvoice && isNewInvoice) {
+            final cogs = await InventoryCostService.consumeForSale(txn, invoiceItemId: localItemId, productId: localProductId!, quantity: (item['quantity'] as num).toDouble(), soldAt: payload['invoice_date'] as String? ?? DateTime.now().toIso8601String());
+            item['cost_of_goods_sold'] = cogs;
           }
           if (isPurchaseInvoice && isNewInvoice) {
             await InventoryCostService.receivePurchase(
@@ -1154,6 +1155,14 @@ class AppDatabase {
             tax: (payload['tax_total'] as num).toDouble(),
             total: (payload['grand_total'] as num).toDouble(),
           );
+        }
+        if (isSaleInvoice && isNewInvoice) {
+          final cogsRows = await txn.rawQuery('SELECT COALESCE(SUM(cost_of_goods_sold), 0) AS total_cogs FROM invoice_items WHERE invoice_id = ?', [localInvoiceId]);
+          await AccountingService.postSalesInvoice(txn, invoiceId: localInvoiceId, invoiceNumber: payload['invoice_number'] as String, date: payload['invoice_date'] as String, subtotal: (payload['subtotal'] as num).toDouble(), tax: (payload['tax_total'] as num).toDouble(), total: (payload['grand_total'] as num).toDouble(), costOfGoodsSold: (cogsRows.first['total_cogs'] as num).toDouble());
+        }
+        if (isSalesReturn && isNewInvoice) {
+          final cogsRows = await txn.rawQuery('SELECT COALESCE(SUM(cost_of_goods_sold), 0) AS total_cogs FROM invoice_items WHERE invoice_id = ?', [localInvoiceId]);
+          await AccountingService.postSalesReturn(txn, returnId: localInvoiceId, returnNumber: payload['invoice_number'] as String, date: payload['invoice_date'] as String, subtotal: (payload['subtotal'] as num).toDouble(), tax: (payload['tax_total'] as num).toDouble(), total: (payload['grand_total'] as num).toDouble(), costOfGoodsReturned: (cogsRows.first['total_cogs'] as num).toDouble());
         }
         if (isPurchaseReturn && isNewInvoice) {
           await AccountingService.postPurchaseReturn(
