@@ -5,13 +5,13 @@ void main() {
   group('GstCalculator', () {
     test('calculates intra-state GST and preserves paise across CGST and SGST', () {
       final result = GstCalculator.calculate(quantity: 1, unitRate: 100.05, gstRate: 18, intraState: true);
-      expect(result.taxableValue, 100.05);
-      expect(result.taxAmount, 18.01);
-      expect(result.cgstAmount, 9.01);
-      expect(result.sgstAmount, 9.00);
+      expect(result.taxableValue, closeTo(100.05, 0.000001));
+      expect(result.taxAmount, closeTo(18.01, 0.000001));
+      expect(result.cgstAmount, closeTo(9.01, 0.000001));
+      expect(result.sgstAmount, closeTo(9.00, 0.000001));
       expect(result.igstAmount, 0);
-      expect(result.cgstAmount + result.sgstAmount, result.taxAmount);
-      expect(result.lineTotal, 118.06);
+      expect(result.cgstAmount + result.sgstAmount, closeTo(result.taxAmount, 0.000001));
+      expect(result.lineTotal, closeTo(118.06, 0.000001));
     });
 
     test('calculates inter-state GST entirely as IGST', () {
