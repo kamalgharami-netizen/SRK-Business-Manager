@@ -11,7 +11,7 @@ The repository contains a working Flutter application foundation and feature mod
 - Expenses, receipts and payments
 - Inventory quantities, stock adjustments and FIFO inventory-cost layers
 - Double-entry journal posting, chart of accounts, trial balance, profit & loss and balance sheet
-- GST invoice tax calculation fields, HSN/SAC, place of supply and tax summaries
+- Centralised GST line calculation with paise rounding, intra-state CGST/SGST and inter-state IGST allocation, HSN/SAC and place-of-supply fields; GST statutory exports remain pending
 - Staff profile management (local profiles) and cloud business-user access roles
 - Local database backup and restore with business-identity validation
 - Durable offline sync queue, retry scheduling, optimistic cloud revision checks and a conflict-resolution screen
@@ -22,7 +22,7 @@ The repository contains a working Flutter application foundation and feature mod
 ## Implemented sync limitations
 
 - Downloading a new purchase invoice now recreates its local invoice lines, FIFO purchase-cost layers and purchase-invoice journal entry on the receiving device. Existing purchase invoices are treated as immutable during reconciliation so their local cost-layer references are not rebuilt.
-- Purchase returns are not yet included in the invoice sync workflow. Their supplier-payable / input-GST reversal, source-linked FIFO layer reduction and return records therefore do not replicate to another device. Sales invoices and sales returns also still need complete remote journal and FIFO-cost reconstruction.
+- Purchase and sales invoices and their returns are now included in invoice sync. The current workflow reconstructs source-linked FIFO costs and accounting journals for these transaction types on receiving devices. This has passed the configured CI analyzer, automated tests and Windows/Android build jobs; broader real-device multi-device reconciliation remains pending.
 - Stock movements and product quantity snapshots sync separately. The receiver does not replay movement deltas, to avoid double-counting during repeated pulls.
 - Cloud sync currently performs paged reconciliation of supported records; production-scale incremental sync and broader entity coverage remain pending.
 - Staff profiles are local records. Cloud login accounts and the role-based permissions in the Team & Access screen are separate concepts.
@@ -105,8 +105,8 @@ Check **Actions → SRK Business Manager - Cloud Build** for the latest run and 
 
 ## Remaining work before production release
 
-1. Complete accounting-ledger replication for cloud-downloaded sales invoices, sales returns and purchase returns; add source-linked FIFO restoration/removal and cross-device balance reconciliation. Purchase-invoice journal and FIFO-layer reconstruction are now implemented and have automated accounting regression coverage.
-2. Complete the GST engine and statutory reports, including validated GSTR-1 / GSTR-3B data exports and tax-period controls. Independently verify all tax calculations against current official GST rules before release.
+1. Complete cross-device payment allocation and party-ledger reconciliation tests, including linked and unlinked receipts/payments and concurrent edits.
+2. Complete GST statutory reporting and validated GSTR-1 / GSTR-3B data exports, tax-period controls, and independent verification against current official GST rules. The central paise-rounded invoice calculation engine is implemented with automated unit tests.
 3. Add cloud sync for remaining business data (including staff profiles where appropriate), company settings, warehouses and other inventory records.
 4. Improve incremental sync, large-dataset performance, conflict recovery and end-to-end multi-device tests.
 5. Complete role/permission tests, audit trails, security review and backup/restore disaster-recovery tests.
