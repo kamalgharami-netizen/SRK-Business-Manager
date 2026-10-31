@@ -3,6 +3,7 @@ import 'package:supabase_flutter/supabase_flutter.dart';
 
 import '../dashboard/dashboard_page.dart';
 import '../../data/local/app_database.dart';
+import '../../data/sync/business_sync_service.dart';
 import 'company_setup_page.dart';
 
 class BusinessWorkspacePage extends StatefulWidget {
@@ -69,9 +70,10 @@ class _BusinessWorkspacePageState extends State<BusinessWorkspacePage> {
         title: Text(business['name'] as String? ?? 'Business'),
         content: const Text(
           'This business will use its own offline database on this device. '
-          'Your existing device-local data will remain in its original database '
-          'and will not be moved automatically. Cloud synchronisation of '
-          'accounting records is not active yet. Continue?',
+          'Your existing device-local data will remain separate. The first '
+          'cloud-sync stage covers parties and products; invoices and other '
+          'accounting records remain local for now. Apply migration 0003 in '
+          'Supabase to enable cloud record storage. Continue?',
         ),
         actions: [
           TextButton(
@@ -89,6 +91,36 @@ class _BusinessWorkspacePageState extends State<BusinessWorkspacePage> {
 
     try {
       await AppDatabase.instance.openBusinessDatabase(businessId);
+      try {
+        final result = await BusinessSyncService(
+          businessId: businessId,
+        ).syncNow();
+        if (mounted &&
+            (result.uploaded > 0 ||
+                result.downloaded > 0 ||
+                result.uploadFailures > 0 ||
+                result.downloadFailures > 0)) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(
+              content: Text(
+                'Sync: ${result.uploaded} uploaded, '
+                '${result.downloaded} downloaded, '
+                '${result.uploadFailures + result.downloadFailures} failed.',
+              ),
+            ),
+          );
+        }
+      } catch (error) {
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(
+              content: Text(
+                'Cloud sync unavailable. Your local data is preserved. $error',
+              ),
+            ),
+          );
+        }
+      }
       if (!mounted) return;
       await Navigator.of(context).push(
         MaterialPageRoute<void>(
