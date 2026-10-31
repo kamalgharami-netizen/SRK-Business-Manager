@@ -179,7 +179,7 @@ class _DashboardPageState extends State<DashboardPage> {
                         leading: CircleAvatar(child: Icon(module.icon)),
                         title: Text(module.title, style: const TextStyle(fontWeight: FontWeight.w600)),
                         trailing: const Icon(Icons.chevron_right),
-                        onTap: () {
+                        onTap: () async {
                           final Widget page = switch (module.title) {
                             'Sales & Invoices' => const InvoicesPage(),
                             'Sales Returns' => const SalesReturnsPage(),
@@ -202,9 +202,14 @@ class _DashboardPageState extends State<DashboardPage> {
                             'Balance Sheet' => const ReportsPage(reportType: 'Balance Sheet'),
                             _ => _ModulePlaceholderPage(module: module),
                           };
-                          Navigator.of(context).push(
+                          await Navigator.of(context).push(
                             MaterialPageRoute<void>(builder: (_) => page),
                           );
+                          if (mounted) {
+                            setState(() {
+                              _summaryFuture = _loadSummary();
+                            });
+                          }
                         },
                       ),
                     );
