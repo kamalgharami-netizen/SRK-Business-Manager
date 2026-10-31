@@ -9,6 +9,8 @@ class StaffPage extends StatefulWidget {
 class _StaffPageState extends State<StaffPage> {
   List<Map<String, Object?>> _staff = [];
   bool _loading = true;
+  static const int _maxActiveStaffProfiles = 10;
+  int get _activeStaffCount => _staff.where((m) => (m['is_active'] as int? ?? 1) == 1).length;
   @override
   void initState() { super.initState(); _load(); }
   Future<void> _load() async {
@@ -18,6 +20,12 @@ class _StaffPageState extends State<StaffPage> {
     setState(() { _staff = rows; _loading = false; });
   }
   Future<void> _add({Map<String, Object?>? member}) async {
+    if (member == null && _activeStaffCount >= _maxActiveStaffProfiles) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Maximum 10 active staff profiles allowed. Deactivate one before adding another.')),
+      );
+      return;
+    }
     final name = TextEditingController(text: member?['display_name'] as String? ?? '');
     final phone = TextEditingController(text: member?['phone'] as String? ?? '');
     String role = member?['role'] as String? ?? 'staff';
@@ -43,17 +51,23 @@ class _StaffPageState extends State<StaffPage> {
     name.dispose(); phone.dispose();
   }
   Future<void> _toggle(Map<String, Object?> member) async {
-    final db = await AppDatabase.instance.database;
     final active = (member['is_active'] as int? ?? 1) == 1;
+    if (!active && _activeStaffCount >= _maxActiveStaffProfiles) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Maximum 10 active staff profiles allowed. Deactivate another profile first.')),
+      );
+      return;
+    }
+    final db = await AppDatabase.instance.database;
     await db.update('staff_members', {'is_active': active ? 0 : 1}, where: 'id = ?', whereArgs: [member['id']]);
     await _load();
   }
   @override
   Widget build(BuildContext context) => Scaffold(
     appBar: AppBar(title: const Text('Staff & Permissions')),
-    floatingActionButton: FloatingActionButton.extended(onPressed: _add, icon: const Icon(Icons.person_add), label: const Text('Add staff')),
+    floatingActionButton: FloatingActionButton.extended(onPressed: _activeStaffCount >= _maxActiveStaffProfiles ? null : _add, icon: const Icon(Icons.person_add), label: const Text('Add staff')),
     body: _loading ? const Center(child: CircularProgressIndicator()) : Column(children: [
-      const MaterialBanner(content: Text('Staff profiles and role labels only. Login authentication and enforced permissions are not yet enabled.'), actions: [SizedBox.shrink()]),
+      MaterialBanner(content: Text('Active staff profiles: $_activeStaffCount/$_maxActiveStaffProfiles. This limit applies to local profiles only; staff login accounts and enforced role permissions are not yet enabled.'), actions: const [SizedBox.shrink()]),
       Expanded(child: _staff.isEmpty ? const Center(child: Text('No staff profiles added.')) : ListView.separated(
         padding: const EdgeInsets.all(16), itemCount: _staff.length, separatorBuilder: (_, i) => const Divider(),
         itemBuilder: (ctx, i) { final m = _staff[i]; final active = (m['is_active'] as int? ?? 1) == 1; return ListTile(
