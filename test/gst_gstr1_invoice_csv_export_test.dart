@@ -6,14 +6,14 @@ void main() {
   group('Gstr1InvoiceCsvExport', () {
     test('exports invoice categories, amounts, supplier and period', () {
       const summary = Gstr1ClassificationSummary([
-        const Gstr1InvoiceClassification(
+        Gstr1InvoiceClassification(
           invoiceNumber: 'INV-001',
           category: Gstr1SupplyCategory.b2b,
           invoiceValue: 118,
           taxableValue: 100,
           taxAmount: 18,
         ),
-        const Gstr1InvoiceClassification(
+        Gstr1InvoiceClassification(
           invoiceNumber: 'INV-002',
           category: Gstr1SupplyCategory.b2cl,
           invoiceValue: 150000,
@@ -35,7 +35,7 @@ void main() {
     });
 
     test('quotes invoice numbers and review notes containing commas', () {
-      final summary = Gstr1ClassificationSummary([
+      const summary = Gstr1ClassificationSummary([
         const Gstr1InvoiceClassification(
           invoiceNumber: 'INV, "003"',
           category: Gstr1SupplyCategory.review,
