@@ -53,12 +53,36 @@ class _BusinessWorkspacePageState extends State<BusinessWorkspacePage> {
     await Supabase.instance.client.auth.signOut();
   }
 
-  void _openBusiness(Map<String, dynamic> business) {
-    Navigator.of(context).push(
-      MaterialPageRoute(
-        builder: (_) => DashboardPage(cloudConfigured: true),
+  Future<void> _openBusiness(Map<String, dynamic> business) async {
+    final proceed = await showDialog<bool>(
+      context: context,
+      builder: (dialogContext) => AlertDialog(
+        title: Text(business['name'] as String? ?? 'Business'),
+        content: const Text(
+          'Your cloud account and business profile are connected. '
+          'Accounting records are still stored in this device database; '
+          'company-specific local data separation and cloud synchronisation '
+          'are not active yet. Continue to the local dashboard?',
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(dialogContext, false),
+            child: const Text('Cancel'),
+          ),
+          FilledButton(
+            onPressed: () => Navigator.pop(dialogContext, true),
+            child: const Text('Continue'),
+          ),
+        ],
       ),
     );
+    if (proceed == true && mounted) {
+      await Navigator.of(context).push(
+        MaterialPageRoute<void>(
+          builder: (_) => const DashboardPage(cloudConfigured: true),
+        ),
+      );
+    }
   }
 
   @override
