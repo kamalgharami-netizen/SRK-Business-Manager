@@ -146,6 +146,84 @@ void main() {
       expect(credit, 178);
     });
 
+    test('posts a balanced purchase invoice with input GST and supplier payable', () async {
+      final db = await _openAccountingDatabase();
+      addTearDown(db.close);
+
+      await db.transaction((txn) => AccountingService.postPurchaseInvoice(
+            txn,
+            invoiceId: 30,
+            invoiceNumber: 'PUR-030',
+            date: '2026-10-31',
+            subtotal: 1000,
+            tax: 180,
+            total: 1180,
+          ));
+
+      final entries = await db.query('journal_entries');
+      final lines = await db.query('journal_lines');
+      final debit = lines.fold<double>(
+        0,
+        (sum, row) => sum + (row['debit'] as num).toDouble(),
+      );
+      final credit = lines.fold<double>(
+        0,
+        (sum, row) => sum + (row['credit'] as num).toDouble(),
+      );
+
+      expect(entries, hasLength(1));
+      expect(entries.single['source_type'], 'purchase_invoice');
+      expect(entries.single['source_id'], 30);
+      expect(entries.single['status'], 'posted');
+      expect(lines, hasLength(3));
+      expect(debit, 1180);
+      expect(credit, 1180);
+    });
+
+    test('rejects a purchase invoice whose total does not equal subtotal plus tax', () async {
+      final db = await _openAccountingDatabase();
+      addTearDown(db.close);
+
+      await expectLater(
+        db.transaction((txn) => AccountingService.postPurchaseInvoice(
+              txn,
+              invoiceId: 31,
+              invoiceNumber: 'PUR-031',
+              date: '2026-10-31',
+              subtotal: 1000,
+              tax: 180,
+              total: 1100,
+            )),
+        throwsA(isA<StateError>()),
+      );
+
+      expect(await db.query('journal_entries'), isEmpty);
+      expect(await db.query('journal_lines'), isEmpty);
+    });
+
+    test('prevents duplicate purchase invoice journal posting', () async {
+      final db = await _openAccountingDatabase();
+      addTearDown(db.close);
+
+      Future<void> postPurchase() => db.transaction(
+            (txn) => AccountingService.postPurchaseInvoice(
+              txn,
+              invoiceId: 32,
+              invoiceNumber: 'PUR-032',
+              date: '2026-10-31',
+              subtotal: 500,
+              tax: 90,
+              total: 590,
+            ),
+          );
+
+      await postPurchase();
+      await expectLater(postPurchase(), throwsA(isA<StateError>()));
+
+      expect(await db.query('journal_entries'), hasLength(1));
+      expect(await db.query('journal_lines'), hasLength(3));
+    });
+
     test('posts a balanced purchase return and reverses input GST', () async {
       final db = await _openAccountingDatabase();
       addTearDown(db.close);
