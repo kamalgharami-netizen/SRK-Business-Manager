@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import '../../data/local/app_database.dart';
 import '../../data/local/accounting_service.dart';
 import '../../data/local/inventory_cost_service.dart';
+import '../../data/local/gst_calculator.dart';
 import '../../data/indian_states.dart';
 import '../../data/sync/business_sync_service.dart';
 import '../invoices/invoice_pdf_service.dart';
@@ -236,6 +237,9 @@ class _PurchasesPageState extends State<PurchasesPage> {
               'PUR-${now.year}${now.month.toString().padLeft(2, '0')}${now.day.toString().padLeft(2, '0')}-${now.microsecondsSinceEpoch.toString().substring(8)}';
           double subtotal = 0;
           double taxTotal = 0;
+          double cgstTotal = 0;
+          double sgstTotal = 0;
+          double igstTotal = 0;
           final preparedItems = <Map<String, Object?>>[];
 
           for (final line in lines) {
@@ -248,17 +252,15 @@ class _PurchasesPageState extends State<PurchasesPage> {
                 !gstRate.isFinite || gstRate < 0 || gstRate > 100) {
               throw StateError('One or more purchase item values are invalid.');
             }
-            final base = quantity * rate;
-            final tax = base * gstRate / 100;
             final isIntraState = placeOfSupply.text.trim().toLowerCase() == businessState.toLowerCase();
-            final cgst = isIntraState ? tax / 2 : 0.0;
-            final sgst = isIntraState ? tax - cgst : 0.0;
-            final igst = isIntraState ? 0.0 : tax;
-            if (!base.isFinite || !tax.isFinite) {
-              throw StateError('Purchase amount is too large.');
-            }
+            final tax = GstCalculator.calculate(quantity: quantity, unitRate: rate, gstRate: gstRate, intraState: isIntraState);
+            final base = tax.taxableValue;
+            if (!base.isFinite || !tax.taxAmount.isFinite) throw StateError('Purchase amount is too large.');
             subtotal += base;
-            taxTotal += tax;
+            taxTotal += tax.taxAmount;
+            cgstTotal += tax.cgstAmount;
+            sgstTotal += tax.sgstAmount;
+            igstTotal += tax.igstAmount;
             preparedItems.add({
               'product_id': line.productId,
               'description': product['name'] as String,
@@ -268,11 +270,11 @@ class _PurchasesPageState extends State<PurchasesPage> {
               'rate': rate,
               'discount': 0,
               'gst_rate': gstRate,
-              'tax_amount': tax,
-              'cgst_amount': cgst,
-              'sgst_amount': sgst,
-              'igst_amount': igst,
-              'line_total': base + tax,
+              'tax_amount': tax.taxAmount,
+              'cgst_amount': tax.cgstAmount,
+              'sgst_amount': tax.sgstAmount,
+              'igst_amount': tax.igstAmount,
+              'line_total': tax.lineTotal,
             });
           }
 
@@ -287,10 +289,10 @@ class _PurchasesPageState extends State<PurchasesPage> {
             'tax_total': taxTotal,
             'place_of_supply': placeOfSupply.text.trim(),
             'tax_type': placeOfSupply.text.trim().toLowerCase() == businessState.toLowerCase() ? 'intra_state' : 'inter_state',
-            'cgst_total': placeOfSupply.text.trim().toLowerCase() == businessState.toLowerCase() ? taxTotal / 2 : 0,
-            'sgst_total': placeOfSupply.text.trim().toLowerCase() == businessState.toLowerCase() ? taxTotal / 2 : 0,
-            'igst_total': placeOfSupply.text.trim().toLowerCase() == businessState.toLowerCase() ? 0 : taxTotal,
-            'grand_total': subtotal + taxTotal,
+            'cgst_total': cgstTotal,
+            'sgst_total': sgstTotal,
+            'igst_total': igstTotal,
+            'grand_total': GstCalculator.roundMoney(subtotal + taxTotal),
             'amount_paid': 0,
             'status': 'unpaid',
             'notes': notes.text.trim(),
