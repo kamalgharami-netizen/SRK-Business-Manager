@@ -161,7 +161,9 @@ class _AccountsPageState extends State<AccountsPage> {
       if ((account['is_active'] as num).toInt() != 1) continue;
       final type = account['account_type'] as String;
       if (!['asset', 'liability', 'equity'].contains(type)) continue;
-      if (account['account_code'] == '3200') continue;
+      // Receivable/payable control balances come from individual party records.
+      // Exclude them here to prevent double-counting in Trial Balance/Balance Sheet.
+      if (['1100', '2000', '3200'].contains(account['account_code'])) continue;
       final id = account['id'] as int;
       final raw = _amounts[id]?.text.trim() ?? '';
       if (raw.isEmpty) continue;
@@ -264,7 +266,7 @@ class _AccountsPageState extends State<AccountsPage> {
       final type = account['account_type'] as String;
       return (account['is_active'] as num).toInt() == 1 &&
           ['asset', 'liability', 'equity'].contains(type) &&
-          account['account_code'] != '3200';
+          !['1100', '2000', '3200'].contains(account['account_code']);
     }).toList();
 
     return Scaffold(
@@ -314,7 +316,7 @@ class _AccountsPageState extends State<AccountsPage> {
                       children: [
                         Text('Opening Balances', style: Theme.of(context).textTheme.titleLarge),
                         const SizedBox(height: 6),
-                        const Text('Enter balances as on the date you start using SRK Business Manager. Only Asset, Liability and Equity accounts are included.'),
+                        const Text('Enter balances as on the date you start using SRK Business Manager. Cash (1000), Bank (1010), other Asset, Liability and Equity accounts are included. Enter customer receivables and supplier payables in each Party profile; their control accounts are excluded here to prevent duplicate reporting.'),
                         const SizedBox(height: 12),
                         if (_openingPosted)
                           const ListTile(
