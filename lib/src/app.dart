@@ -1,5 +1,7 @@
 import 'package:flutter/material.dart';
+
 import 'config/app_config.dart';
+import 'features/auth/cloud_auth_gate.dart';
 import 'features/dashboard/dashboard_page.dart';
 
 class SrkBusinessManagerApp extends StatelessWidget {
@@ -16,7 +18,9 @@ class SrkBusinessManagerApp extends StatelessWidget {
         colorScheme: ColorScheme.fromSeed(seedColor: const Color(0xFF2457A7)),
         scaffoldBackgroundColor: const Color(0xFFF6F7FB),
       ),
-      home: DashboardPage(cloudConfigured: config.hasSupabaseConfig),
+      home: config.hasSupabaseConfig
+          ? const CloudAuthGate()
+          : const DashboardPage(cloudConfigured: false),
     );
   }
 }
