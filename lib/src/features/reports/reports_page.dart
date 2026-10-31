@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import '../../data/local/app_database.dart';
+import '../../data/local/gst_return_readiness.dart';
 
 class ReportsPage extends StatefulWidget {
   const ReportsPage({super.key, required this.reportType});
@@ -28,6 +29,8 @@ class _ReportsPageState extends State<ReportsPage> {
   double _balanceEquity = 0;
   DateTime? _startDate;
   DateTime? _endDate;
+  bool _gstr1Checking = false;
+  GstReadinessReport? _gstr1ReadinessReport;
 
   @override
   void initState() { super.initState(); _load(); }
@@ -371,6 +374,129 @@ class _ReportsPageState extends State<ReportsPage> {
     });
   }
 
+  Future<void> _checkGstr1Readiness() async {
+    if (_startDate == null || _endDate == null) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('GSTR-1 preflight-এর আগে From date এবং To date নির্বাচন করুন।')),
+      );
+      return;
+    }
+    setState(() {
+      _gstr1Checking = true;
+      _gstr1ReadinessReport = null;
+    });
+    try {
+      final db = await AppDatabase.instance.database;
+      final settingRows = await db.query(
+        'app_settings',
+        columns: ['setting_key', 'setting_value'],
+        where: 'setting_key IN (?, ?)',
+        whereArgs: ['company_gstin', 'company_state'],
+      );
+      final settings = {
+        for (final row in settingRows)
+          row['setting_key'] as String: row['setting_value'] as String,
+      };
+      final invoiceRows = await db.rawQuery(
+        '''
+        SELECT i.invoice_number, i.invoice_date, i.place_of_supply,
+          p.gstin AS party_gstin
+        FROM invoices i
+        LEFT JOIN parties p ON p.id = i.party_id
+        WHERE i.invoice_type = 'sale'
+          AND i.invoice_date >= ? AND i.invoice_date < ?
+        ORDER BY i.invoice_date, i.invoice_number
+        ''',
+        [_date(_startDate!), _date(_endDate!.add(const Duration(days: 1)))],
+      );
+      final invoices = <Map<String, Object?>>[];
+      for (final invoice in invoiceRows) {
+        final itemRows = await db.rawQuery(
+          '''
+          SELECT hsn_sac, tax_amount, (line_total - tax_amount) AS taxable_value
+          FROM invoice_items
+          WHERE invoice_id = (
+            SELECT id FROM invoices WHERE invoice_number = ? LIMIT 1
+          )
+          ORDER BY id
+          ''',
+          [invoice['invoice_number']],
+        );
+        invoices.add({
+          ...invoice,
+          'items': itemRows,
+        });
+      }
+      final report = GstReturnReadiness.validateGstr1(
+        supplierGstin: settings['company_gstin'] ?? '',
+        supplierState: settings['company_state'] ?? '',
+        periodStart: _startDate!,
+        periodEnd: _endDate!,
+        invoices: invoices,
+      );
+      if (!mounted) return;
+      setState(() => _gstr1ReadinessReport = report);
+    } catch (error) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('GSTR-1 preflight চালানো যায়নি: $error')),
+      );
+    } finally {
+      if (mounted) setState(() => _gstr1Checking = false);
+    }
+  }
+
+  Widget _gstr1ReadinessCard() {
+    final report = _gstr1ReadinessReport;
+    return Card(
+      child: Padding(
+        padding: const EdgeInsets.all(12),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            Text('GSTR-1 প্রস্তুতি যাচাই', style: Theme.of(context).textTheme.titleMedium),
+            const SizedBox(height: 6),
+            const Text('নির্বাচিত সময়ের বিক্রয় চালানে GSTIN, তারিখ, Place of Supply, HSN/SAC এবং করের তথ্যের প্রাথমিক পরীক্ষা।'),
+            const SizedBox(height: 10),
+            FilledButton.icon(
+              onPressed: _gstr1Checking ? null : _checkGstr1Readiness,
+              icon: _gstr1Checking
+                  ? const SizedBox(width: 18, height: 18, child: CircularProgressIndicator(strokeWidth: 2))
+                  : const Icon(Icons.fact_check),
+              label: Text(_gstr1Checking ? 'যাচাই চলছে…' : 'GSTR-1 প্রস্তুতি যাচাই করুন'),
+            ),
+            if (report != null) ...[
+              const SizedBox(height: 10),
+              Text('ত্রুটি: ${report.errorCount} • সতর্কতা: ${report.warningCount}',
+                style: const TextStyle(fontWeight: FontWeight.bold)),
+              for (final issue in report.issues)
+                ListTile(
+                  dense: true,
+                  contentPadding: EdgeInsets.zero,
+                  leading: Icon(
+                    issue.severity == GstReadinessSeverity.error
+                        ? Icons.error_outline
+                        : Icons.warning_amber_outlined,
+                    color: issue.severity == GstReadinessSeverity.error
+                        ? Colors.red
+                        : Colors.orange,
+                  ),
+                  title: Text(issue.message),
+                  subtitle: Text(issue.code),
+                ),
+              Text(
+                report.canPrepareDraft
+                    ? 'প্রাথমিক যাচাইয়ে বাধাদানকারী ত্রুটি পাওয়া যায়নি। এটি GSTN-এ জমা দেওয়ার অনুমোদন বা ফাইলিং-রেডি রিটার্ন নয়।'
+                    : 'ত্রুটিগুলি সংশোধন করে আবার যাচাই করুন। এই ফলাফল GSTN-এ জমা দেওয়ার অনুমোদন নয়।',
+                style: const TextStyle(fontWeight: FontWeight.w600),
+              ),
+            ],
+          ],
+        ),
+      ),
+    );
+  }
+
   double _number(String key) => (_summary[key] as num?)?.toDouble() ?? 0;
   String _money(double value) => '₹${value.toStringAsFixed(2)}';
 
@@ -434,6 +560,7 @@ class _ReportsPageState extends State<ReportsPage> {
             ),
           ],
           if (title == 'GST Reports') ...[
+            _gstr1ReadinessCard(),
             _metric('Sales taxable + tax total', _money(_number('sales')), Icons.point_of_sale),
             _metric('Output GST on sales', _money(_number('salesTax')), Icons.south),
             _metric('Output CGST', _money(_number('salesCgst')), Icons.south),
