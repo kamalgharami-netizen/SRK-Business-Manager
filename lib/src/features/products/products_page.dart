@@ -109,11 +109,31 @@ class _ProductsPageState extends State<ProductsPage> {
         'gst_rate': double.parse(gstRate.text.trim()),
         'updated_at': DateTime.now().toIso8601String(),
       };
-      if (product == null) {
-        await db.insert('products', values);
-      } else {
-        await db.update('products', values, where: 'id = ?', whereArgs: [product['id']]);
-      }
+      final syncId = product == null
+          ? AppDatabase.instance.createSyncId()
+          : product['sync_id'] as String? ?? AppDatabase.instance.createSyncId();
+      values['sync_id'] = syncId;
+      await db.transaction((txn) async {
+        if (product == null) {
+          await txn.insert('products', values);
+          await AppDatabase.instance.enqueueSyncOperation(
+            tableName: 'products',
+            recordId: syncId,
+            operation: 'insert',
+            payload: Map<String, dynamic>.from(values),
+            executor: txn,
+          );
+        } else {
+          await txn.update('products', values, where: 'id = ?', whereArgs: [product['id']]);
+          await AppDatabase.instance.enqueueSyncOperation(
+            tableName: 'products',
+            recordId: syncId,
+            operation: 'update',
+            payload: Map<String, dynamic>.from(values),
+            executor: txn,
+          );
+        }
+      });
       await _loadProducts();
     }
 
@@ -147,7 +167,18 @@ class _ProductsPageState extends State<ProductsPage> {
     );
     if (confirmed != true) return;
     final db = await AppDatabase.instance.database;
-    await db.delete('products', where: 'id = ?', whereArgs: [product['id']]);
+    final syncId = product['sync_id'] as String? ?? AppDatabase.instance.createSyncId();
+    final payload = Map<String, dynamic>.from(product)..['sync_id'] = syncId;
+    await db.transaction((txn) async {
+      await AppDatabase.instance.enqueueSyncOperation(
+        tableName: 'products',
+        recordId: syncId,
+        operation: 'delete',
+        payload: payload,
+        executor: txn,
+      );
+      await txn.delete('products', where: 'id = ?', whereArgs: [product['id']]);
+    });
     await _loadProducts();
   }
 
