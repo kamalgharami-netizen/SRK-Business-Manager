@@ -1,5 +1,6 @@
 import 'dart:convert';
 import 'dart:io';
+import 'dart:math';
 
 import 'package:path/path.dart' as p;
 import 'package:path_provider/path_provider.dart';
@@ -10,7 +11,7 @@ class AppDatabase {
   AppDatabase._();
 
   static final AppDatabase instance = AppDatabase._();
-  static const int _databaseVersion = 12;
+  static const int _databaseVersion = 13;
   String? _databasePath;
   String? _activeBusinessId;
   Database? _database;
@@ -134,6 +135,14 @@ class AppDatabase {
         if (oldVersion < 12) {
           await db.execute('ALTER TABLE inventory_cost_layers ADD COLUMN source_item_id INTEGER');
         }
+        if (oldVersion < 13) {
+          await db.execute('ALTER TABLE parties ADD COLUMN sync_id TEXT');
+          await db.execute('ALTER TABLE products ADD COLUMN sync_id TEXT');
+          await _backfillSyncIds(db, 'parties');
+          await _backfillSyncIds(db, 'products');
+          await db.execute('CREATE UNIQUE INDEX idx_parties_sync_id ON parties(sync_id)');
+          await db.execute('CREATE UNIQUE INDEX idx_products_sync_id ON products(sync_id)');
+        }
         if (oldVersion < 11) {
           await db.execute('ALTER TABLE stock_movements RENAME TO stock_movements_old');
           await db.execute("""
@@ -188,10 +197,39 @@ class AppDatabase {
     }
   }
 
+  String createSyncId() {
+    final random = Random.secure();
+    final bytes = List<int>.generate(16, (_) => random.nextInt(256));
+    bytes[6] = (bytes[6] & 0x0f) | 0x40;
+    bytes[8] = (bytes[8] & 0x3f) | 0x80;
+    final hex = bytes.map((value) => value.toRadixString(16).padLeft(2, '0')).join();
+    return '${hex.substring(0, 8)}-${hex.substring(8, 12)}-${hex.substring(12, 16)}-${hex.substring(16, 20)}-${hex.substring(20)}';
+  }
+
+  Future<void> _backfillSyncIds(DatabaseExecutor db, String tableName) async {
+    if (tableName != 'parties' && tableName != 'products') {
+      throw ArgumentError.value(tableName, 'tableName');
+    }
+    final rows = await db.query(
+      tableName,
+      columns: ['id'],
+      where: 'sync_id IS NULL',
+    );
+    for (final row in rows) {
+      await db.update(
+        tableName,
+        {'sync_id': createSyncId()},
+        where: 'id = ?',
+        whereArgs: [row['id']],
+      );
+    }
+  }
+
   Future<void> _createSchema(Database db, int version) async {
     await db.execute('''
       CREATE TABLE parties (
         id INTEGER PRIMARY KEY AUTOINCREMENT,
+        sync_id TEXT UNIQUE,
         name TEXT NOT NULL,
         party_type TEXT NOT NULL CHECK (party_type IN ('customer','supplier','both')),
         phone TEXT,
@@ -210,6 +248,7 @@ class AppDatabase {
     await db.execute('''
       CREATE TABLE products (
         id INTEGER PRIMARY KEY AUTOINCREMENT,
+        sync_id TEXT UNIQUE,
         name TEXT NOT NULL,
         sku TEXT,
         barcode TEXT,
