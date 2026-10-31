@@ -8,6 +8,7 @@ import '../../data/local/gst_return_readiness.dart';
 import '../../data/local/gst_gstr1_classification.dart';
 import '../../data/local/gst_gstr1_hsn_summary.dart';
 import '../../data/local/gst_gstr1_csv_export.dart';
+import '../../data/local/gst_gstr1_invoice_csv_export.dart';
 
 class ReportsPage extends StatefulWidget {
   const ReportsPage({super.key, required this.reportType});
@@ -430,7 +431,7 @@ class _ReportsPageState extends State<ReportsPage> {
           ''',
           [invoice['id']],
         );
-        final taxableValue = itemRows.fold<double>(0, (sum, item) => sum + ((item['taxable_value'] as num?)?.toDouble() ?? 0));
+        final taxableValue = itemRows.fold<double>(0, (sum, item) => sum + (((item['line_total'] as num?)?.toDouble() ?? 0) - ((item['tax_amount'] as num?)?.toDouble() ?? 0)));
         final taxAmount = itemRows.fold<double>(0, (sum, item) => sum + ((item['tax_amount'] as num?)?.toDouble() ?? 0));
         invoices.add({...invoice, 'items': itemRows, 'invoice_value': invoice['grand_total'], 'taxable_value': taxableValue, 'tax_amount': taxAmount});
       }
@@ -520,6 +521,12 @@ class _ReportsPageState extends State<ReportsPage> {
       crossAxisAlignment: CrossAxisAlignment.stretch, children: [
         Text('GSTR-1 চালান শ্রেণিবিন্যাস', style: Theme.of(context).textTheme.titleMedium),
         const SizedBox(height: 6),
+        OutlinedButton.icon(
+          onPressed: summary.invoices.isEmpty ? null : _exportGstr1InvoiceCsv,
+          icon: const Icon(Icons.download),
+          label: const Text('চালান-ভিত্তিক CSV রপ্তানি করুন'),
+        ),
+        const SizedBox(height: 6),
         for (final entry in categories)
           ListTile(dense: true, contentPadding: EdgeInsets.zero,
             title: Text(entry.$2),
@@ -530,6 +537,45 @@ class _ReportsPageState extends State<ReportsPage> {
       ],
     )));
   }
+  Future<void> _exportGstr1InvoiceCsv() async {
+    final summary = _gstr1ClassificationSummary;
+    if (summary == null || summary.invoices.isEmpty) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('রপ্তানির জন্য চালানের তথ্য পাওয়া যায়নি।')),
+      );
+      return;
+    }
+    try {
+      final db = await AppDatabase.instance.database;
+      final rows = await db.query(
+        'app_settings', columns: ['setting_value'],
+        where: 'setting_key = ?', whereArgs: ['company_gstin'], limit: 1,
+      );
+      final gstin = rows.isEmpty ? '' : (rows.first['setting_value'] as String? ?? '');
+      final content = Gstr1InvoiceCsvExport.build(
+        summary, supplierGstin: gstin,
+        periodStart: _startDate == null ? 'শুরু থেকে' : _date(_startDate!),
+        periodEnd: _endDate == null ? 'সর্বশেষ তারিখ' : _date(_endDate!),
+      );
+      final stamp = DateTime.now().toIso8601String().substring(0, 10);
+      final savedPath = await FilePicker.platform.saveFile(
+        dialogTitle: 'GSTR-1 চালান-ভিত্তিক CSV সংরক্ষণ করুন',
+        fileName: 'gstr1-invoice-summary-$stamp.csv',
+        type: FileType.custom, allowedExtensions: ['csv'],
+        bytes: Uint8List.fromList(utf8.encode(content)),
+      );
+      if (!mounted || savedPath == null) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('চালান-ভিত্তিক CSV সংরক্ষণের প্রক্রিয়া সম্পন্ন হয়েছে।')),
+      );
+    } catch (error) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('চালান-ভিত্তিক CSV রপ্তানি করা যায়নি: $error')),
+      );
+    }
+  }
+
   Future<void> _exportGstr1HsnCsv() async {
     if (_gstr1ClassificationSummary == null || _gstr1HsnSummary.isEmpty) {
       ScaffoldMessenger.of(context).showSnackBar(
