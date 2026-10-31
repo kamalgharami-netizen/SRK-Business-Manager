@@ -149,6 +149,9 @@ class AppDatabase {
           await db.execute('CREATE UNIQUE INDEX idx_expenses_sync_id ON expenses(sync_id)');
         }
         if (oldVersion < 15) {
+          await db.execute('CREATE TABLE sync_metadata (entity_type TEXT NOT NULL, record_id TEXT NOT NULL, remote_updated_at TEXT NOT NULL, PRIMARY KEY (entity_type, record_id))');
+        }
+        if (oldVersion < 15) {
           await db.execute('''CREATE TABLE sync_metadata (
             entity_type TEXT NOT NULL,
             record_id TEXT NOT NULL,
@@ -390,6 +393,8 @@ class AppDatabase {
         PRIMARY KEY (entity_type, record_id)
       )
     ''');
+
+    await db.execute('CREATE TABLE sync_metadata (entity_type TEXT NOT NULL, record_id TEXT NOT NULL, remote_updated_at TEXT NOT NULL, PRIMARY KEY (entity_type, record_id))');
 
     await db.execute('''
       CREATE TABLE app_settings (
@@ -672,6 +677,17 @@ class AppDatabase {
       },
       conflictAlgorithm: ConflictAlgorithm.replace,
     );
+  }
+
+  Future<String?> getSyncRevision({required String entityType, required String recordId}) async {
+    final db = await database;
+    final rows = await db.query('sync_metadata', columns: ['remote_updated_at'], where: 'entity_type = ? AND record_id = ?', whereArgs: [entityType, recordId], limit: 1);
+    return rows.isEmpty ? null : rows.first['remote_updated_at'] as String?;
+  }
+
+  Future<void> saveSyncRevision({required String entityType, required String recordId, required String remoteUpdatedAt}) async {
+    final db = await database;
+    await db.insert('sync_metadata', {'entity_type': entityType, 'record_id': recordId, 'remote_updated_at': remoteUpdatedAt}, conflictAlgorithm: ConflictAlgorithm.replace);
   }
 
   Future<int> getPendingSyncCount() async {
