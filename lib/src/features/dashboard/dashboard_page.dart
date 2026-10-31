@@ -18,6 +18,7 @@ import '../reports/reports_page.dart';
 import '../settings/settings_page.dart';
 import '../sync/sync_status_page.dart';
 import '../staff/staff_page.dart';
+import '../staff/team_access_page.dart';
 import '../parties/parties_page.dart';
 import '../products/products_page.dart';
 
@@ -283,7 +284,7 @@ class _DashboardPageState extends State<DashboardPage> with WidgetsBindingObserv
                             'Accounting & Ledgers' => const ReportsPage(reportType: 'Accounting & Ledgers'),
                             'Chart of Accounts & Opening Balances' => const AccountsPage(),
                             'Business Reports' => const ReportsPage(reportType: 'Business Reports'),
-                            'Staff & Permissions' => const StaffPage(),
+                            'Staff & Permissions' => widget.cloudConfigured && AppDatabase.instance.activeBusinessId != null ? TeamAccessPage(businessId: AppDatabase.instance.activeBusinessId!) : const StaffPage(),
                             'Backup & Sync' => SyncStatusPage(cloudConfigured: widget.cloudConfigured),
                             'Settings' => const SettingsPage(),
                             'Customers & Suppliers' => const PartiesPage(),
