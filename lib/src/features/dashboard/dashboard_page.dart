@@ -13,6 +13,7 @@ import '../purchases/purchases_page.dart';
 import '../purchases/stock_control_page.dart';
 import '../reports/reports_page.dart';
 import '../settings/settings_page.dart';
+import '../sync/sync_status_page.dart';
 import '../staff/staff_page.dart';
 import '../parties/parties_page.dart';
 import '../products/products_page.dart';
@@ -90,7 +91,7 @@ class _DashboardPageState extends State<DashboardPage> {
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
           content: Text(
-            'Parties/products sync: ${result.uploaded} uploaded, '
+            'Business data sync: ${result.uploaded} uploaded, '
             '${result.downloaded} downloaded, '
             '${result.uploadFailures + result.downloadFailures} failed.',
           ),
@@ -137,7 +138,7 @@ class _DashboardPageState extends State<DashboardPage> {
         title: const Text('SRK Business Manager'),
         actions: [
           IconButton(
-            tooltip: 'Sync parties and products',
+            tooltip: 'Sync business data',
             onPressed: widget.cloudConfigured && !_syncing ? _syncNow : null,
             icon: _syncing
                 ? const SizedBox(
@@ -237,7 +238,7 @@ class _DashboardPageState extends State<DashboardPage> {
                             'Chart of Accounts & Opening Balances' => const AccountsPage(),
                             'Business Reports' => const ReportsPage(reportType: 'Business Reports'),
                             'Staff & Permissions' => const StaffPage(),
-                            'Backup & Sync' => const SettingsPage(),
+                            'Backup & Sync' => SyncStatusPage(cloudConfigured: widget.cloudConfigured),
                             'Settings' => const SettingsPage(),
                             'Customers & Suppliers' => const PartiesPage(),
                             'Inventory & Stock' => const ProductsPage(),
