@@ -170,7 +170,14 @@ class AppDatabase {
         }
       },
     );
-    await _ensureDatabaseScope(_database!);
+    try {
+      await _ensureDatabaseScope(_database!);
+    } catch (_) {
+      await _database?.close();
+      _database = null;
+      _databasePath = null;
+      rethrow;
+    }
     return _database!;
   }
 
