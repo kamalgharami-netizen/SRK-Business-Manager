@@ -17,6 +17,8 @@ class AppDatabase {
   static const int _databaseVersion = 20;
   String? _databasePath;
   String? _activeBusinessId;
+  String? _activeBusinessRole;
+  bool _cloudRoleResolved = false;
   Database? _database;
 
   /// Opens a separate offline database for a selected business UUID.
@@ -43,6 +45,53 @@ class AppDatabase {
   }
 
   String? get activeBusinessId => _activeBusinessId;
+  String? get activeBusinessRole => _activeBusinessRole;
+  bool get cloudRoleResolved => _cloudRoleResolved;
+
+  /// Sets the authenticated server role for the currently opened cloud business.
+  void setCloudBusinessRole(String role) {
+    const roles = {'owner', 'admin', 'accountant', 'sales', 'viewer'};
+    final normalized = role.trim().toLowerCase();
+    if (!roles.contains(normalized)) {
+      _activeBusinessRole = null;
+      _cloudRoleResolved = false;
+      throw FormatException('Unsupported business role: $role');
+    }
+    _activeBusinessRole = normalized;
+    _cloudRoleResolved = true;
+  }
+
+  /// Fail closed when the server role cannot be verified.
+  void markCloudRoleUnavailable() {
+    _activeBusinessRole = null;
+    _cloudRoleResolved = false;
+  }
+
+  void clearCloudBusinessRole() {
+    _activeBusinessRole = null;
+    _cloudRoleResolved = false;
+  }
+
+  bool canWriteCloudEntity(String entityType) {
+    if (_activeBusinessId == null) return true;
+    if (!_cloudRoleResolved || _activeBusinessRole == null) return false;
+    switch (_activeBusinessRole) {
+      case 'owner':
+      case 'admin':
+        return true;
+      case 'accountant':
+        return const {
+          'parties', 'products', 'expenses', 'invoices', 'payments',
+          'stock_movements',
+        }.contains(entityType);
+      case 'sales':
+        return const {'parties', 'products', 'invoices', 'payments'}
+            .contains(entityType);
+      case 'viewer':
+      default:
+        return false;
+    }
+  }
 
   Future<Database> get database async {
     if (_database != null) return _database!;
@@ -696,6 +745,16 @@ class AppDatabase {
     }
     if (tableName.trim().isEmpty || recordId.trim().isEmpty) {
       throw ArgumentError('Table name and record ID are required.');
+    }
+    if (_activeBusinessId != null && !canWriteCloudEntity(tableName.trim())) {
+      if (!_cloudRoleResolved) {
+        throw StateError(
+          'Business permissions are not verified. Reconnect and reload your business role before editing.',
+        );
+      }
+      throw StateError(
+        'Your ${_activeBusinessRole ?? 'current'} role does not have permission to modify $tableName.',
+      );
     }
     final db = executor ?? await database;
     return db.insert('sync_queue', {

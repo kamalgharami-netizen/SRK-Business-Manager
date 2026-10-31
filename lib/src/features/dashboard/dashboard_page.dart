@@ -2,6 +2,7 @@ import 'dart:async';
 
 import 'package:connectivity_plus/connectivity_plus.dart';
 import 'package:flutter/material.dart';
+import 'package:supabase_flutter/supabase_flutter.dart';
 
 import '../../data/local/app_database.dart';
 import '../../data/sync/business_sync_service.dart';
@@ -34,6 +35,9 @@ class _DashboardPageState extends State<DashboardPage> with WidgetsBindingObserv
   late Future<Map<String, double>> _summaryFuture;
   bool _syncing = false;
   bool _appIsResumed = true;
+  bool _roleLoading = false;
+  String? _businessRole;
+  String? _roleError;
   Timer? _autoSyncTimer;
   StreamSubscription<List<ConnectivityResult>>? _connectivitySubscription;
 
@@ -42,6 +46,7 @@ class _DashboardPageState extends State<DashboardPage> with WidgetsBindingObserv
     super.initState();
     WidgetsBinding.instance.addObserver(this);
     _summaryFuture = _loadSummary();
+    unawaited(_loadBusinessRole());
     // Retry queued changes while the dashboard is active. A network outage
     // leaves the durable local queue untouched; the next tick retries it.
     _autoSyncTimer = Timer.periodic(const Duration(seconds: 60), (_) {
@@ -81,6 +86,55 @@ class _DashboardPageState extends State<DashboardPage> with WidgetsBindingObserv
     _connectivitySubscription?.cancel();
     WidgetsBinding.instance.removeObserver(this);
     super.dispose();
+  }
+
+  Future<void> _loadBusinessRole() async {
+    final businessId = AppDatabase.instance.activeBusinessId;
+    if (!widget.cloudConfigured || businessId == null) {
+      AppDatabase.instance.clearCloudBusinessRole();
+      if (mounted) {
+        setState(() {
+          _roleLoading = false;
+          _businessRole = null;
+          _roleError = null;
+        });
+      }
+      return;
+    }
+
+    if (mounted) {
+      setState(() {
+        _roleLoading = true;
+        _roleError = null;
+      });
+    }
+    try {
+      final result = await Supabase.instance.client.rpc(
+        'current_business_role',
+        params: {'target_business_id': businessId},
+      );
+      final role = result?.toString();
+      if (role == null || role.trim().isEmpty) {
+        throw StateError('No membership role was returned for this business.');
+      }
+      AppDatabase.instance.setCloudBusinessRole(role);
+      if (mounted) {
+        setState(() {
+          _businessRole = role.toLowerCase();
+          _roleError = null;
+          _roleLoading = false;
+        });
+      }
+    } catch (error) {
+      AppDatabase.instance.markCloudRoleUnavailable();
+      if (mounted) {
+        setState(() {
+          _businessRole = null;
+          _roleError = error.toString();
+          _roleLoading = false;
+        });
+      }
+    }
   }
 
   Future<Map<String, double>> _loadSummary() async {
@@ -215,6 +269,28 @@ class _DashboardPageState extends State<DashboardPage> with WidgetsBindingObserv
                 Text('Business overview', style: Theme.of(context).textTheme.headlineMedium),
                 const SizedBox(height: 6),
                 Text('Your accounting and business workspace', style: Theme.of(context).textTheme.bodyMedium),
+                if (widget.cloudConfigured && AppDatabase.instance.activeBusinessId != null) ...[
+                  const SizedBox(height: 8),
+                  if (_roleLoading)
+                    const LinearProgressIndicator()
+                  else if (_roleError != null)
+                    MaterialBanner(
+                      content: Text(
+                        'Business role could not be verified. Cloud-business edits are blocked until access is verified. Check that Supabase migration 0008 is applied. Details: $_roleError',
+                      ),
+                      actions: [
+                        TextButton(
+                          onPressed: _loadBusinessRole,
+                          child: const Text('Retry'),
+                        ),
+                      ],
+                    )
+                  else
+                    Chip(
+                      avatar: const Icon(Icons.verified_user, size: 18),
+                      label: Text('Access role: ${_businessRole ?? 'unknown'}'),
+                    ),
+                ],
                 const SizedBox(height: 20),
                 FutureBuilder<Map<String, double>>(
                   future: _summaryFuture,
