@@ -21,13 +21,13 @@ void main() {
       expect(paid, 150);
     });
 
-    test('preserves opening paid balance without payment rows', () {
+    test('preserves an invoice paid snapshot above known payment allocations', () {
       final paid = PaymentReconciliation.calculatePaidAmount(
         invoicePaidSnapshot: 25,
         existingLinkedPayments: const [],
-        incomingPayment: 75,
+        incomingPayment: 5,
       );
-      expect(paid, 100);
+      expect(paid, 25);
     });
 
     test('reconciles multiple existing payments with the incoming payment', () {
