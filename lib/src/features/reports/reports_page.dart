@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import '../../data/local/app_database.dart';
 import '../../data/local/gst_return_readiness.dart';
 import '../../data/local/gst_gstr1_classification.dart';
+import '../../data/local/gst_gstr1_hsn_summary.dart';
 
 class ReportsPage extends StatefulWidget {
   const ReportsPage({super.key, required this.reportType});
@@ -33,6 +34,7 @@ class _ReportsPageState extends State<ReportsPage> {
   bool _gstr1Checking = false;
   GstReadinessReport? _gstr1ReadinessReport;
   Gstr1ClassificationSummary? _gstr1ClassificationSummary;
+  List<Gstr1HsnRateSummary> _gstr1HsnSummary = const [];
 
   @override
   void initState() { super.initState(); _load(); }
@@ -416,7 +418,7 @@ class _ReportsPageState extends State<ReportsPage> {
       for (final invoice in invoiceRows) {
         final itemRows = await db.rawQuery(
           '''
-          SELECT hsn_sac, tax_amount, (line_total - tax_amount) AS taxable_value
+          SELECT hsn_sac, gst_rate, line_total, tax_amount, cgst_amount, sgst_amount, igst_amount
           FROM invoice_items
           WHERE invoice_id = ?
           ORDER BY id
@@ -435,8 +437,10 @@ class _ReportsPageState extends State<ReportsPage> {
         invoices: invoices,
       );
       final classification = Gstr1DomesticClassifier.classify(invoices, supplierState: settings['company_state'] ?? '');
+      final hsnRows = await db.rawQuery('''SELECT ii.hsn_sac, ii.gst_rate, ii.line_total, ii.tax_amount, ii.cgst_amount, ii.sgst_amount, ii.igst_amount FROM invoice_items ii INNER JOIN invoices i ON i.id = ii.invoice_id WHERE i.invoice_type = 'sale' AND i.invoice_date >= ? AND i.invoice_date < ? ORDER BY ii.hsn_sac, ii.gst_rate''', [_date(_startDate!), _date(_endDate!.add(const Duration(days: 1)))]);
+      final hsnSummary = Gstr1HsnRateAggregator.aggregate(hsnRows);
       if (!mounted) return;
-      setState(() { _gstr1ReadinessReport = report; _gstr1ClassificationSummary = classification; });
+      setState(() { _gstr1ReadinessReport = report; _gstr1ClassificationSummary = classification; _gstr1HsnSummary = hsnSummary; });
     } catch (error) {
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
@@ -521,6 +525,26 @@ class _ReportsPageState extends State<ReportsPage> {
       ],
     )));
   }
+  Widget _gstr1HsnSummaryCard() {
+    if (_gstr1ClassificationSummary == null) return const SizedBox.shrink();
+    return Card(child: Padding(padding: const EdgeInsets.all(12), child: Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+        Text('HSN/SAC ও GST Rate অনুযায়ী বিক্রয় সারাংশ', style: Theme.of(context).textTheme.titleMedium),
+        const SizedBox(height: 8),
+        if (_gstr1HsnSummary.isEmpty)
+          const Text('নির্বাচিত সময়ে কোনো বিক্রয়-লাইন পাওয়া যায়নি।')
+        else
+          for (final row in _gstr1HsnSummary)
+            ListTile(dense: true, contentPadding: EdgeInsets.zero,
+              title: Text('${row.hsnSac} • ${row.gstRate.toStringAsFixed(2)}%'),
+              subtitle: Text('করযোগ্য: ${_money(row.taxableValue)} • CGST: ${_money(row.cgst)} • SGST: ${_money(row.sgst)} • IGST: ${_money(row.igst)}'),
+              trailing: Text(_money(row.taxAmount), style: const TextStyle(fontWeight: FontWeight.bold)),
+            ),
+        const Text('এটি স্থানীয় বিক্রয়-লাইন থেকে তৈরি প্রাথমিক সারাংশ; GSTN-এর পূর্ণ HSN summary table mapping বা upload file নয়।'),
+      ],
+    )));
+  }
+
   double _number(String key) => (_summary[key] as num?)?.toDouble() ?? 0;
   String _money(double value) => '₹${value.toStringAsFixed(2)}';
 
@@ -586,6 +610,7 @@ class _ReportsPageState extends State<ReportsPage> {
           if (title == 'GST Reports') ...[
             _gstr1ReadinessCard(),
             _gstr1ClassificationCard(),
+            _gstr1HsnSummaryCard(),
             _metric('Sales taxable + tax total', _money(_number('sales')), Icons.point_of_sale),
             _metric('Output GST on sales', _money(_number('salesTax')), Icons.south),
             _metric('Output CGST', _money(_number('salesCgst')), Icons.south),
