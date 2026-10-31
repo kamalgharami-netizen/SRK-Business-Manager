@@ -5,7 +5,7 @@ import 'package:srk_business_manager/src/data/local/gst_gstr1_invoice_csv_export
 void main() {
   group('Gstr1InvoiceCsvExport', () {
     test('exports invoice categories, amounts, supplier and period', () {
-      final summary = Gstr1ClassificationSummary([
+      const summary = Gstr1ClassificationSummary([
         const Gstr1InvoiceClassification(
           invoiceNumber: 'INV-001',
           category: Gstr1SupplyCategory.b2b,
