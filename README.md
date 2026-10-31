@@ -38,7 +38,11 @@ flutter doctor
 1. Create a new Supabase project.
 2. Open SQL Editor and run `supabase/migrations/0001_initial_schema.sql`, then `0002_auth_membership_policy_fix.sql`, then `0003_business_records_sync.sql`.
 3. Copy the Project URL and publishable key from Supabase project settings.
-4. Run on Windows:
+4. In GitHub, open this repository → Settings → Secrets and variables → Actions → New repository secret. Add:
+   - `SUPABASE_URL`: the Supabase Project URL
+   - `SUPABASE_PUBLISHABLE_KEY`: the Supabase publishable key
+   The release workflow passes these values into both Android and Windows builds. If the secrets are not set, the application builds in local demo mode. Never add the Supabase service-role key to the client application.
+5. Run on Windows:
 ```powershell
 flutter run -d windows --dart-define=SUPABASE_URL=https://YOUR_PROJECT.supabase.co --dart-define=SUPABASE_PUBLISHABLE_KEY=YOUR_PUBLISHABLE_KEY
 ```
