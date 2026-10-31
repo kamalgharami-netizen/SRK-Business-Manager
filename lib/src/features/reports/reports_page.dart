@@ -12,6 +12,8 @@ class _ReportsPageState extends State<ReportsPage> {
   bool _loading = true;
   Map<String, Object?> _summary = {};
   List<Map<String, Object?>> _rows = [];
+  List<Map<String, Object?>> _gstBreakdownRows = [];
+  int _gstMissingHsnCount = 0;
   List<Map<String, Object?>> _stockRows = [];
   double _stockValue = 0;
   bool _stockValueHasEstimates = false;
@@ -106,6 +108,31 @@ class _ReportsPageState extends State<ReportsPage> {
       """,
       args,
     );
+    final gstBreakdownRows = await db.rawQuery("""
+      SELECT COALESCE(NULLIF(ii.hsn_sac, ''), 'Not specified') AS hsn_sac,
+        ii.gst_rate,
+        COALESCE(SUM(CASE WHEN i.invoice_type = 'sale' THEN (ii.line_total - ii.tax_amount)
+                          WHEN i.invoice_type = 'sales_return' THEN -(ii.line_total - ii.tax_amount) ELSE 0 END), 0) AS output_taxable,
+        COALESCE(SUM(CASE WHEN i.invoice_type = 'sale' THEN ii.tax_amount
+                          WHEN i.invoice_type = 'sales_return' THEN -ii.tax_amount ELSE 0 END), 0) AS output_tax,
+        COALESCE(SUM(CASE WHEN i.invoice_type = 'purchase' THEN (ii.line_total - ii.tax_amount)
+                          WHEN i.invoice_type = 'purchase_return' THEN -(ii.line_total - ii.tax_amount) ELSE 0 END), 0) AS input_taxable,
+        COALESCE(SUM(CASE WHEN i.invoice_type = 'purchase' THEN ii.tax_amount
+                          WHEN i.invoice_type = 'purchase_return' THEN -ii.tax_amount ELSE 0 END), 0) AS input_tax
+      FROM invoice_items ii
+      INNER JOIN invoices i ON i.id = ii.invoice_id
+      WHERE i.invoice_type IN ('sale', 'sales_return', 'purchase', 'purchase_return')$dateClause
+      GROUP BY COALESCE(NULLIF(ii.hsn_sac, ''), 'Not specified'), ii.gst_rate
+      ORDER BY hsn_sac, ii.gst_rate
+    """, args);
+    final missingHsnRows = await db.rawQuery("""
+      SELECT COUNT(*) AS total FROM invoice_items ii
+      INNER JOIN invoices i ON i.id = ii.invoice_id
+      WHERE i.invoice_type IN ('sale', 'purchase')
+        AND (ii.hsn_sac IS NULL OR TRIM(ii.hsn_sac) = '')$dateClause
+    """, args);
+    final gstMissingHsnCount = (missingHsnRows.first['total'] as num).toInt();
+
     final expenseDateWhere = <String>[];
     final expenseDateArgs = <Object?>[];
     if (_startDate != null) {
@@ -326,6 +353,8 @@ class _ReportsPageState extends State<ReportsPage> {
         'receipts': payments.first['receipts'], 'payments': payments.first['payments'],
       };
       _rows = partyRows;
+      _gstBreakdownRows = gstBreakdownRows;
+      _gstMissingHsnCount = gstMissingHsnCount;
       _stockRows = stockRows;
       _stockValue = stockValue;
       _stockValueHasEstimates = stockValueHasEstimates;
@@ -416,6 +445,15 @@ class _ReportsPageState extends State<ReportsPage> {
             _metric('Input SGST', _money(_number('purchaseSgst')), Icons.north),
             _metric('Input IGST', _money(_number('purchaseIgst')), Icons.north),
             _metric('Net GST (output less input)', _money(_number('salesTax') - _number('purchaseTax')), Icons.account_balance),
+            const SizedBox(height: 12),
+            Text('HSN/SAC and GST-rate summary', style: Theme.of(context).textTheme.titleMedium),
+            for (final row in _gstBreakdownRows)
+              Card(child: ListTile(
+                title: Text('${row['hsn_sac']} • ${(row['gst_rate'] as num).toStringAsFixed(2)}%'),
+                subtitle: Text('Output taxable: ${_money((row['output_taxable'] as num).toDouble())} • Output GST: ${_money((row['output_tax'] as num).toDouble())}\\nInput taxable: ${_money((row['input_taxable'] as num).toDouble())} • Input GST: ${_money((row['input_tax'] as num).toDouble())}'),
+              )),
+            if (_gstMissingHsnCount > 0)
+              Card(child: ListTile(leading: const Icon(Icons.warning_amber), title: const Text('Missing HSN/SAC codes'), subtitle: Text('$_gstMissingHsnCount sales/purchase line(s) in this period have no HSN/SAC code. Review before preparing statutory reports.'))),
             const SizedBox(height: 8),
             const Text('HSN/SAC codes are stored with product details and copied to new invoice items. This is a bookkeeping summary, not a GST return or filing calculation. Verify tax treatment and eligibility before filing.'),
           ] else if (title == 'Stock Valuation') ...[
