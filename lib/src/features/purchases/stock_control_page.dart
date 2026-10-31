@@ -295,6 +295,7 @@ class _StockControlPageState extends State<StockControlPage> {
             igstTotal += igst;
             returnItems.add({
               'product_id': productId,
+              'original_invoice_item_id': item['id'],
               'description': item['description'],
               'quantity': qty,
               'unit': item['unit'],
@@ -366,6 +367,7 @@ class _StockControlPageState extends State<StockControlPage> {
               txn,
               productId: productId,
               purchaseInvoiceId: invoiceId!,
+              purchaseInvoiceItemId: item['original_invoice_item_id'] as int,
               quantity: qty,
             );
             await txn.rawUpdate(
