@@ -16,7 +16,7 @@ class BusinessSyncResult {
   final int downloadFailures;
 }
 
-/// Synchronises the first supported offline entities: parties and products.
+/// Synchronises supported offline entities using optimistic cloud revisions.
 class BusinessSyncService {
   BusinessSyncService({
     required this.businessId,
@@ -66,15 +66,32 @@ class BusinessSyncService {
           throw StateError('Unsupported queued operation: $operationType');
         }
 
-        await _client.from('business_records').upsert({
+        final values = {
           'business_id': businessId,
           'entity_type': entityType,
           'record_id': recordId,
           'payload': payload,
           'is_deleted': operationType == 'delete',
           'updated_by': _client.auth.currentUser?.id,
-        }, onConflict: 'business_id,entity_type,record_id');
-
+        };
+        final expectedRevision = await database.getSyncRevision(entityType: entityType, recordId: recordId);
+        String confirmedRevision;
+        if (expectedRevision == null) {
+          final inserted = await _client.from('business_records').insert(values).select('updated_at').single();
+          confirmedRevision = inserted['updated_at'] as String;
+        } else {
+          final updated = await _client.from('business_records').update(values)
+              .eq('business_id', businessId)
+              .eq('entity_type', entityType)
+              .eq('record_id', recordId)
+              .eq('updated_at', expectedRevision)
+              .select('updated_at');
+          if (updated.isEmpty) {
+            throw StateError('SYNC_CONFLICT: Record changed on another device. Local edit remains queued and was not uploaded.');
+          }
+          confirmedRevision = updated.first['updated_at'] as String;
+        }
+        await database.saveSyncRevision(entityType: entityType, recordId: recordId, remoteUpdatedAt: confirmedRevision);
         await database.markSyncOperationCompleted(queueId);
         uploaded++;
       } catch (error) {
@@ -100,7 +117,7 @@ class BusinessSyncService {
       while (true) {
         final rows = await _client
             .from('business_records')
-            .select('entity_type,record_id,payload,is_deleted')
+            .select('entity_type,record_id,payload,is_deleted,updated_at')
             .eq('business_id', businessId)
             .eq('entity_type', entityType)
             .order('record_id')
@@ -126,6 +143,7 @@ class BusinessSyncService {
               payload: payload,
               isDeleted: row['is_deleted'] as bool? ?? false,
             );
+            await database.saveSyncRevision(entityType: entityType, recordId: recordId, remoteUpdatedAt: row['updated_at'] as String);
             downloaded++;
           } catch (_) {
             failed++;
