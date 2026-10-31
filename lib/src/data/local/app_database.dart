@@ -9,7 +9,7 @@ class AppDatabase {
   AppDatabase._();
 
   static final AppDatabase instance = AppDatabase._();
-  static const int _databaseVersion = 10;
+  static const int _databaseVersion = 11;
   String? _databasePath;
   Database? _database;
 
@@ -54,7 +54,7 @@ class AppDatabase {
           await db.execute('''CREATE TABLE stock_movements (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
             product_id INTEGER NOT NULL,
-            movement_type TEXT NOT NULL CHECK (movement_type IN ('purchase_return','adjustment')),
+            movement_type TEXT NOT NULL CHECK (movement_type IN ('purchase_return','sales_return','adjustment')),
             quantity_change REAL NOT NULL,
             reference TEXT,
             notes TEXT,
@@ -96,6 +96,31 @@ class AppDatabase {
         if (oldVersion < 10) {
           await db.execute('ALTER TABLE invoice_items ADD COLUMN original_invoice_item_id INTEGER');
           await db.execute('CREATE INDEX idx_invoice_items_original ON invoice_items(original_invoice_item_id)');
+        }
+        if (oldVersion < 11) {
+          await db.execute('ALTER TABLE stock_movements RENAME TO stock_movements_old');
+          await db.execute("""
+            CREATE TABLE stock_movements (
+              id INTEGER PRIMARY KEY AUTOINCREMENT,
+              product_id INTEGER NOT NULL,
+              movement_type TEXT NOT NULL CHECK (
+                movement_type IN ('purchase_return','sales_return','adjustment')
+              ),
+              quantity_change REAL NOT NULL,
+              reference TEXT,
+              notes TEXT,
+              created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+              FOREIGN KEY (product_id) REFERENCES products(id) ON DELETE RESTRICT
+            )
+          """);
+          await db.execute("""
+            INSERT INTO stock_movements
+              (id, product_id, movement_type, quantity_change, reference, notes, created_at)
+            SELECT id, product_id, movement_type, quantity_change, reference, notes, created_at
+            FROM stock_movements_old
+          """);
+          await db.execute('DROP TABLE stock_movements_old');
+          await db.execute('CREATE INDEX idx_stock_movements_product ON stock_movements(product_id)');
         }
       },
     );
