@@ -70,10 +70,10 @@ class _BusinessWorkspacePageState extends State<BusinessWorkspacePage> {
         title: Text(business['name'] as String? ?? 'Business'),
         content: const Text(
           'This business will use its own offline database on this device. '
-          'Your existing device-local data will remain separate. The first '
-          'cloud-sync stage covers parties and products; invoices and other '
-          'accounting records remain local for now. Apply migration 0003 in '
-          'Supabase to enable cloud record storage. Continue?',
+          'Your existing device-local data will remain separate. Supported '
+          'cloud records are synchronised when a connection is available. '
+          'Apply the required Supabase migrations in order before using cloud '
+          'sync across devices. Continue?',
         ),
         actions: [
           TextButton(
