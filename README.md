@@ -8,6 +8,8 @@ Original Flutter foundation for a new Windows + Android business accounting appl
 - Supabase configuration through --dart-define
 - Feature-module navigation placeholders
 - Initial multi-company PostgreSQL schema with membership and Row Level Security
+- Separate offline SQLite database for each selected cloud business
+- Business-scoped backup folders and database-identity validation during restore
 
 ## Important
 This is a foundation, not a finished accounting product. Do not use it for live bookkeeping, GST filing, or statutory reporting until the remaining modules, validations, tests, backup/restore, and security review are complete.
@@ -42,7 +44,7 @@ For Android, enable USB debugging and run:
 ```powershell
 flutter run -d android --dart-define=SUPABASE_URL=https://YOUR_PROJECT.supabase.co --dart-define=SUPABASE_PUBLISHABLE_KEY=YOUR_PUBLISHABLE_KEY
 ```
-The app launches in local demo mode without credentials. When Supabase credentials are configured, the app shows email/password sign-up and sign-in, followed by a basic business list and company-creation screen. If email confirmation is enabled in Supabase Auth, users must confirm their email before signing in. Do not put a Supabase service-role key in the app; use only the project publishable key. At this stage, authentication and business membership are connected, but local accounting records are not yet synchronised to the cloud and company-specific data isolation in the SQLite layer is not yet implemented.
+The app launches in local demo mode without credentials. When Supabase credentials are configured, the app shows email/password sign-up and sign-in, followed by a basic business list and company-creation screen. If email confirmation is enabled in Supabase Auth, users must confirm their email before signing in. Do not put a Supabase service-role key in the app; use only the project publishable key. Authentication and business membership are connected. Each selected cloud business now opens a separate offline SQLite database under its own business ID; the original device-local database is preserved and is not automatically moved. Backups are stored in separate local/business folders, and restore validation rejects a backup whose business identity does not match the active database. Accounting-record cloud synchronisation, cross-device data transfer, and conflict resolution are not implemented yet.
 
 ## Build
 ```powershell
@@ -52,7 +54,7 @@ flutter build apk --release --dart-define=SUPABASE_URL=https://YOUR_PROJECT.supa
 
 ## Planned implementation sequence
 1. Foundation, tenant schema, authentication and company setup
-2. Offline SQLite repository, durable sync queue and conflict handling
+2. Offline SQLite repository (per-business database isolation added), durable sync queue integration and conflict handling
 3. Parties, products, units, warehouses and stock ledger
 4. Sales, estimates, invoices, returns and PDF/thermal printing
 5. Purchase, expenses, receipts, payments and cash/bank books
