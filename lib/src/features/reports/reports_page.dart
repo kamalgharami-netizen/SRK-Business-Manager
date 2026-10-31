@@ -133,8 +133,14 @@ class _ReportsPageState extends State<ReportsPage> {
     );
     final partyRows = await db.rawQuery("""
       SELECT p.id, p.name, p.party_type,
-        COALESCE((SELECT SUM(i.grand_total - i.amount_paid) FROM invoices i WHERE i.party_id=p.id AND i.invoice_type='sale'),0) AS receivable,
-        COALESCE((SELECT SUM(i.grand_total - i.amount_paid) FROM invoices i WHERE i.party_id=p.id AND i.invoice_type='purchase'),0) AS payable
+        COALESCE((SELECT SUM(i.grand_total - i.amount_paid) FROM invoices i WHERE i.party_id=p.id AND i.invoice_type='sale'),0)
+          - COALESCE((SELECT SUM(i.grand_total) FROM invoices i WHERE i.party_id=p.id AND i.invoice_type='sales_return'),0)
+          - COALESCE((SELECT SUM(pm.amount) FROM payments pm WHERE pm.party_id=p.id AND pm.payment_type='receipt' AND pm.invoice_id IS NULL),0)
+          + CASE WHEN p.balance_type='receivable' THEN COALESCE(p.opening_balance,0) ELSE 0 END AS receivable,
+        COALESCE((SELECT SUM(i.grand_total - i.amount_paid) FROM invoices i WHERE i.party_id=p.id AND i.invoice_type='purchase'),0)
+          - COALESCE((SELECT SUM(i.grand_total) FROM invoices i WHERE i.party_id=p.id AND i.invoice_type='purchase_return'),0)
+          - COALESCE((SELECT SUM(pm.amount) FROM payments pm WHERE pm.party_id=p.id AND pm.payment_type='payment' AND pm.invoice_id IS NULL),0)
+          + CASE WHEN p.balance_type='payable' THEN COALESCE(p.opening_balance,0) ELSE 0 END AS payable
       FROM parties p ORDER BY p.name COLLATE NOCASE
     """);
     final journalDateWhere = <String>[];
