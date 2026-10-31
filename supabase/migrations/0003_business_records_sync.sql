@@ -24,7 +24,10 @@ using (public.is_business_member(business_id));
 
 create policy "business members can add records"
 on public.business_records for insert to authenticated
-with check (public.is_business_member(business_id));
+with check (
+  public.is_business_member(business_id)
+  and (updated_by is null or updated_by = auth.uid())
+);
 
 create policy "business members can update records"
 on public.business_records for update to authenticated
