@@ -109,7 +109,18 @@ class AccountingService {
     if (existing.isNotEmpty) {
       throw StateError('This source transaction already has a posted journal entry. Void the existing entry before reposting.');
     }
+    if (sourceId <= 0) throw StateError('A journal source ID must be positive.');
     if (lines.length < 2) throw StateError('A journal entry must contain at least two ledger lines.');
+    for (final line in lines) {
+      final debitValue = line['debit'];
+      final creditValue = line['credit'];
+      if (debitValue is! num || creditValue is! num ||
+          !debitValue.toDouble().isFinite || !creditValue.toDouble().isFinite ||
+          debitValue < 0 || creditValue < 0 ||
+          ((debitValue > 0) == (creditValue > 0))) {
+        throw StateError('Each journal line must have one finite, non-negative debit or credit amount.');
+      }
+    }
     final debit = lines.fold<double>(0, (sum, line) => sum + (line['debit'] as num).toDouble());
     final credit = lines.fold<double>(0, (sum, line) => sum + (line['credit'] as num).toDouble());
     if (!debit.isFinite || !credit.isFinite || debit <= 0 || (debit - credit).abs() > 0.005) {

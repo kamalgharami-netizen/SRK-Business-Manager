@@ -34,7 +34,7 @@ Future<Database> _openAccountingDatabase() async {
       credit REAL NOT NULL DEFAULT 0
     )
   ''');
-  for (final code in ['1000', '1100', '1200', '2100', '4000', '5000', '5200']) {
+  for (final code in ['1000', '1100', '1200', '1300', '2000', '2100', '4000', '5000', '5200']) {
     await db.insert('accounts', {'account_code': code, 'is_active': 1});
   }
   return db;
@@ -121,6 +121,70 @@ void main() {
       expect(entries, hasLength(1));
       expect(entries.single['status'], 'posted');
       expect(await db.query('journal_lines'), hasLength(3));
+    });
+
+    test('posts a balanced sales return including returned inventory cost', () async {
+      final db = await _openAccountingDatabase();
+      addTearDown(db.close);
+
+      await db.transaction((txn) => AccountingService.postSalesReturn(
+            txn,
+            returnId: 20,
+            returnNumber: 'SR-020',
+            date: '2026-10-31',
+            subtotal: 100,
+            tax: 18,
+            total: 118,
+            costOfGoodsReturned: 60,
+          ));
+
+      final lines = await db.query('journal_lines');
+      final debit = lines.fold<double>(0, (sum, row) => sum + (row['debit'] as num).toDouble());
+      final credit = lines.fold<double>(0, (sum, row) => sum + (row['credit'] as num).toDouble());
+      expect(lines, hasLength(5));
+      expect(debit, 178);
+      expect(credit, 178);
+    });
+
+    test('posts a balanced purchase return and reverses input GST', () async {
+      final db = await _openAccountingDatabase();
+      addTearDown(db.close);
+
+      await db.transaction((txn) => AccountingService.postPurchaseReturn(
+            txn,
+            returnId: 21,
+            returnNumber: 'PR-021',
+            date: '2026-10-31',
+            subtotal: 100,
+            tax: 18,
+            total: 118,
+          ));
+
+      final lines = await db.query('journal_lines');
+      final debit = lines.fold<double>(0, (sum, row) => sum + (row['debit'] as num).toDouble());
+      final credit = lines.fold<double>(0, (sum, row) => sum + (row['credit'] as num).toDouble());
+      expect(lines, hasLength(3));
+      expect(debit, 118);
+      expect(credit, 118);
+    });
+
+    test('rejects a journal line with an infinite amount', () async {
+      final db = await _openAccountingDatabase();
+      addTearDown(db.close);
+
+      await expectLater(
+        db.transaction((txn) => AccountingService.postExpense(
+              txn,
+              expenseId: 22,
+              date: '2026-10-31',
+              category: 'Office',
+              description: 'Non-finite test expense',
+              mode: 'cash',
+              amount: double.infinity,
+            )),
+        throwsA(isA<StateError>()),
+      );
+      expect(await db.query('journal_entries'), isEmpty);
     });
 
     test('rejects an expense with a negative amount', () async {
