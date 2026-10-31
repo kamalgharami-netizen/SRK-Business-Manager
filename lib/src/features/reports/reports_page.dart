@@ -1,8 +1,13 @@
+import 'dart:convert';
+import 'dart:typed_data';
+
 import 'package:flutter/material.dart';
+import 'package:file_picker/file_picker.dart';
 import '../../data/local/app_database.dart';
 import '../../data/local/gst_return_readiness.dart';
 import '../../data/local/gst_gstr1_classification.dart';
 import '../../data/local/gst_gstr1_hsn_summary.dart';
+import '../../data/local/gst_gstr1_csv_export.dart';
 
 class ReportsPage extends StatefulWidget {
   const ReportsPage({super.key, required this.reportType});
@@ -525,11 +530,56 @@ class _ReportsPageState extends State<ReportsPage> {
       ],
     )));
   }
+  Future<void> _exportGstr1HsnCsv() async {
+    if (_gstr1ClassificationSummary == null || _gstr1HsnSummary.isEmpty) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('রপ্তানির জন্য HSN/SAC সারাংশ পাওয়া যায়নি।')),
+      );
+      return;
+    }
+    try {
+      final db = await AppDatabase.instance.database;
+      final rows = await db.query(
+        'app_settings', columns: ['setting_value'],
+        where: 'setting_key = ?', whereArgs: ['company_gstin'], limit: 1,
+      );
+      final gstin = rows.isEmpty ? '' : (rows.first['setting_value'] as String? ?? '');
+      final start = _startDate == null ? 'শুরু থেকে' : _date(_startDate!);
+      final end = _endDate == null ? 'সর্বশেষ তারিখ' : _date(_endDate!);
+      final content = Gstr1HsnCsvExport.build(
+        _gstr1HsnSummary, supplierGstin: gstin,
+        periodStart: start, periodEnd: end,
+      );
+      final stamp = DateTime.now().toIso8601String().substring(0, 10);
+      final savedPath = await FilePicker.platform.saveFile(
+        dialogTitle: 'GSTR-1 HSN/SAC CSV সংরক্ষণ করুন',
+        fileName: 'gstr1-hsn-summary-$stamp.csv',
+        type: FileType.custom, allowedExtensions: ['csv'],
+        bytes: Uint8List.fromList(utf8.encode(content)),
+      );
+      if (!mounted || savedPath == null) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('CSV ফাইল সংরক্ষণের প্রক্রিয়া সম্পন্ন হয়েছে।')),
+      );
+    } catch (error) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('CSV রপ্তানি করা যায়নি: $error')),
+      );
+    }
+  }
+
   Widget _gstr1HsnSummaryCard() {
     if (_gstr1ClassificationSummary == null) return const SizedBox.shrink();
     return Card(child: Padding(padding: const EdgeInsets.all(12), child: Column(
       crossAxisAlignment: CrossAxisAlignment.stretch, children: [
         Text('HSN/SAC ও GST Rate অনুযায়ী বিক্রয় সারাংশ', style: Theme.of(context).textTheme.titleMedium),
+        const SizedBox(height: 8),
+        OutlinedButton.icon(
+          onPressed: _gstr1HsnSummary.isEmpty ? null : _exportGstr1HsnCsv,
+          icon: const Icon(Icons.download),
+          label: const Text('CSV ফাইল রপ্তানি করুন'),
+        ),
         const SizedBox(height: 8),
         if (_gstr1HsnSummary.isEmpty)
           const Text('নির্বাচিত সময়ে কোনো বিক্রয়-লাইন পাওয়া যায়নি।')
