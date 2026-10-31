@@ -18,7 +18,33 @@ class AppDatabase {
   /// Existing default/local data is left untouched in the original database.
   Future<void> openBusinessDatabase(String businessId) async {
     final normalizedId = businessId.trim().toLowerCase();
-    if (!RegExp(r'^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}
+    final compactId = normalizedId.replaceAll('-', '');
+    final hasUuidHyphens = normalizedId.length == 36 &&
+        normalizedId[8] == '-' &&
+        normalizedId[13] == '-' &&
+        normalizedId[18] == '-' &&
+        normalizedId[23] == '-';
+    if (!hasUuidHyphens || compactId.length != 32 ||
+        !RegExp(r'^[0-9a-f]+').hasMatch(compactId)) {
+      throw const FormatException('Invalid business identifier.');
+    }
+    if (_activeBusinessId == normalizedId && _database != null) return;
+    await close();
+    _activeBusinessId = normalizedId;
+    await database;
+  }
+
+  /// Returns to the original device-local database (without deleting it).
+  Future<void> useLocalDatabase() async {
+    if (_activeBusinessId == null && _database != null) return;
+    await close();
+    _activeBusinessId = null;
+    await database;
+  }
+
+  String? get activeBusinessId => _activeBusinessId;
+
+  Future<Database> get database async {
     if (_database != null) return _database!;
 
     if (Platform.isWindows || Platform.isLinux || Platform.isMacOS) {
