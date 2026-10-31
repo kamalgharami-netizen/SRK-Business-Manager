@@ -62,6 +62,64 @@ class _SyncStatusPageState extends State<SyncStatusPage> {
     }
   }
 
+  Future<void> _resolveConflict(
+    Map<String, dynamic> item,
+    String resolution,
+  ) async {
+    final keepLocal = resolution == 'keep_local';
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (dialogContext) => AlertDialog(
+        title: Text(keepLocal ? 'Keep this device version?' : 'Use cloud version?'),
+        content: Text(
+          keepLocal
+              ? 'The latest cloud revision will be checked, then this device version will be uploaded over it. If another change occurs meanwhile, the upload will be rejected and kept pending.'
+              : 'The cloud version will replace this record on this device. The pending local operation will be cleared only after the local update succeeds.',
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(dialogContext).pop(false),
+            child: const Text('Cancel'),
+          ),
+          FilledButton(
+            onPressed: () => Navigator.of(dialogContext).pop(true),
+            child: Text(keepLocal ? 'Keep Local' : 'Use Cloud'),
+          ),
+        ],
+      ),
+    );
+    if (confirmed != true || !mounted) return;
+
+    final businessId = AppDatabase.instance.activeBusinessId;
+    if (!widget.cloudConfigured || businessId == null) return;
+
+    try {
+      await BusinessSyncService(businessId: businessId).resolveConflict(
+        queueId: item['id'] as int,
+        resolution: resolution,
+      );
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(
+            keepLocal
+                ? 'Local version uploaded successfully.'
+                : 'Cloud version applied successfully.',
+          ),
+        ),
+      );
+    } catch (error) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('Conflict was not resolved. Local queue retained where applicable. $error')),
+      );
+    } finally {
+      if (mounted) {
+        setState(() => _pendingFuture = _loadPending());
+      }
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     return Scaffold(
@@ -148,6 +206,23 @@ class _SyncStatusPageState extends State<SyncStatusPage> {
                           Text('Retries: ${item['retry_count'] ?? 0}'),
                           if (error != null && error.isNotEmpty)
                             Text(error, style: TextStyle(color: isConflict ? Theme.of(context).colorScheme.error : null)),
+                          if (isConflict && widget.cloudConfigured && AppDatabase.instance.activeBusinessId != null) ...[
+                            const SizedBox(height: 8),
+                            Wrap(
+                              spacing: 8,
+                              runSpacing: 4,
+                              children: [
+                                OutlinedButton(
+                                  onPressed: () => _resolveConflict(item, 'keep_local'),
+                                  child: const Text('Keep Local'),
+                                ),
+                                FilledButton.tonal(
+                                  onPressed: () => _resolveConflict(item, 'use_cloud'),
+                                  child: const Text('Use Cloud'),
+                                ),
+                              ],
+                            ),
+                          ],
                         ],
                       ),
                       isThreeLine: error != null && error.isNotEmpty,
