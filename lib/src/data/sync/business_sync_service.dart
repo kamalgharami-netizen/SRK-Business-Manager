@@ -39,6 +39,90 @@ class BusinessSyncService {
     );
   }
 
+  /// Resolves one optimistic-lock conflict only after an explicit user choice.
+  /// The cloud revision is re-read immediately before either action.
+  Future<void> resolveConflict({
+    required int queueId,
+    required String resolution,
+  }) async {
+    if (resolution != 'keep_local' && resolution != 'use_cloud') {
+      throw ArgumentError.value(resolution, 'resolution');
+    }
+
+    final database = AppDatabase.instance;
+    final queued = (await database.getPendingSyncOperations(limit: 1000))
+        .where((item) => item['id'] == queueId)
+        .toList(growable: false);
+    if (queued.isEmpty) {
+      throw StateError('This pending operation no longer exists.');
+    }
+
+    final operation = queued.first;
+    final entityType = operation['table_name'] as String;
+    final recordId = operation['record_id'] as String;
+    final lastError = operation['last_error']?.toString() ?? '';
+    if (!lastError.contains('SYNC_CONFLICT')) {
+      throw StateError('This operation is not marked as a cloud conflict.');
+    }
+
+    final remoteRows = await _client
+        .from('business_records')
+        .select('payload,is_deleted,updated_at')
+        .eq('business_id', businessId)
+        .eq('entity_type', entityType)
+        .eq('record_id', recordId)
+        .limit(1);
+    if (remoteRows.isEmpty) {
+      throw StateError(
+        'The cloud record no longer exists. The local operation was retained; '
+        'automatic resolution is not safe.',
+      );
+    }
+
+    final remote = Map<String, dynamic>.from(remoteRows.first as Map);
+    final remoteRevision = remote['updated_at'] as String;
+    if (resolution == 'use_cloud') {
+      final payload = Map<String, dynamic>.from(remote['payload'] as Map);
+      await database.applyRemoteSyncRecord(
+        tableName: entityType,
+        recordId: recordId,
+        payload: payload,
+        isDeleted: remote['is_deleted'] as bool? ?? false,
+      );
+      await database.saveSyncRevision(
+        entityType: entityType,
+        recordId: recordId,
+        remoteUpdatedAt: remoteRevision,
+      );
+      await database.markSyncOperationCompleted(queueId);
+    } else {
+      // Keep Local: use the freshly-read cloud revision as the compare-and-set
+      // base, then retry the queued local write. If the cloud changes again,
+      // optimistic locking rejects it and the queue remains intact.
+      await database.saveSyncRevision(
+        entityType: entityType,
+        recordId: recordId,
+        remoteUpdatedAt: remoteRevision,
+      );
+      await _pushPending(batchSize: 1000);
+      final stillPending = (await database.getPendingSyncOperations(limit: 1000))
+          .any((item) => item['id'] == queueId);
+      if (stillPending) {
+        throw StateError(
+          'The cloud changed again or the upload failed. The local operation remains queued.',
+        );
+      }
+    }
+
+    await database.recordConflictResolution(
+      queueId: queueId,
+      entityType: entityType,
+      recordId: recordId,
+      resolution: resolution,
+      remoteRevision: remoteRevision,
+    );
+  }
+
   Future<(int, int)> _pushPending({required int batchSize}) async {
     final database = AppDatabase.instance;
     final pending = await database.getPendingSyncOperations(limit: batchSize);
