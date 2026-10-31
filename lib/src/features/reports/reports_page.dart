@@ -106,8 +106,41 @@ class _ReportsPageState extends State<ReportsPage> {
       """,
       args,
     );
-    final expense = await db.rawQuery("SELECT COALESCE(SUM(amount),0) AS total, COUNT(*) AS count FROM expenses");
-    final payments = await db.rawQuery("SELECT COALESCE(SUM(CASE WHEN payment_type='receipt' THEN amount ELSE 0 END),0) AS receipts, COALESCE(SUM(CASE WHEN payment_type='payment' THEN amount ELSE 0 END),0) AS payments FROM payments");
+    final expenseDateWhere = <String>[];
+    final expenseDateArgs = <Object?>[];
+    if (_startDate != null) {
+      expenseDateWhere.add('expense_date >= ?');
+      expenseDateArgs.add(_date(_startDate!));
+    }
+    if (_endDate != null) {
+      expenseDateWhere.add('expense_date < ?');
+      expenseDateArgs.add(_date(_endDate!.add(const Duration(days: 1))));
+    }
+    final expenseDateClause = expenseDateWhere.isEmpty
+        ? ''
+        : ' WHERE ${expenseDateWhere.join(' AND ')}';
+    final expense = await db.rawQuery(
+      'SELECT COALESCE(SUM(amount),0) AS total, COUNT(*) AS count FROM expenses$expenseDateClause',
+      expenseDateArgs,
+    );
+
+    final paymentDateWhere = <String>[];
+    final paymentDateArgs = <Object?>[];
+    if (_startDate != null) {
+      paymentDateWhere.add('payment_date >= ?');
+      paymentDateArgs.add(_date(_startDate!));
+    }
+    if (_endDate != null) {
+      paymentDateWhere.add('payment_date < ?');
+      paymentDateArgs.add(_date(_endDate!.add(const Duration(days: 1))));
+    }
+    final paymentDateClause = paymentDateWhere.isEmpty
+        ? ''
+        : ' WHERE ${paymentDateWhere.join(' AND ')}';
+    final payments = await db.rawQuery(
+      "SELECT COALESCE(SUM(CASE WHEN payment_type='receipt' THEN amount ELSE 0 END),0) AS receipts, COALESCE(SUM(CASE WHEN payment_type='payment' THEN amount ELSE 0 END),0) AS payments FROM payments$paymentDateClause",
+      paymentDateArgs,
+    );
     final stockRows = await db.rawQuery("""
       SELECT p.id, p.name, p.current_stock, p.unit, p.purchase_price,
         COALESCE(c.remaining_value, 0) AS fifo_value,
