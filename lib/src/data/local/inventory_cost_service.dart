@@ -217,6 +217,51 @@ class InventoryCostService {
   }
 
 
+  /// Removes only the unconsumed FIFO stock received on the purchase
+  /// invoice being returned. It never substitutes stock from another purchase.
+  static Future<double> removePurchaseReturnAtSource(
+    Transaction txn, {
+    required int productId,
+    required int purchaseInvoiceId,
+    required double quantity,
+  }) async {
+    if (!quantity.isFinite || quantity <= 0) {
+      throw StateError('Purchase return quantity must be a finite positive number.');
+    }
+    var remaining = quantity;
+    var totalCost = 0.0;
+    final layers = await txn.query(
+      'inventory_cost_layers',
+      where: "product_id = ? AND source_type = 'purchase' AND source_id = ? AND quantity_remaining > 0",
+      whereArgs: [productId, purchaseInvoiceId],
+      orderBy: 'received_at ASC, id ASC',
+    );
+    for (final layer in layers) {
+      if (remaining <= 0.0000001) break;
+      final available = (layer['quantity_remaining'] as num).toDouble();
+      final unitCost = (layer['unit_cost'] as num).toDouble();
+      if (!available.isFinite || available <= 0 ||
+          !unitCost.isFinite || unitCost < 0) {
+        throw StateError('The original purchase FIFO layer contains invalid values.');
+      }
+      final used = available < remaining ? available : remaining;
+      final cost = used * unitCost;
+      if (!cost.isFinite) throw StateError('Purchase return inventory cost is invalid.');
+      await txn.rawUpdate(
+        'UPDATE inventory_cost_layers SET quantity_remaining = quantity_remaining - ? WHERE id = ?',
+        [used, layer['id']],
+      );
+      totalCost += cost;
+      remaining -= used;
+    }
+    if (remaining > 0.0000001) {
+      throw StateError(
+        'The selected purchase does not have enough unconsumed stock remaining to return. Stock from another purchase was not used.',
+      );
+    }
+    return totalCost;
+  }
+
   /// Restores returned sale quantities into FIFO inventory using the exact
   /// cost allocations recorded against the original sale item.
   static Future<double> restoreSalesReturn(
