@@ -238,6 +238,14 @@ class _SalesReturnsPageState extends State<SalesReturnsPage> {
             'UPDATE products SET current_stock = current_stock + ?, updated_at = ? WHERE id = ?',
             [item['quantity'], now.toIso8601String(), productId],
           );
+          await txn.insert('stock_movements', {
+            'product_id': productId,
+            'movement_type': 'sales_return',
+            'quantity_change': item['quantity'],
+            'reference': number,
+            'notes': 'Return against invoice ${invoice['invoice_number']}',
+            'created_at': now.toIso8601String(),
+          });
         }
         await AccountingService.postSalesReturn(
           txn,
