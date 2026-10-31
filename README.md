@@ -32,7 +32,7 @@ flutter doctor
 
 ## Configure Supabase
 1. Create a new Supabase project.
-2. Open SQL Editor and run `supabase/migrations/0001_initial_schema.sql`.
+2. Open SQL Editor and run `supabase/migrations/0001_initial_schema.sql`, then run `supabase/migrations/0002_auth_membership_policy_fix.sql`.
 3. Copy the Project URL and publishable key from Supabase project settings.
 4. Run on Windows:
 ```powershell
@@ -42,7 +42,7 @@ For Android, enable USB debugging and run:
 ```powershell
 flutter run -d android --dart-define=SUPABASE_URL=https://YOUR_PROJECT.supabase.co --dart-define=SUPABASE_PUBLISHABLE_KEY=YOUR_PUBLISHABLE_KEY
 ```
-The app launches in demo mode without credentials; cloud features are not active until authentication and configuration are completed.
+The app launches in local demo mode without credentials. When Supabase credentials are configured, the app shows email/password sign-up and sign-in, followed by a basic business list and company-creation screen. If email confirmation is enabled in Supabase Auth, users must confirm their email before signing in. Do not put a Supabase service-role key in the app; use only the project publishable key. At this stage, authentication and business membership are connected, but local accounting records are not yet synchronised to the cloud and company-specific data isolation in the SQLite layer is not yet implemented.
 
 ## Build
 ```powershell
