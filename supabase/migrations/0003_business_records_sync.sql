@@ -13,6 +13,24 @@ create table if not exists public.business_records (
   unique (business_id, entity_type, record_id)
 );
 
+create or replace function public.touch_business_record_updated_at()
+returns trigger
+language plpgsql
+set search_path = public
+as $$
+begin
+  new.updated_at = now();
+  return new;
+end;
+$$;
+
+drop trigger if exists trg_business_records_updated_at
+on public.business_records;
+
+create trigger trg_business_records_updated_at
+before update on public.business_records
+for each row execute function public.touch_business_record_updated_at();
+
 create index if not exists idx_business_records_business_updated
   on public.business_records(business_id, updated_at);
 
@@ -32,6 +50,9 @@ with check (
 create policy "business members can update records"
 on public.business_records for update to authenticated
 using (public.is_business_member(business_id))
-with check (public.is_business_member(business_id));
+with check (
+  public.is_business_member(business_id)
+  and (updated_by is null or updated_by = auth.uid())
+);
 
 grant select, insert, update on public.business_records to authenticated;
