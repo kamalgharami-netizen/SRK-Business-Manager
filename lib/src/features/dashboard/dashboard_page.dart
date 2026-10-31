@@ -1,5 +1,7 @@
 import 'package:flutter/material.dart';
 
+import '../../data/local/app_database.dart';
+
 import '../accounting/accounts_page.dart';
 
 import '../expenses/expenses_page.dart';
@@ -14,9 +16,63 @@ import '../staff/staff_page.dart';
 import '../parties/parties_page.dart';
 import '../products/products_page.dart';
 
-class DashboardPage extends StatelessWidget {
+class DashboardPage extends StatefulWidget {
   const DashboardPage({super.key, required this.cloudConfigured});
   final bool cloudConfigured;
+
+  @override
+  State<DashboardPage> createState() => _DashboardPageState();
+}
+
+class _DashboardPageState extends State<DashboardPage> {
+  late Future<Map<String, double>> _summaryFuture;
+
+  @override
+  void initState() {
+    super.initState();
+    _summaryFuture = _loadSummary();
+  }
+
+  Future<Map<String, double>> _loadSummary() async {
+    final db = await AppDatabase.instance.database;
+    final now = DateTime.now();
+    final start = DateTime(now.year, now.month, now.day).toIso8601String();
+    final end = DateTime(now.year, now.month, now.day + 1).toIso8601String();
+    final rows = await db.rawQuery('''
+      SELECT
+        COALESCE((SELECT SUM(grand_total) FROM invoices
+          WHERE invoice_type = 'sale' AND invoice_date >= ? AND invoice_date < ?), 0)
+        - COALESCE((SELECT SUM(grand_total) FROM invoices
+          WHERE invoice_type = 'sales_return' AND invoice_date >= ? AND invoice_date < ?), 0)
+          AS today_sales,
+        COALESCE((SELECT SUM(grand_total - amount_paid) FROM invoices
+          WHERE invoice_type = 'sale'), 0)
+        - COALESCE((SELECT SUM(grand_total) FROM invoices
+          WHERE invoice_type = 'sales_return'), 0)
+        + COALESCE((SELECT SUM(opening_balance) FROM parties
+          WHERE balance_type = 'receivable'), 0) AS receivables,
+        COALESCE((SELECT SUM(grand_total - amount_paid) FROM invoices
+          WHERE invoice_type = 'purchase'), 0)
+        - COALESCE((SELECT SUM(grand_total) FROM invoices
+          WHERE invoice_type = 'purchase_return'), 0)
+        + COALESCE((SELECT SUM(opening_balance) FROM parties
+          WHERE balance_type = 'payable'), 0) AS payables,
+        COALESCE((SELECT COUNT(*) FROM products
+          WHERE (is_service = 0 OR is_service IS NULL)
+            AND low_stock_alert > 0 AND current_stock <= low_stock_alert), 0)
+          AS low_stock
+    ''', [start, end, start, end]);
+    final row = rows.first;
+    double number(String key) => (row[key] as num?)?.toDouble() ?? 0;
+    return {
+      'today_sales': number('today_sales'),
+      'receivables': number('receivables'),
+      'payables': number('payables'),
+      'low_stock': number('low_stock'),
+    };
+  }
+
+  String _money(double value) => '₹${value.toStringAsFixed(2)}';
 
   static const modules = <_ModuleInfo>[
     _ModuleInfo('Sales & Invoices', Icons.point_of_sale),
@@ -49,8 +105,8 @@ class DashboardPage extends StatelessWidget {
           Padding(
             padding: const EdgeInsets.only(right: 16),
             child: Chip(
-              avatar: Icon(cloudConfigured ? Icons.cloud_done : Icons.cloud_off, size: 18),
-              label: Text(cloudConfigured ? 'Cloud configured' : 'Demo mode'),
+              avatar: Icon(widget.cloudConfigured ? Icons.cloud_done : Icons.cloud_off, size: 18),
+              label: Text(widget.cloudConfigured ? 'Cloud configured' : 'Demo mode'),
             ),
           ),
         ],
@@ -67,15 +123,40 @@ class DashboardPage extends StatelessWidget {
                 const SizedBox(height: 6),
                 Text('Your accounting and business workspace', style: Theme.of(context).textTheme.bodyMedium),
                 const SizedBox(height: 20),
-                const Wrap(
-                  spacing: 12,
-                  runSpacing: 12,
-                  children: [
-                    _SummaryCard(title: 'Today Sales', value: '₹0.00', icon: Icons.trending_up),
-                    _SummaryCard(title: 'Receivables', value: '₹0.00', icon: Icons.call_received),
-                    _SummaryCard(title: 'Payables', value: '₹0.00', icon: Icons.call_made),
-                    _SummaryCard(title: 'Low Stock Items', value: '0', icon: Icons.warning_amber),
-                  ],
+                FutureBuilder<Map<String, double>>(
+                  future: _summaryFuture,
+                  builder: (context, snapshot) {
+                    if (snapshot.hasError) {
+                      return Card(
+                        child: Padding(
+                          padding: const EdgeInsets.all(16),
+                          child: Text('Could not load business overview: ${snapshot.error}'),
+                        ),
+                      );
+                    }
+                    if (!snapshot.hasData) {
+                      return const Center(child: Padding(
+                        padding: EdgeInsets.all(20),
+                        child: CircularProgressIndicator(),
+                      ));
+                    }
+                    final values = snapshot.data!;
+                    return Wrap(
+                      spacing: 12,
+                      runSpacing: 12,
+                      children: [
+                        _SummaryCard(title: 'Today Sales (Net)', value: _money(values['today_sales']!), icon: Icons.trending_up),
+                        _SummaryCard(title: 'Receivables*', value: _money(values['receivables']!), icon: Icons.call_received),
+                        _SummaryCard(title: 'Payables*', value: _money(values['payables']!), icon: Icons.call_made),
+                        _SummaryCard(title: 'Low Stock Items', value: values['low_stock']!.toStringAsFixed(0), icon: Icons.warning_amber),
+                      ],
+                    );
+                  },
+                ),
+                const SizedBox(height: 8),
+                const Text(
+                  '* Receivables and payables are estimated from invoice balances, returns and party opening balances.',
+                  style: TextStyle(fontSize: 11),
                 ),
                 const SizedBox(height: 28),
                 Text('Business modules', style: Theme.of(context).textTheme.titleLarge),
