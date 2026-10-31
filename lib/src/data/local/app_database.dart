@@ -1118,6 +1118,12 @@ class AppDatabase {
               throw StateError('Original purchase item is not available or does not match the returned product.');
             }
             item['original_invoice_item_id'] = originalItems.first['id'] as int;
+            await txn.update(
+              'invoice_items',
+              {'original_invoice_item_id': originalItems.first['id'] as int},
+              where: 'id = ?',
+              whereArgs: [localItemId],
+            );
             await InventoryCostService.removePurchaseReturnAtSource(
               txn,
               productId: localProductId!,
