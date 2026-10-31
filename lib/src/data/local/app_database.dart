@@ -1015,6 +1015,7 @@ class AppDatabase {
         final values = Map<String, dynamic>.from(payload)
           ..remove('id')
           ..remove('party_sync_id')
+          ..remove('parent_invoice_sync_id')
           ..remove('items')
           ..['party_id'] = localPartyId
           ..['sync_id'] = recordId;
@@ -1116,6 +1117,7 @@ class AppDatabase {
             if (originalItems.isEmpty || originalItems.first['product_id'] != localProductId) {
               throw StateError('Original purchase item is not available or does not match the returned product.');
             }
+            item['original_invoice_item_id'] = originalItems.first['id'] as int;
             await InventoryCostService.removePurchaseReturnAtSource(
               txn,
               productId: localProductId!,
