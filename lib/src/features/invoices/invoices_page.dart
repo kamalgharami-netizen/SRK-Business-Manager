@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 
 import '../../data/local/app_database.dart';
+import '../../data/sync/business_sync_service.dart';
 import '../../data/local/accounting_service.dart';
 import '../../data/local/inventory_cost_service.dart';
 import '../../data/indian_states.dart';
@@ -21,6 +22,16 @@ class _InvoicesPageState extends State<InvoicesPage> {
   void initState() {
     super.initState();
     _loadInvoices();
+  }
+
+  Future<void> _syncIfConfigured() async {
+    final businessId = AppDatabase.instance.activeBusinessId;
+    if (businessId == null) return;
+    try {
+      await BusinessSyncService(businessId: businessId).syncNow();
+    } catch (_) {
+      // Keep invoicing available offline; queued records remain on this device.
+    }
   }
 
   Future<void> _loadInvoices() async {
@@ -260,7 +271,9 @@ class _InvoicesPageState extends State<InvoicesPage> {
             });
           }
 
+          final invoiceSyncId = AppDatabase.instance.createSyncId();
           final invoiceId = await txn.insert('invoices', {
+            'sync_id': invoiceSyncId,
             'invoice_number': invoiceNumber,
             'invoice_type': 'sale',
             'party_id': selectedPartyId,
@@ -280,6 +293,7 @@ class _InvoicesPageState extends State<InvoicesPage> {
 
           var totalCogs = 0.0;
           for (final item in prepared) {
+            item['sync_id'] = AppDatabase.instance.createSyncId();
             final invoiceItemId = await txn.insert('invoice_items', {'invoice_id': invoiceId, ...item});
             totalCogs += await InventoryCostService.consumeForSale(
               txn,
@@ -292,7 +306,82 @@ class _InvoicesPageState extends State<InvoicesPage> {
               'UPDATE products SET current_stock = current_stock - ?, updated_at = ? WHERE id = ?',
               [item['quantity'], now.toIso8601String(), item['product_id']],
             );
+            final productRows = await txn.query(
+              'products',
+              where: 'id = ?',
+              whereArgs: [item['product_id']],
+              limit: 1,
+            );
+            if (productRows.isNotEmpty) {
+              final product = Map<String, dynamic>.from(productRows.single);
+              final productSyncId = product['sync_id'] as String?;
+              if (productSyncId != null && productSyncId.isNotEmpty) {
+                await AppDatabase.instance.enqueueSyncOperation(
+                  executor: txn,
+                  tableName: 'products',
+                  recordId: productSyncId,
+                  operation: 'update',
+                  payload: product,
+                );
+              }
+            }
           }
+
+          final invoiceRows = await txn.query(
+            'invoices',
+            where: 'id = ?',
+            whereArgs: [invoiceId],
+            limit: 1,
+          );
+          final partyRows = selectedPartyId == null
+              ? <Map<String, Object?>>[]
+              : await txn.query(
+                  'parties',
+                  columns: ['sync_id'],
+                  where: 'id = ?',
+                  whereArgs: [selectedPartyId],
+                  limit: 1,
+                );
+          final partySyncId = partyRows.isEmpty ? null : partyRows.first['sync_id'] as String?;
+          final invoiceItems = await txn.query(
+            'invoice_items',
+            where: 'invoice_id = ?',
+            whereArgs: [invoiceId],
+            orderBy: 'id ASC',
+          );
+          final syncedItems = <Map<String, dynamic>>[];
+          for (final rawItem in invoiceItems) {
+            final item = Map<String, dynamic>.from(rawItem);
+            final productId = item.remove('product_id') as int?;
+            item.remove('id');
+            item.remove('invoice_id');
+            String? productSyncId;
+            if (productId != null) {
+              final productRows = await txn.query(
+                'products',
+                columns: ['sync_id'],
+                where: 'id = ?',
+                whereArgs: [productId],
+                limit: 1,
+              );
+              productSyncId = productRows.isEmpty ? null : productRows.first['sync_id'] as String?;
+            }
+            item['product_sync_id'] = productSyncId;
+            syncedItems.add(item);
+          }
+          final invoicePayload = Map<String, dynamic>.from(invoiceRows.single)
+            ..remove('id')
+            ..remove('party_id')
+            ..['party_sync_id'] = partySyncId
+            ..['items'] = syncedItems;
+          await AppDatabase.instance.enqueueSyncOperation(
+            executor: txn,
+            tableName: 'invoices',
+            recordId: invoiceSyncId,
+            operation: 'insert',
+            payload: invoicePayload,
+          );
+
           await AccountingService.postSalesInvoice(
             txn,
             invoiceId: invoiceId,
@@ -304,6 +393,7 @@ class _InvoicesPageState extends State<InvoicesPage> {
             costOfGoodsSold: totalCogs,
           );
         });
+        await _syncIfConfigured();
         await _loadInvoices();
         if (mounted) {
           ScaffoldMessenger.of(context).showSnackBar(
