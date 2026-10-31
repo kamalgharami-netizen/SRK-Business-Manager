@@ -353,7 +353,12 @@ class _StockControlPageState extends State<StockControlPage> {
 
           final now = DateTime.now();
           final returnNumber = 'PR-${now.microsecondsSinceEpoch}';
+          final returnSyncId = AppDatabase.instance.createSyncId();
+          final parentRows = await txn.query('invoices', columns: ['sync_id'], where: 'id = ?', whereArgs: [invoiceId], limit: 1);
+          final parentSyncId = parentRows.isEmpty ? null : parentRows.first['sync_id'] as String?;
+          if (parentSyncId == null || parentSyncId.isEmpty) throw StateError('Original purchase invoice is missing its cloud identifier.');
           final returnId = await txn.insert('invoices', {
+            'sync_id': returnSyncId,
             'invoice_number': returnNumber,
             'invoice_type': 'purchase_return',
             'parent_invoice_id': invoiceId,
