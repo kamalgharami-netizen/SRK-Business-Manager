@@ -1073,7 +1073,7 @@ class AppDatabase {
           txn,
           paymentId: localPaymentId,
           date: payload['payment_date'] as String,
-          paymentType: paymentType,
+          paymentType: paymentType!,
           mode: payload['mode'] as String? ?? 'cash',
           amount: amountValue.toDouble(),
           reference: payload['reference'] as String?,
