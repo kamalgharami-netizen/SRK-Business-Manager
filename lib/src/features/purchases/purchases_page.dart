@@ -278,6 +278,12 @@ class _PurchasesPageState extends State<PurchasesPage> {
             });
           }
 
+          subtotal = GstCalculator.roundMoney(subtotal);
+          taxTotal = GstCalculator.roundMoney(taxTotal);
+          cgstTotal = GstCalculator.roundMoney(cgstTotal);
+          sgstTotal = GstCalculator.roundMoney(sgstTotal);
+          igstTotal = GstCalculator.roundMoney(igstTotal);
+
           final invoiceSyncId = AppDatabase.instance.createSyncId();
           final invoiceId = await txn.insert('invoices', {
             'sync_id': invoiceSyncId,
