@@ -144,7 +144,7 @@ class _SyncStatusPageState extends State<SyncStatusPage> {
                       subtitle: Column(
                         crossAxisAlignment: CrossAxisAlignment.start,
                         children: [
-                          Text('Record: ${recordId.length > 18 ? recordId.substring(0, 18) + '…' : recordId}'),
+                          Text('Record: ${recordId.length > 18 ? '${recordId.substring(0, 18)}…' : recordId}'),
                           Text('Retries: ${item['retry_count'] ?? 0}'),
                           if (error != null && error.isNotEmpty)
                             Text(error, style: TextStyle(color: isConflict ? Theme.of(context).colorScheme.error : null)),
