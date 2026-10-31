@@ -11,7 +11,7 @@ class AppDatabase {
   AppDatabase._();
 
   static final AppDatabase instance = AppDatabase._();
-  static const int _databaseVersion = 13;
+  static const int _databaseVersion = 14;
   String? _databasePath;
   String? _activeBusinessId;
   Database? _database;
@@ -143,6 +143,11 @@ class AppDatabase {
           await db.execute('CREATE UNIQUE INDEX idx_parties_sync_id ON parties(sync_id)');
           await db.execute('CREATE UNIQUE INDEX idx_products_sync_id ON products(sync_id)');
         }
+        if (oldVersion < 14) {
+          await db.execute('ALTER TABLE expenses ADD COLUMN sync_id TEXT');
+          await _backfillSyncIds(db, 'expenses');
+          await db.execute('CREATE UNIQUE INDEX idx_expenses_sync_id ON expenses(sync_id)');
+        }
         if (oldVersion < 11) {
           await db.execute('ALTER TABLE stock_movements RENAME TO stock_movements_old');
           await db.execute("""
@@ -214,7 +219,7 @@ class AppDatabase {
   }
 
   Future<void> _backfillSyncIds(DatabaseExecutor db, String tableName) async {
-    if (tableName != 'parties' && tableName != 'products') {
+    if (tableName != 'parties' && tableName != 'products' && tableName != 'expenses') {
       throw ArgumentError.value(tableName, 'tableName');
     }
     final rows = await db.query(
@@ -345,6 +350,7 @@ class AppDatabase {
     await db.execute('''
       CREATE TABLE expenses (
         id INTEGER PRIMARY KEY AUTOINCREMENT,
+        sync_id TEXT UNIQUE,
         expense_date TEXT NOT NULL,
         category TEXT NOT NULL,
         description TEXT NOT NULL,
@@ -392,6 +398,7 @@ class AppDatabase {
     await db.execute('CREATE INDEX idx_invoices_date ON invoices(invoice_date)');
     await db.execute('CREATE INDEX idx_invoices_party ON invoices(party_id)');
     await db.execute('CREATE INDEX idx_payments_date ON payments(payment_date)');
+    await db.execute('CREATE INDEX idx_expenses_sync_id ON expenses(sync_id)');
     await db.execute('CREATE INDEX idx_sync_queue_created ON sync_queue(created_at)');
     await db.execute('CREATE INDEX idx_invoices_parent ON invoices(parent_invoice_id)');
     await db.execute('''CREATE TABLE stock_movements (
@@ -647,7 +654,7 @@ class AppDatabase {
     required Map<String, dynamic> payload,
     required bool isDeleted,
   }) async {
-    if (tableName != 'parties' && tableName != 'products') {
+    if (tableName != 'parties' && tableName != 'products' && tableName != 'expenses') {
       throw ArgumentError.value(tableName, 'tableName');
     }
     final db = await database;
