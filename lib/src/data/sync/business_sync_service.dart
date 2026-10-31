@@ -50,7 +50,7 @@ class BusinessSyncService {
     }
 
     final database = AppDatabase.instance;
-    final queued = (await database.getPendingSyncOperations(limit: 1000))
+    final queued = (await database.getPendingSyncOperations(limit: 1000, includeDelayed: true))
         .where((item) => item['id'] == queueId)
         .toList(growable: false);
     if (queued.isEmpty) {
@@ -104,8 +104,9 @@ class BusinessSyncService {
         recordId: recordId,
         remoteUpdatedAt: remoteRevision,
       );
+      await database.resetSyncOperationRetry(queueId);
       await _pushPending(batchSize: 1000);
-      final stillPending = (await database.getPendingSyncOperations(limit: 1000))
+      final stillPending = (await database.getPendingSyncOperations(limit: 1000, includeDelayed: true))
           .any((item) => item['id'] == queueId);
       if (stillPending) {
         throw StateError(

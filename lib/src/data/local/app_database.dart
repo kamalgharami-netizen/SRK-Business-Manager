@@ -14,7 +14,7 @@ class AppDatabase {
   AppDatabase._();
 
   static final AppDatabase instance = AppDatabase._();
-  static const int _databaseVersion = 19;
+  static const int _databaseVersion = 20;
   String? _databasePath;
   String? _activeBusinessId;
   Database? _database;
@@ -224,6 +224,9 @@ class AppDatabase {
           """);
           await db.execute('DROP TABLE stock_movements_old');
           await db.execute('CREATE INDEX idx_stock_movements_product ON stock_movements(product_id)');
+        }
+        if (oldVersion < 20) {
+          await db.execute('ALTER TABLE sync_queue ADD COLUMN next_retry_at TEXT');
         }
         if (oldVersion < 19) {
           await db.execute('ALTER TABLE stock_movements ADD COLUMN sync_id TEXT');
@@ -440,7 +443,8 @@ class AppDatabase {
         payload TEXT NOT NULL,
         created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
         retry_count INTEGER NOT NULL DEFAULT 0,
-        last_error TEXT
+        last_error TEXT,
+        next_retry_at TEXT
       )
     ''');
 
@@ -705,13 +709,17 @@ class AppDatabase {
   /// Reads queued operations in creation order without removing them.
   Future<List<Map<String, dynamic>>> getPendingSyncOperations({
     int limit = 100,
+    bool includeDelayed = false,
   }) async {
     if (limit < 1 || limit > 1000) {
       throw RangeError.range(limit, 1, 1000, 'limit');
     }
     final db = await database;
+    final now = DateTime.now().toUtc().toIso8601String();
     final rows = await db.query(
       'sync_queue',
+      where: includeDelayed ? null : 'next_retry_at IS NULL OR next_retry_at <= ?',
+      whereArgs: includeDelayed ? null : [now],
       orderBy: 'id ASC',
       limit: limit,
     );
@@ -733,10 +741,45 @@ class AppDatabase {
   /// Keeps failed work queued and records its retry information.
   Future<int> markSyncOperationFailed(int id, Object error) async {
     final db = await database;
+    final rows = await db.query(
+      'sync_queue',
+      columns: ['retry_count'],
+      where: 'id = ?',
+      whereArgs: [id],
+      limit: 1,
+    );
+    if (rows.isEmpty) return 0;
+    final retryCount = (rows.first['retry_count'] as int? ?? 0) + 1;
+    // Exponential retry: 1, 2, 4, 8, 16, 32, then at most 60 minutes.
+    final exponent = (retryCount - 1).clamp(0, 6);
+    final delayMinutes = (1 << exponent).clamp(1, 60);
+    final nextRetryAt = DateTime.now()
+        .toUtc()
+        .add(Duration(minutes: delayMinutes))
+        .toIso8601String();
     final message = error.toString();
-    return db.rawUpdate(
-      'UPDATE sync_queue SET retry_count = retry_count + 1, last_error = ? WHERE id = ?',
-      [message.length > 1000 ? message.substring(0, 1000) : message, id],
+    return db.update(
+      'sync_queue',
+      {
+        'retry_count': retryCount,
+        'last_error': message.length > 1000
+            ? message.substring(0, 1000)
+            : message,
+        'next_retry_at': nextRetryAt,
+      },
+      where: 'id = ?',
+      whereArgs: [id],
+    );
+  }
+
+  /// Makes one delayed operation eligible after an explicit conflict decision.
+  Future<int> resetSyncOperationRetry(int id) async {
+    final db = await database;
+    return db.update(
+      'sync_queue',
+      {'retry_count': 0, 'next_retry_at': null},
+      where: 'id = ?',
+      whereArgs: [id],
     );
   }
 
