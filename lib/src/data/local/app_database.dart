@@ -1,3 +1,4 @@
+import 'dart:convert';
 import 'dart:io';
 
 import 'package:path/path.dart' as p;
@@ -505,6 +506,75 @@ class AppDatabase {
         conflictAlgorithm: ConflictAlgorithm.ignore,
       );
     }
+  }
+
+  /// Adds a local change to the durable queue for later cloud delivery.
+  Future<int> enqueueSyncOperation({
+    required String tableName,
+    required String recordId,
+    required String operation,
+    required Map<String, dynamic> payload,
+  }) async {
+    const allowedOperations = {'insert', 'update', 'delete'};
+    if (!allowedOperations.contains(operation)) {
+      throw ArgumentError.value(operation, 'operation', 'Unsupported sync operation');
+    }
+    if (tableName.trim().isEmpty || recordId.trim().isEmpty) {
+      throw ArgumentError('Table name and record ID are required.');
+    }
+    final db = await database;
+    return db.insert('sync_queue', {
+      'table_name': tableName.trim(),
+      'record_id': recordId.trim(),
+      'operation': operation,
+      'payload': jsonEncode(payload),
+    });
+  }
+
+  /// Reads queued operations in creation order without removing them.
+  Future<List<Map<String, dynamic>>> getPendingSyncOperations({
+    int limit = 100,
+  }) async {
+    if (limit < 1 || limit > 1000) {
+      throw RangeError.range(limit, 1, 1000, 'limit');
+    }
+    final db = await database;
+    final rows = await db.query(
+      'sync_queue',
+      orderBy: 'id ASC',
+      limit: limit,
+    );
+    return rows.map((row) {
+      final item = Map<String, dynamic>.from(row);
+      item['payload'] = Map<String, dynamic>.from(
+        jsonDecode(item['payload'] as String) as Map,
+      );
+      return item;
+    }).toList(growable: false);
+  }
+
+  /// Removes an operation only after the remote service confirms success.
+  Future<int> markSyncOperationCompleted(int id) async {
+    final db = await database;
+    return db.delete('sync_queue', where: 'id = ?', whereArgs: [id]);
+  }
+
+  /// Keeps failed work queued and records its retry information.
+  Future<int> markSyncOperationFailed(int id, Object error) async {
+    final db = await database;
+    final message = error.toString();
+    return db.rawUpdate(
+      'UPDATE sync_queue SET retry_count = retry_count + 1, last_error = ? WHERE id = ?',
+      [message.length > 1000 ? message.substring(0, 1000) : message, id],
+    );
+  }
+
+  Future<int> getPendingSyncCount() async {
+    final db = await database;
+    final result = await db.rawQuery(
+      'SELECT COUNT(*) AS total FROM sync_queue',
+    );
+    return int.tryParse('${result.first['total']}') ?? 0;
   }
 
   Future<String> createBackup() async {
