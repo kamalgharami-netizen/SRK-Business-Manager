@@ -9,6 +9,7 @@ class InventoryCostService {
     Transaction txn, {
     required int productId,
     required int invoiceId,
+    required int purchaseItemId,
     required double quantity,
     required double unitCost,
     required String receivedAt,
@@ -21,6 +22,7 @@ class InventoryCostService {
       'product_id': productId,
       'source_type': 'purchase',
       'source_id': invoiceId,
+      'source_item_id': purchaseItemId,
       'received_at': receivedAt,
       'quantity_received': quantity,
       'quantity_remaining': quantity,
@@ -223,6 +225,7 @@ class InventoryCostService {
     Transaction txn, {
     required int productId,
     required int purchaseInvoiceId,
+    required int purchaseInvoiceItemId,
     required double quantity,
   }) async {
     if (!quantity.isFinite || quantity <= 0) {
@@ -232,8 +235,8 @@ class InventoryCostService {
     var totalCost = 0.0;
     final layers = await txn.query(
       'inventory_cost_layers',
-      where: "product_id = ? AND source_type = 'purchase' AND source_id = ? AND quantity_remaining > 0",
-      whereArgs: [productId, purchaseInvoiceId],
+      where: "product_id = ? AND source_type = 'purchase' AND source_id = ? AND source_item_id = ? AND quantity_remaining > 0",
+      whereArgs: [productId, purchaseInvoiceId, purchaseInvoiceItemId],
       orderBy: 'received_at ASC, id ASC',
     );
     for (final layer in layers) {
