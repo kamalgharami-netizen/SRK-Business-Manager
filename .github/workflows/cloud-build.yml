@@ -84,8 +84,8 @@ jobs:
       - name: Package Windows application
         shell: pwsh
         run: |
-          if (!(Test-Path "build/windows/x64/runner/Release/SRK Business Manager.exe")) {
-            throw "Expected Windows application executable was not found."
+          if (!(Test-Path "build/windows/x64/runner/Release/srk_business_manager.exe")) {
+            throw "Expected srk_business_manager.exe was not found."
           }
           Compress-Archive -Path "build/windows/x64/runner/Release/*" -DestinationPath "build/SRK-Business-Manager-Windows-x64.zip" -Force
 
