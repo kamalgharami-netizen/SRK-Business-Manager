@@ -210,7 +210,6 @@ class _SalesReturnsPageState extends State<SalesReturnsPage> {
           }
           final discount = originalQty > 0 ? originalDiscount * qty / originalQty : 0.0;
           final taxable = (base - discount).clamp(0.0, double.infinity).toDouble();
-          final originalTax = (line.item['tax_amount'] as num?)?.toDouble() ?? 0;
           final tax = originalQty > 0 ? originalTax * qty / originalQty : 0.0;
           final cgst = originalQty > 0 ? ((line.item['cgst_amount'] as num?)?.toDouble() ?? 0) * qty / originalQty : 0.0;
           final sgst = originalQty > 0 ? ((line.item['sgst_amount'] as num?)?.toDouble() ?? 0) * qty / originalQty : 0.0;
