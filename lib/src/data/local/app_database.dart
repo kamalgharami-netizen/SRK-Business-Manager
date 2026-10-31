@@ -11,7 +11,7 @@ class AppDatabase {
   AppDatabase._();
 
   static final AppDatabase instance = AppDatabase._();
-  static const int _databaseVersion = 15;
+  static const int _databaseVersion = 16;
   String? _databasePath;
   String? _activeBusinessId;
   Database? _database;
@@ -149,15 +149,20 @@ class AppDatabase {
           await db.execute('CREATE UNIQUE INDEX idx_expenses_sync_id ON expenses(sync_id)');
         }
         if (oldVersion < 15) {
-          await db.execute('CREATE TABLE sync_metadata (entity_type TEXT NOT NULL, record_id TEXT NOT NULL, remote_updated_at TEXT NOT NULL, PRIMARY KEY (entity_type, record_id))');
-        }
-        if (oldVersion < 15) {
-          await db.execute('''CREATE TABLE sync_metadata (
+          await db.execute('''CREATE TABLE IF NOT EXISTS sync_metadata (
             entity_type TEXT NOT NULL,
             record_id TEXT NOT NULL,
             remote_updated_at TEXT NOT NULL,
             PRIMARY KEY (entity_type, record_id)
           )''');
+        }
+        if (oldVersion < 16) {
+          await db.execute('ALTER TABLE invoices ADD COLUMN sync_id TEXT');
+          await db.execute('ALTER TABLE invoice_items ADD COLUMN sync_id TEXT');
+          await _backfillSyncIds(db, 'invoices');
+          await _backfillSyncIds(db, 'invoice_items');
+          await db.execute('CREATE UNIQUE INDEX idx_invoices_sync_id ON invoices(sync_id)');
+          await db.execute('CREATE UNIQUE INDEX idx_invoice_items_sync_id ON invoice_items(sync_id)');
         }
         if (oldVersion < 11) {
           await db.execute('ALTER TABLE stock_movements RENAME TO stock_movements_old');
@@ -230,7 +235,8 @@ class AppDatabase {
   }
 
   Future<void> _backfillSyncIds(DatabaseExecutor db, String tableName) async {
-    if (tableName != 'parties' && tableName != 'products' && tableName != 'expenses') {
+    if (tableName != 'parties' && tableName != 'products' && tableName != 'expenses' &&
+        tableName != 'invoices' && tableName != 'invoice_items') {
       throw ArgumentError.value(tableName, 'tableName');
     }
     final rows = await db.query(
@@ -293,6 +299,7 @@ class AppDatabase {
     await db.execute('''
       CREATE TABLE invoices (
         id INTEGER PRIMARY KEY AUTOINCREMENT,
+        sync_id TEXT UNIQUE,
         invoice_number TEXT NOT NULL UNIQUE,
         invoice_type TEXT NOT NULL DEFAULT 'sale'
           CHECK (invoice_type IN ('sale','estimate','purchase','sales_return','purchase_return')),
@@ -320,6 +327,7 @@ class AppDatabase {
     await db.execute('''
       CREATE TABLE invoice_items (
         id INTEGER PRIMARY KEY AUTOINCREMENT,
+        sync_id TEXT UNIQUE,
         invoice_id INTEGER NOT NULL,
         product_id INTEGER,
         description TEXT NOT NULL,
@@ -393,8 +401,6 @@ class AppDatabase {
         PRIMARY KEY (entity_type, record_id)
       )
     ''');
-
-    await db.execute('CREATE TABLE sync_metadata (entity_type TEXT NOT NULL, record_id TEXT NOT NULL, remote_updated_at TEXT NOT NULL, PRIMARY KEY (entity_type, record_id))');
 
     await db.execute('''
       CREATE TABLE app_settings (
@@ -721,17 +727,83 @@ class AppDatabase {
     required Map<String, dynamic> payload,
     required bool isDeleted,
   }) async {
-    if (tableName != 'parties' && tableName != 'products' && tableName != 'expenses') {
+    if (tableName != 'parties' && tableName != 'products' &&
+        tableName != 'expenses' && tableName != 'invoices') {
       throw ArgumentError.value(tableName, 'tableName');
     }
     final db = await database;
     await db.transaction((txn) async {
       if (isDeleted) {
-        await txn.delete(
-          tableName,
+        await txn.delete(tableName, where: 'sync_id = ?', whereArgs: [recordId]);
+        return;
+      }
+
+      if (tableName == 'invoices') {
+        final partySyncId = payload['party_sync_id'] as String?;
+        int? localPartyId;
+        if (partySyncId != null && partySyncId.isNotEmpty) {
+          final partyRows = await txn.query(
+            'parties',
+            columns: ['id'],
+            where: 'sync_id = ?',
+            whereArgs: [partySyncId],
+            limit: 1,
+          );
+          if (partyRows.isEmpty) {
+            throw StateError('Invoice customer is not available on this device yet.');
+          }
+          localPartyId = partyRows.first['id'] as int;
+        }
+
+        final values = Map<String, dynamic>.from(payload)
+          ..remove('id')
+          ..remove('party_sync_id')
+          ..remove('items')
+          ..['party_id'] = localPartyId
+          ..['sync_id'] = recordId;
+        final existing = await txn.query(
+          'invoices',
+          columns: ['id'],
           where: 'sync_id = ?',
           whereArgs: [recordId],
+          limit: 1,
         );
+        int localInvoiceId;
+        if (existing.isEmpty) {
+          localInvoiceId = await txn.insert('invoices', values);
+        } else {
+          localInvoiceId = existing.first['id'] as int;
+          await txn.update('invoices', values, where: 'id = ?', whereArgs: [localInvoiceId]);
+          await txn.delete('invoice_items', where: 'invoice_id = ?', whereArgs: [localInvoiceId]);
+        }
+
+        final rawItems = payload['items'];
+        if (rawItems is! List) {
+          throw const FormatException('Invoice items are missing from the cloud record.');
+        }
+        for (final rawItem in rawItems) {
+          final item = Map<String, dynamic>.from(rawItem as Map);
+          final productSyncId = item.remove('product_sync_id') as String?;
+          item.remove('id');
+          item.remove('invoice_id');
+          int? localProductId;
+          if (productSyncId != null && productSyncId.isNotEmpty) {
+            final productRows = await txn.query(
+              'products',
+              columns: ['id'],
+              where: 'sync_id = ?',
+              whereArgs: [productSyncId],
+              limit: 1,
+            );
+            if (productRows.isEmpty) {
+              throw StateError('An invoice product is not available on this device yet.');
+            }
+            localProductId = productRows.first['id'] as int;
+          }
+          item['product_id'] = localProductId;
+          item['invoice_id'] = localInvoiceId;
+          await txn.insert('invoice_items', item);
+        }
         return;
       }
 
@@ -748,12 +820,7 @@ class AppDatabase {
       if (existing.isEmpty) {
         await txn.insert(tableName, values);
       } else {
-        await txn.update(
-          tableName,
-          values,
-          where: 'sync_id = ?',
-          whereArgs: [recordId],
-        );
+        await txn.update(tableName, values, where: 'sync_id = ?', whereArgs: [recordId]);
       }
     });
   }
