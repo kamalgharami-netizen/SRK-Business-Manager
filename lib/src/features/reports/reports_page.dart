@@ -236,18 +236,19 @@ class _ReportsPageState extends State<ReportsPage> {
       trailing: Text(value, style: const TextStyle(fontWeight: FontWeight.bold))),
   );
 
-  Widget _gstDateFilter() => Card(
+  Widget _gstDateFilter({bool pointInTime = false}) => Card(
     child: Padding(
       padding: const EdgeInsets.all(12),
       child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
         const Text('Report date range', style: TextStyle(fontWeight: FontWeight.bold)),
         const SizedBox(height: 8),
         Wrap(spacing: 8, runSpacing: 8, children: [
-          OutlinedButton.icon(
-            onPressed: () => _pickDate(isStart: true),
-            icon: const Icon(Icons.calendar_today),
-            label: Text(_startDate == null ? 'From date' : 'From: ${_date(_startDate!)}'),
-          ),
+          if (!pointInTime)
+            OutlinedButton.icon(
+              onPressed: () => _pickDate(isStart: true),
+              icon: const Icon(Icons.calendar_today),
+              label: Text(_startDate == null ? 'From date' : 'From: ${_date(_startDate!)}'),
+            ),
           OutlinedButton.icon(
             onPressed: () => _pickDate(isStart: false),
             icon: const Icon(Icons.event),
@@ -279,7 +280,7 @@ class _ReportsPageState extends State<ReportsPage> {
           const SizedBox(height: 10),
           if (title == 'GST Reports' || title == 'Trial Balance' ||
               title == 'Profit & Loss' || title == 'Balance Sheet') ...[
-            _gstDateFilter(),
+            _gstDateFilter(pointInTime: title == 'Trial Balance' || title == 'Balance Sheet'),
             const SizedBox(height: 8),
             Text(
               title == 'Trial Balance' || title == 'Balance Sheet'
