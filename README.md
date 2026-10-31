@@ -11,7 +11,8 @@ The repository contains a working Flutter application foundation and feature mod
 - Expenses, receipts and payments
 - Inventory quantities, stock adjustments and FIFO inventory-cost layers
 - Double-entry journal posting, chart of accounts, trial balance, profit & loss and balance sheet
-- Centralised GST line calculation with paise rounding, intra-state CGST/SGST and inter-state IGST allocation, HSN/SAC and place-of-supply fields; GST statutory exports remain pending
+- Centralised GST line calculation with paise rounding, intra-state CGST/SGST and inter-state IGST allocation, HSN/SAC and place-of-supply fields
+- GSTR-1 preflight validation in GST Reports for selected-period outward sales invoices, supplier/recipient GSTIN format, invoice dates and duplicates, place of supply, line items, HSN/SAC warnings and taxable/tax values; this is a preparation aid only, not a GSTN upload file or filing-ready return
 - Staff profile management (local profiles) and cloud business-user access roles
 - Local database backup and restore with business-identity validation
 - Durable offline sync queue, retry scheduling, optimistic cloud revision checks and a conflict-resolution screen
@@ -107,7 +108,7 @@ Check **Actions → SRK Business Manager - Cloud Build** for the latest run and 
 ## Remaining work before production release
 
 1. Complete real-device cross-device payment allocation and party-ledger reconciliation tests, including linked and unlinked receipts/payments, concurrent edits, and conflict recovery. The current sync handler validates linked parties/invoices, reconciles invoice paid snapshots against synced allocations, and avoids duplicate payment journal posting; real-device acceptance remains pending.
-2. Complete GST statutory reporting and validated GSTR-1 / GSTR-3B data exports, tax-period controls, and independent verification against current official GST rules. The central paise-rounded invoice calculation engine is implemented with automated unit tests.
+2. Complete GST statutory reporting and independently validate GSTR-1 / GSTR-3B exports against the current official GSTN offline-tool schema and rules. The GST Reports screen now includes a GSTR-1 preflight check for core outward invoice data, but it does not yet create a GSTN upload JSON file. GSTR-3B preparation still needs GSTR-2B data, eligible/ineligible ITC, reversals and reverse-charge information.
 3. Add cloud sync for remaining business data (including staff profiles where appropriate), company settings, warehouses and other inventory records.
 4. Improve incremental sync, large-dataset performance, conflict recovery and end-to-end multi-device tests.
 5. Complete role/permission tests, audit trails, security review and backup/restore disaster-recovery tests.
