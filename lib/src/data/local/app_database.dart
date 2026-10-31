@@ -685,16 +685,6 @@ class AppDatabase {
     );
   }
 
-  Future<String?> getSyncRevision({required String entityType, required String recordId}) async {
-    final db = await database;
-    final rows = await db.query('sync_metadata', columns: ['remote_updated_at'], where: 'entity_type = ? AND record_id = ?', whereArgs: [entityType, recordId], limit: 1);
-    return rows.isEmpty ? null : rows.first['remote_updated_at'] as String?;
-  }
-
-  Future<void> saveSyncRevision({required String entityType, required String recordId, required String remoteUpdatedAt}) async {
-    final db = await database;
-    await db.insert('sync_metadata', {'entity_type': entityType, 'record_id': recordId, 'remote_updated_at': remoteUpdatedAt}, conflictAlgorithm: ConflictAlgorithm.replace);
-  }
 
   Future<int> getPendingSyncCount() async {
     final db = await database;
