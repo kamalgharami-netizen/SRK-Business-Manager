@@ -1,3 +1,5 @@
+import 'dart:io';
+
 import 'package:file_picker/file_picker.dart';
 import 'package:flutter/material.dart';
 import 'package:sqflite/sqflite.dart' show ConflictAlgorithm;
@@ -88,11 +90,23 @@ class _SettingsPageState extends State<SettingsPage> {
 
   Future<void> _backup() async {
     try {
-      final path = await AppDatabase.instance.createBackup();
+      final destination = await FilePicker.platform.saveFile(
+        dialogTitle: 'Choose backup location',
+        fileName: 'srk-business-manager-backup.db',
+        type: FileType.custom,
+        allowedExtensions: ['db'],
+      );
+      if (destination == null || destination.trim().isEmpty) return;
+      final temporaryBackup = await AppDatabase.instance.createBackup();
+      final destinationFile = File(destination);
+      if (await destinationFile.exists()) {
+        throw StateError('A file already exists at the selected backup location.');
+      }
+      await File(temporaryBackup).copy(destinationFile.path);
       if (!mounted) return;
-      setState(() => _backupPath = path);
+      setState(() => _backupPath = destinationFile.path);
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Local database backup created.')),
+        const SnackBar(content: Text('Database backup saved to the selected location.')),
       );
     } catch (error) {
       if (!mounted) return;
