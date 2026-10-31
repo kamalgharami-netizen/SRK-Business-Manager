@@ -1025,11 +1025,32 @@ class AppDatabase {
           whereArgs: [recordId],
           limit: 1,
         );
-        final isPurchaseInvoice = payload['invoice_type'] == 'purchase';
-        // Purchase entries are immutable in the current UI. Do not rebuild their
-        // line rows on every full pull: cost layers refer to those local row IDs.
-        if (existing.isNotEmpty && isPurchaseInvoice) return;
+        final invoiceType = payload['invoice_type'] as String?;
+        final isPurchaseInvoice = invoiceType == 'purchase';
+        final isPurchaseReturn = invoiceType == 'purchase_return';
+        // Purchase invoices and purchase returns are immutable in the current UI.
+        // Their FIFO layers and source-item links must never be replayed.
+        if (existing.isNotEmpty && (isPurchaseInvoice || isPurchaseReturn)) return;
         final isNewInvoice = existing.isEmpty;
+        int? parentInvoiceId;
+        if (isPurchaseReturn) {
+          final parentSyncId = payload['parent_invoice_sync_id'] as String?;
+          if (parentSyncId == null || parentSyncId.isEmpty) {
+            throw const FormatException('Purchase return is missing its original purchase link.');
+          }
+          final parentRows = await txn.query(
+            'invoices',
+            columns: ['id'],
+            where: 'sync_id = ? AND invoice_type = ?',
+            whereArgs: [parentSyncId, 'purchase'],
+            limit: 1,
+          );
+          if (parentRows.isEmpty) {
+            throw StateError('Original purchase invoice is not available on this device yet.');
+          }
+          parentInvoiceId = parentRows.first['id'] as int;
+          values['parent_invoice_id'] = parentInvoiceId;
+        }
         int localInvoiceId;
         if (existing.isEmpty) {
           localInvoiceId = await txn.insert('invoices', values);
@@ -1046,6 +1067,7 @@ class AppDatabase {
         for (final rawItem in rawItems) {
           final item = Map<String, dynamic>.from(rawItem as Map);
           final productSyncId = item.remove('product_sync_id') as String?;
+          final originalItemSyncId = item.remove('original_invoice_item_sync_id') as String?;
           item.remove('id');
           item.remove('invoice_id');
           int? localProductId;
@@ -1074,12 +1096,34 @@ class AppDatabase {
             }
             localProductId = productRows.first['id'] as int;
           }
-          if (isPurchaseInvoice && localProductId == null) {
+          if ((isPurchaseInvoice || isPurchaseReturn) && localProductId == null) {
             throw StateError('A purchase item is missing its cloud product link.');
           }
           item['product_id'] = localProductId;
           item['invoice_id'] = localInvoiceId;
           final localItemId = await txn.insert('invoice_items', item);
+          if (isPurchaseReturn && isNewInvoice) {
+            if (originalItemSyncId == null || originalItemSyncId.isEmpty) {
+              throw const FormatException('Purchase return line is missing its original purchase-item link.');
+            }
+            final originalItems = await txn.query(
+              'invoice_items',
+              columns: ['id', 'product_id'],
+              where: 'sync_id = ? AND invoice_id = ?',
+              whereArgs: [originalItemSyncId, parentInvoiceId],
+              limit: 1,
+            );
+            if (originalItems.isEmpty || originalItems.first['product_id'] != localProductId) {
+              throw StateError('Original purchase item is not available or does not match the returned product.');
+            }
+            await InventoryCostService.removePurchaseReturnAtSource(
+              txn,
+              productId: localProductId!,
+              purchaseInvoiceId: parentInvoiceId!,
+              purchaseInvoiceItemId: originalItems.first['id'] as int,
+              quantity: (item['quantity'] as num).toDouble(),
+            );
+          }
           if (isPurchaseInvoice && isNewInvoice) {
             await InventoryCostService.receivePurchase(
               txn,
@@ -1097,6 +1141,17 @@ class AppDatabase {
             txn,
             invoiceId: localInvoiceId,
             invoiceNumber: payload['invoice_number'] as String,
+            date: payload['invoice_date'] as String,
+            subtotal: (payload['subtotal'] as num).toDouble(),
+            tax: (payload['tax_total'] as num).toDouble(),
+            total: (payload['grand_total'] as num).toDouble(),
+          );
+        }
+        if (isPurchaseReturn && isNewInvoice) {
+          await AccountingService.postPurchaseReturn(
+            txn,
+            returnId: localInvoiceId,
+            returnNumber: payload['invoice_number'] as String,
             date: payload['invoice_date'] as String,
             subtotal: (payload['subtotal'] as num).toDouble(),
             tax: (payload['tax_total'] as num).toDouble(),
