@@ -362,11 +362,11 @@ class _StockControlPageState extends State<StockControlPage> {
             await txn.insert('invoice_items', {'invoice_id': returnId, ...item});
             final productId = item['product_id'] as int;
             final qty = (item['quantity'] as num).toDouble();
-            await InventoryCostService.removeStockAtFifo(
+            await InventoryCostService.removePurchaseReturnAtSource(
               txn,
               productId: productId,
+              purchaseInvoiceId: invoiceId!,
               quantity: qty,
-              removedAt: now.toIso8601String(),
             );
             await txn.rawUpdate(
               'UPDATE products SET current_stock = current_stock - ?, updated_at = ? WHERE id = ?',
