@@ -63,7 +63,6 @@ class AppDatabase {
           )''');
           await db.execute('CREATE INDEX idx_stock_movements_product ON stock_movements(product_id)');
           await db.execute('CREATE INDEX idx_invoices_parent ON invoices(parent_invoice_id)');
-    await db.execute('CREATE INDEX idx_invoice_items_original ON invoice_items(original_invoice_item_id)');
         }
         if (oldVersion < 4) {
           await db.execute('ALTER TABLE invoice_items ADD COLUMN hsn_sac TEXT');
