@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
 import '../dashboard/dashboard_page.dart';
+import '../../data/local/app_database.dart';
 import 'company_setup_page.dart';
 
 class BusinessWorkspacePage extends StatefulWidget {
@@ -54,15 +55,23 @@ class _BusinessWorkspacePageState extends State<BusinessWorkspacePage> {
   }
 
   Future<void> _openBusiness(Map<String, dynamic> business) async {
+    final businessId = business['id'] as String?;
+    if (businessId == null || businessId.isEmpty) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Business identifier is missing.')),
+      );
+      return;
+    }
+
     final proceed = await showDialog<bool>(
       context: context,
       builder: (dialogContext) => AlertDialog(
         title: Text(business['name'] as String? ?? 'Business'),
         content: const Text(
-          'Your cloud account and business profile are connected. '
-          'Accounting records are still stored in this device database; '
-          'company-specific local data separation and cloud synchronisation '
-          'are not active yet. Continue to the local dashboard?',
+          'This business will use its own offline database on this device. '
+          'Your existing device-local data will remain in its original database '
+          'and will not be moved automatically. Cloud synchronisation of '
+          'accounting records is not active yet. Continue?',
         ),
         actions: [
           TextButton(
@@ -76,11 +85,20 @@ class _BusinessWorkspacePageState extends State<BusinessWorkspacePage> {
         ],
       ),
     );
-    if (proceed == true && mounted) {
+    if (proceed != true || !mounted) return;
+
+    try {
+      await AppDatabase.instance.openBusinessDatabase(businessId);
+      if (!mounted) return;
       await Navigator.of(context).push(
         MaterialPageRoute<void>(
           builder: (_) => const DashboardPage(cloudConfigured: true),
         ),
+      );
+    } catch (error) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('Could not open this business database: $error')),
       );
     }
   }
