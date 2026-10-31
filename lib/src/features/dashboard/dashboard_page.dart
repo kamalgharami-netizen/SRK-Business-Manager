@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 
 import '../../data/local/app_database.dart';
@@ -26,14 +28,39 @@ class DashboardPage extends StatefulWidget {
   State<DashboardPage> createState() => _DashboardPageState();
 }
 
-class _DashboardPageState extends State<DashboardPage> {
+class _DashboardPageState extends State<DashboardPage> with WidgetsBindingObserver {
   late Future<Map<String, double>> _summaryFuture;
   bool _syncing = false;
+  bool _appIsResumed = true;
+  Timer? _autoSyncTimer;
 
   @override
   void initState() {
     super.initState();
+    WidgetsBinding.instance.addObserver(this);
     _summaryFuture = _loadSummary();
+    // Retry queued changes while the dashboard is active. A network outage
+    // leaves the durable local queue untouched; the next tick retries it.
+    _autoSyncTimer = Timer.periodic(const Duration(seconds: 60), (_) {
+      if (_appIsResumed && mounted && widget.cloudConfigured) {
+        unawaited(_syncNow(showFeedback: false));
+      }
+    });
+  }
+
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    _appIsResumed = state == AppLifecycleState.resumed;
+    if (_appIsResumed && mounted && widget.cloudConfigured) {
+      unawaited(_syncNow(showFeedback: false));
+    }
+  }
+
+  @override
+  void dispose() {
+    _autoSyncTimer?.cancel();
+    WidgetsBinding.instance.removeObserver(this);
+    super.dispose();
   }
 
   Future<Map<String, double>> _loadSummary() async {
@@ -79,7 +106,7 @@ class _DashboardPageState extends State<DashboardPage> {
     };
   }
 
-  Future<void> _syncNow() async {
+  Future<void> _syncNow({bool showFeedback = true}) async {
     final businessId = AppDatabase.instance.activeBusinessId;
     if (businessId == null || _syncing) return;
     setState(() => _syncing = true);
@@ -87,7 +114,7 @@ class _DashboardPageState extends State<DashboardPage> {
       final result = await BusinessSyncService(
         businessId: businessId,
       ).syncNow();
-      if (!mounted) return;
+      if (!mounted || !showFeedback) return;
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
           content: Text(
