@@ -617,6 +617,66 @@ class AppDatabase {
     return int.tryParse('${result.first['total']}') ?? 0;
   }
 
+  Future<bool> hasPendingSyncOperation({
+    required String tableName,
+    required String recordId,
+  }) async {
+    final db = await database;
+    final rows = await db.query(
+      'sync_queue',
+      columns: ['id'],
+      where: 'table_name = ? AND record_id = ?',
+      whereArgs: [tableName, recordId],
+      limit: 1,
+    );
+    return rows.isNotEmpty;
+  }
+
+  /// Applies a cloud record to the active business database.
+  /// Only the first sync-enabled entities are accepted.
+  Future<void> applyRemoteSyncRecord({
+    required String tableName,
+    required String recordId,
+    required Map<String, dynamic> payload,
+    required bool isDeleted,
+  }) async {
+    if (tableName != 'parties' && tableName != 'products') {
+      throw ArgumentError.value(tableName, 'tableName');
+    }
+    final db = await database;
+    await db.transaction((txn) async {
+      if (isDeleted) {
+        await txn.delete(
+          tableName,
+          where: 'sync_id = ?',
+          whereArgs: [recordId],
+        );
+        return;
+      }
+
+      final values = Map<String, dynamic>.from(payload)
+        ..remove('id')
+        ..['sync_id'] = recordId;
+      final existing = await txn.query(
+        tableName,
+        columns: ['id'],
+        where: 'sync_id = ?',
+        whereArgs: [recordId],
+        limit: 1,
+      );
+      if (existing.isEmpty) {
+        await txn.insert(tableName, values);
+      } else {
+        await txn.update(
+          tableName,
+          values,
+          where: 'sync_id = ?',
+          whereArgs: [recordId],
+        );
+      }
+    });
+  }
+
   Future<String> createBackup() async {
     final db = await database;
     await db.rawQuery('PRAGMA wal_checkpoint(FULL)');
