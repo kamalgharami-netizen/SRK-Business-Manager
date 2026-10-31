@@ -1,7 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
-import '../dashboard/dashboard_page.dart';
+import 'business_workspace_page.dart';
 import 'cloud_auth_page.dart';
 
 class CloudAuthGate extends StatelessWidget {
@@ -13,9 +13,10 @@ class CloudAuthGate extends StatelessWidget {
     return StreamBuilder<AuthState>(
       stream: client.auth.onAuthStateChange,
       builder: (context, snapshot) {
-        final session = client.auth.currentSession;
-        if (session == null) return const CloudAuthPage();
-        return const DashboardPage(cloudConfigured: true);
+        if (client.auth.currentSession == null) {
+          return const CloudAuthPage();
+        }
+        return const BusinessWorkspacePage();
       },
     );
   }
