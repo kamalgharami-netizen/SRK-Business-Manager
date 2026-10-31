@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 
 import '../../data/local/app_database.dart';
+import '../../data/sync/business_sync_service.dart';
 import '../../data/indian_states.dart';
 
 class PartiesPage extends StatefulWidget {
@@ -18,6 +19,19 @@ class _PartiesPageState extends State<PartiesPage> {
   void initState() {
     super.initState();
     _loadParties();
+  }
+
+  Future<void> _syncIfConfigured() async {
+    final businessId = AppDatabase.instance.activeBusinessId;
+    if (businessId == null) return;
+    try {
+      await BusinessSyncService(businessId: businessId).syncNow();
+    } catch (error) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('Cloud sync unavailable; changes remain saved locally. $error')),
+      );
+    }
   }
 
   Future<void> _loadParties() async {
@@ -159,6 +173,7 @@ class _PartiesPageState extends State<PartiesPage> {
           );
         }
       });
+      await _syncIfConfigured();
       await _loadParties();
     }
 
@@ -195,6 +210,7 @@ class _PartiesPageState extends State<PartiesPage> {
       );
       await txn.delete('parties', where: 'id = ?', whereArgs: [party['id']]);
     });
+    await _syncIfConfigured();
     await _loadParties();
   }
 
