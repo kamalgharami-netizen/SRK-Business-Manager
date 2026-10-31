@@ -11,7 +11,7 @@ class AppDatabase {
   AppDatabase._();
 
   static final AppDatabase instance = AppDatabase._();
-  static const int _databaseVersion = 16;
+  static const int _databaseVersion = 17;
   String? _databasePath;
   String? _activeBusinessId;
   Database? _database;
@@ -163,6 +163,17 @@ class AppDatabase {
           await _backfillSyncIds(db, 'invoice_items');
           await db.execute('CREATE UNIQUE INDEX idx_invoices_sync_id ON invoices(sync_id)');
           await db.execute('CREATE UNIQUE INDEX idx_invoice_items_sync_id ON invoice_items(sync_id)');
+        }
+        if (oldVersion < 17) {
+          await db.execute('''CREATE TABLE IF NOT EXISTS sync_conflict_resolutions (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            queue_id INTEGER NOT NULL,
+            entity_type TEXT NOT NULL,
+            record_id TEXT NOT NULL,
+            resolution TEXT NOT NULL CHECK (resolution IN ('keep_local','use_cloud')),
+            remote_revision TEXT NOT NULL,
+            resolved_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+          )''');
         }
         if (oldVersion < 11) {
           await db.execute('ALTER TABLE stock_movements RENAME TO stock_movements_old');
@@ -392,6 +403,16 @@ class AppDatabase {
         last_error TEXT
       )
     ''');
+
+    await db.execute('''CREATE TABLE sync_conflict_resolutions (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      queue_id INTEGER NOT NULL,
+      entity_type TEXT NOT NULL,
+      record_id TEXT NOT NULL,
+      resolution TEXT NOT NULL CHECK (resolution IN ('keep_local','use_cloud')),
+      remote_revision TEXT NOT NULL,
+      resolved_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+    )''');
 
     await db.execute('''
       CREATE TABLE sync_metadata (
@@ -685,6 +706,27 @@ class AppDatabase {
     );
   }
 
+
+  /// Records an explicit conflict decision locally for later review.
+  Future<void> recordConflictResolution({
+    required int queueId,
+    required String entityType,
+    required String recordId,
+    required String resolution,
+    required String remoteRevision,
+  }) async {
+    if (resolution != 'keep_local' && resolution != 'use_cloud') {
+      throw ArgumentError.value(resolution, 'resolution');
+    }
+    final db = await database;
+    await db.insert('sync_conflict_resolutions', {
+      'queue_id': queueId,
+      'entity_type': entityType,
+      'record_id': recordId,
+      'resolution': resolution,
+      'remote_revision': remoteRevision,
+    });
+  }
 
   Future<int> getPendingSyncCount() async {
     final db = await database;
