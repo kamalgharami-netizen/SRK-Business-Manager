@@ -24,7 +24,7 @@ class _SyncStatusPageState extends State<SyncStatusPage> {
   }
 
   Future<List<Map<String, dynamic>>> _loadPending() {
-    return AppDatabase.instance.getPendingSyncOperations(limit: 1000);
+    return AppDatabase.instance.getPendingSyncOperations(limit: 1000, includeDelayed: true);
   }
 
   void _refresh() {
@@ -144,6 +144,12 @@ class _SyncStatusPageState extends State<SyncStatusPage> {
           }
 
           final operations = snapshot.data!;
+          final now = DateTime.now().toUtc();
+          final delayed = operations.where((item) {
+            final retryAt = DateTime.tryParse(item['next_retry_at']?.toString() ?? '');
+            return retryAt != null && retryAt.isAfter(now);
+          }).length;
+          final ready = operations.length - delayed;
           final conflicts = operations.where((item) =>
             (item['last_error']?.toString() ?? '').contains('SYNC_CONFLICT'),
           ).toList(growable: false);
@@ -160,6 +166,7 @@ class _SyncStatusPageState extends State<SyncStatusPage> {
                       Text('Pending local changes', style: Theme.of(context).textTheme.titleLarge),
                       const SizedBox(height: 8),
                       Text('${operations.length} queued operation(s)'),
+                      Text('$ready ready to retry • $delayed waiting for retry time'),
                       Text('${conflicts.length} detected cloud conflict(s)'),
                       const SizedBox(height: 12),
                       if (!widget.cloudConfigured)
@@ -204,6 +211,11 @@ class _SyncStatusPageState extends State<SyncStatusPage> {
                         children: [
                           Text('Record: ${recordId.length > 18 ? '${recordId.substring(0, 18)}…' : recordId}'),
                           Text('Retries: ${item['retry_count'] ?? 0}'),
+                          if (item['next_retry_at'] != null &&
+                              DateTime.tryParse(item['next_retry_at'].toString()) != null)
+                            Text(
+                              'Next retry: ${DateTime.parse(item['next_retry_at'].toString()).toLocal().toString().substring(0, 16)}',
+                            ),
                           if (error != null && error.isNotEmpty)
                             Text(error, style: TextStyle(color: isConflict ? Theme.of(context).colorScheme.error : null)),
                           if (isConflict && widget.cloudConfigured && AppDatabase.instance.activeBusinessId != null) ...[
@@ -229,14 +241,6 @@ class _SyncStatusPageState extends State<SyncStatusPage> {
                     ),
                   );
                 }),
-              if (conflicts.isNotEmpty)
-                const Padding(
-                  padding: EdgeInsets.only(top: 12),
-                  child: Text(
-                    'Conflict handling is currently review-only. No local or cloud version is discarded automatically. '
-                    'A dedicated keep-local / use-cloud resolution workflow is still required.',
-                  ),
-                ),
             ],
           );
         },
