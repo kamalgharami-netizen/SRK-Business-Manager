@@ -1,10 +1,9 @@
-/// Reconciles an invoice's paid amount when payment records arrive from cloud sync.
+/// Reconciles a linked invoice against its synced payment records.
 ///
-/// The invoice snapshot may already include the incoming payment, while the
-/// receiving device may have only a subset of the linked payment rows. The
-/// difference between the snapshot and known payment rows is treated as the
-/// opening/manual paid amount; known rows plus the incoming row are then
-/// applied exactly once.
+/// The invoice record is synced before payment records are downloaded. Its
+/// amount_paid snapshot may therefore already include the incoming payment.
+/// Taking the greater of the invoice snapshot and the known allocation total
+/// avoids double-counting while repairing a stale lower snapshot.
 class PaymentReconciliation {
   PaymentReconciliation._();
 
@@ -20,22 +19,20 @@ class PaymentReconciliation {
       throw ArgumentError.value(incomingPayment, 'incomingPayment');
     }
 
-    var existingTotal = 0.0;
+    var allocatedTotal = incomingPayment;
     for (final amount in existingLinkedPayments) {
       if (!amount.isFinite || amount <= 0) {
         throw ArgumentError.value(amount, 'existingLinkedPayments');
       }
-      existingTotal += amount;
+      allocatedTotal += amount;
     }
-    if (!existingTotal.isFinite) {
-      throw ArgumentError('Existing linked payment total is not finite.');
+    if (!allocatedTotal.isFinite) {
+      throw ArgumentError('Linked payment total is not finite.');
     }
 
-    final openingPaid = (invoicePaidSnapshot - existingTotal).clamp(0.0, double.infinity);
-    final reconciled = openingPaid + existingTotal + incomingPayment;
-    if (!reconciled.isFinite) {
-      throw ArgumentError('Reconciled paid amount is not finite.');
-    }
+    final reconciled = invoicePaidSnapshot > allocatedTotal
+        ? invoicePaidSnapshot
+        : allocatedTotal;
     return (reconciled * 100).roundToDouble() / 100;
   }
 }
