@@ -246,7 +246,11 @@ class _SalesReturnsPageState extends State<SalesReturnsPage> {
           });
         }
 
+        final returnSyncId = AppDatabase.instance.createSyncId();
+        final originalInvoiceSyncId = invoice['sync_id'] as String?;
+        if (originalInvoiceSyncId == null || originalInvoiceSyncId.isEmpty) throw StateError('Original sales invoice is missing its cloud identifier.');
         final returnId = await txn.insert('invoices', {
+          'sync_id': returnSyncId,
           'invoice_number': number,
           'invoice_type': 'sales_return',
           'party_id': invoice['party_id'],
@@ -266,16 +270,22 @@ class _SalesReturnsPageState extends State<SalesReturnsPage> {
         });
 
         var restoredCost = 0.0;
+        final syncedReturnItems = <Map<String, dynamic>>[];
         for (final item in prepared) {
           final returnItemData = Map<String, Object?>.from(item);
           final originalItemId = returnItemData['original_invoice_item_id'] as int;
-          returnItemData.remove('original_invoice_item_id');
-          final returnItemId = await txn.insert('invoice_items', {
-            'invoice_id': returnId,
-            'original_invoice_item_id': originalItemId,
-            ...returnItemData,
-          });
+          final originalItemRows = await txn.query('invoice_items', columns: ['sync_id'], where: 'id = ?', whereArgs: [originalItemId], limit: 1);
+          final originalItemSyncId = originalItemRows.isEmpty ? null : originalItemRows.first['sync_id'] as String?;
+          if (originalItemSyncId == null || originalItemSyncId.isEmpty) throw StateError('Original sales invoice line is missing its cloud identifier.');
           final productId = item['product_id'] as int;
+          final productRows = await txn.query('products', columns: ['sync_id'], where: 'id = ?', whereArgs: [productId], limit: 1);
+          final productSyncId = productRows.isEmpty ? null : productRows.first['sync_id'] as String?;
+          if (productSyncId == null || productSyncId.isEmpty) throw StateError('Returned product is missing its cloud identifier.');
+          final returnItemSyncId = AppDatabase.instance.createSyncId();
+          returnItemData.remove('original_invoice_item_id');
+          final returnItemId = await txn.insert('invoice_items', {'sync_id': returnItemSyncId, 'invoice_id': returnId, 'original_invoice_item_id': originalItemId, ...returnItemData});
+          final syncedItem = Map<String, dynamic>.from(returnItemData)..remove('product_id')..['sync_id'] = returnItemSyncId..['product_sync_id'] = productSyncId..['original_invoice_item_sync_id'] = originalItemSyncId;
+          syncedReturnItems.add(syncedItem);
           restoredCost += await InventoryCostService.restoreSalesReturn(
             txn,
             returnItemId: returnItemId,
@@ -310,6 +320,11 @@ class _SalesReturnsPageState extends State<SalesReturnsPage> {
           total: total,
           costOfGoodsReturned: restoredCost,
         );
+        final returnRows = await txn.query('invoices', where: 'id = ?', whereArgs: [returnId], limit: 1);
+        final partyId = invoice['party_id'] as int?;
+        final partyRows = partyId == null ? <Map<String, Object?>>[] : await txn.query('parties', columns: ['sync_id'], where: 'id = ?', whereArgs: [partyId], limit: 1);
+        final returnPayload = Map<String, dynamic>.from(returnRows.single)..remove('id')..remove('party_id')..remove('parent_invoice_id')..['party_sync_id'] = partyRows.isEmpty ? null : partyRows.first['sync_id']..['parent_invoice_sync_id'] = originalInvoiceSyncId..['items'] = syncedReturnItems;
+        await AppDatabase.instance.enqueueSyncOperation(executor: txn, tableName: 'invoices', recordId: returnSyncId, operation: 'insert', payload: returnPayload);
       });
       await _syncIfConfigured();
       _message('Sales return saved. Stock and accounting entries were updated.');
