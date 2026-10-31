@@ -284,7 +284,7 @@ class _PurchasesPageState extends State<PurchasesPage> {
           });
 
           for (final item in preparedItems) {
-            await txn.insert('invoice_items', {
+            final purchaseItemId = await txn.insert('invoice_items', {
               'invoice_id': invoiceId,
               ...item,
             });
@@ -292,6 +292,7 @@ class _PurchasesPageState extends State<PurchasesPage> {
               txn,
               productId: item['product_id'] as int,
               invoiceId: invoiceId,
+              purchaseItemId: purchaseItemId,
               quantity: (item['quantity'] as num).toDouble(),
               unitCost: (item['rate'] as num).toDouble(),
               receivedAt: now.toIso8601String(),
