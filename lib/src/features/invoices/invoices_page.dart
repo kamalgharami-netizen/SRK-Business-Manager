@@ -4,6 +4,7 @@ import '../../data/local/app_database.dart';
 import '../../data/sync/business_sync_service.dart';
 import '../../data/local/accounting_service.dart';
 import '../../data/local/inventory_cost_service.dart';
+import '../../data/local/gst_calculator.dart';
 import '../../data/indian_states.dart';
 import 'invoice_pdf_service.dart';
 
@@ -103,18 +104,22 @@ class _InvoicesPageState extends State<InvoicesPage> {
         builder: (context, refreshDialog) {
           double subtotal = 0;
           double taxTotal = 0;
+          double cgstTotal = 0;
+          double sgstTotal = 0;
+          double igstTotal = 0;
+          final isIntraState = placeOfSupply.text.trim().toLowerCase() == businessState.toLowerCase();
           for (final line in lines) {
             final quantity = double.tryParse(line.quantity.text) ?? 0;
             final rate = double.tryParse(line.rate.text) ?? 0;
             final gst = double.tryParse(line.gstRate.text) ?? 0;
-            final base = quantity * rate;
-            subtotal += base;
-            taxTotal += base * gst / 100;
+            if (quantity <= 0 || rate < 0 || gst < 0 || gst > 100) continue;
+            final tax = GstCalculator.calculate(quantity: quantity, unitRate: rate, gstRate: gst, intraState: isIntraState);
+            subtotal += tax.taxableValue;
+            taxTotal += tax.taxAmount;
+            cgstTotal += tax.cgstAmount;
+            sgstTotal += tax.sgstAmount;
+            igstTotal += tax.igstAmount;
           }
-          final isIntraState = placeOfSupply.text.trim().toLowerCase() == businessState.toLowerCase();
-          final cgstTotal = isIntraState ? taxTotal / 2 : 0.0;
-          final sgstTotal = isIntraState ? taxTotal - cgstTotal : 0.0;
-          final igstTotal = isIntraState ? 0.0 : taxTotal;
           final grandTotal = subtotal + taxTotal;
 
           return AlertDialog(
@@ -235,6 +240,9 @@ class _InvoicesPageState extends State<InvoicesPage> {
           final invoiceNumber = 'INV-${now.year}${now.month.toString().padLeft(2, '0')}${now.day.toString().padLeft(2, '0')}-${now.microsecondsSinceEpoch.toString().substring(8)}';
           double subtotal = 0;
           double taxTotal = 0;
+          double cgstTotal = 0;
+          double sgstTotal = 0;
+          double igstTotal = 0;
           final prepared = <Map<String, Object?>>[];
 
           for (final line in lines) {
@@ -246,14 +254,14 @@ class _InvoicesPageState extends State<InvoicesPage> {
             if (quantity > stock) {
               throw StateError('Insufficient stock for ${product['name']}. Available: $stock');
             }
-            final base = quantity * rate;
-            final tax = base * gstRate / 100;
             final isIntraState = placeOfSupply.text.trim().toLowerCase() == businessState.toLowerCase();
-            final cgst = isIntraState ? tax / 2 : 0.0;
-            final sgst = isIntraState ? tax - cgst : 0.0;
-            final igst = isIntraState ? 0.0 : tax;
+            final tax = GstCalculator.calculate(quantity: quantity, unitRate: rate, gstRate: gstRate, intraState: isIntraState);
+            final base = tax.taxableValue;
             subtotal += base;
-            taxTotal += tax;
+            taxTotal += tax.taxAmount;
+            cgstTotal += tax.cgstAmount;
+            sgstTotal += tax.sgstAmount;
+            igstTotal += tax.igstAmount;
             prepared.add({
               'product_id': line.productId,
               'description': product['name'] as String,
@@ -263,11 +271,11 @@ class _InvoicesPageState extends State<InvoicesPage> {
               'rate': rate,
               'discount': 0,
               'gst_rate': gstRate,
-              'tax_amount': tax,
-              'cgst_amount': cgst,
-              'sgst_amount': sgst,
-              'igst_amount': igst,
-              'line_total': base + tax,
+              'tax_amount': tax.taxAmount,
+              'cgst_amount': tax.cgstAmount,
+              'sgst_amount': tax.sgstAmount,
+              'igst_amount': tax.igstAmount,
+              'line_total': tax.lineTotal,
             });
           }
 
@@ -282,10 +290,10 @@ class _InvoicesPageState extends State<InvoicesPage> {
             'tax_total': taxTotal,
             'place_of_supply': placeOfSupply.text.trim(),
             'tax_type': placeOfSupply.text.trim().toLowerCase() == businessState.toLowerCase() ? 'intra_state' : 'inter_state',
-            'cgst_total': placeOfSupply.text.trim().toLowerCase() == businessState.toLowerCase() ? taxTotal / 2 : 0,
-            'sgst_total': placeOfSupply.text.trim().toLowerCase() == businessState.toLowerCase() ? taxTotal / 2 : 0,
-            'igst_total': placeOfSupply.text.trim().toLowerCase() == businessState.toLowerCase() ? 0 : taxTotal,
-            'grand_total': subtotal + taxTotal,
+            'cgst_total': cgstTotal,
+            'sgst_total': sgstTotal,
+            'igst_total': igstTotal,
+            'grand_total': GstCalculator.roundMoney(subtotal + taxTotal),
             'amount_paid': 0,
             'status': 'unpaid',
             'notes': notes.text.trim(),
