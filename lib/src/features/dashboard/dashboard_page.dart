@@ -49,12 +49,16 @@ class _DashboardPageState extends State<DashboardPage> {
           WHERE invoice_type = 'sale'), 0)
         - COALESCE((SELECT SUM(grand_total) FROM invoices
           WHERE invoice_type = 'sales_return'), 0)
+        - COALESCE((SELECT SUM(amount) FROM payments
+          WHERE payment_type = 'receipt' AND invoice_id IS NULL AND party_id IS NOT NULL), 0)
         + COALESCE((SELECT SUM(opening_balance) FROM parties
           WHERE balance_type = 'receivable'), 0) AS receivables,
         COALESCE((SELECT SUM(grand_total - amount_paid) FROM invoices
           WHERE invoice_type = 'purchase'), 0)
         - COALESCE((SELECT SUM(grand_total) FROM invoices
           WHERE invoice_type = 'purchase_return'), 0)
+        - COALESCE((SELECT SUM(amount) FROM payments
+          WHERE payment_type = 'payment' AND invoice_id IS NULL AND party_id IS NOT NULL), 0)
         + COALESCE((SELECT SUM(opening_balance) FROM parties
           WHERE balance_type = 'payable'), 0) AS payables,
         COALESCE((SELECT COUNT(*) FROM products
