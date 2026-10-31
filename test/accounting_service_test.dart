@@ -34,7 +34,7 @@ Future<Database> _openAccountingDatabase() async {
       credit REAL NOT NULL DEFAULT 0
     )
   ''');
-  for (final code in ['1000', '1100', '1200', '1300', '2000', '2100', '4000', '5000', '5200']) {
+  for (final code in ['1000', '1010', '1100', '1200', '1300', '2000', '2100', '4000', '5000', '5200']) {
     await db.insert('accounts', {'account_code': code, 'is_active': 1});
   }
   return db;
