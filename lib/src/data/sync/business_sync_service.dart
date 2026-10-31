@@ -2,17 +2,21 @@ import 'package:supabase_flutter/supabase_flutter.dart';
 
 import '../local/app_database.dart';
 
-class SyncPushResult {
-  const SyncPushResult({
+class BusinessSyncResult {
+  const BusinessSyncResult({
     required this.uploaded,
-    required this.failed,
+    required this.uploadFailures,
+    required this.downloaded,
+    required this.downloadFailures,
   });
 
   final int uploaded;
-  final int failed;
+  final int uploadFailures;
+  final int downloaded;
+  final int downloadFailures;
 }
 
-/// Uploads locally queued party/product changes to the current business.
+/// Synchronises the first supported offline entities: parties and products.
 class BusinessSyncService {
   BusinessSyncService({
     required this.businessId,
@@ -22,7 +26,20 @@ class BusinessSyncService {
   final String businessId;
   final SupabaseClient _client;
 
-  Future<SyncPushResult> pushPending({int batchSize = 100}) async {
+  Future<BusinessSyncResult> syncNow({
+    int batchSize = 100,
+  }) async {
+    final upload = await _pushPending(batchSize: batchSize);
+    final download = await _pullChanges(pageSize: batchSize);
+    return BusinessSyncResult(
+      uploaded: upload.$1,
+      uploadFailures: upload.$2,
+      downloaded: download.$1,
+      downloadFailures: download.$2,
+    );
+  }
+
+  Future<(int, int)> _pushPending({required int batchSize}) async {
     final database = AppDatabase.instance;
     final pending = await database.getPendingSyncOperations(limit: batchSize);
     var uploaded = 0;
@@ -66,6 +83,60 @@ class BusinessSyncService {
       }
     }
 
-    return SyncPushResult(uploaded: uploaded, failed: failed);
+    return (uploaded, failed);
+  }
+
+  Future<(int, int)> _pullChanges({required int pageSize}) async {
+    if (pageSize < 1 || pageSize > 500) {
+      throw RangeError.range(pageSize, 1, 500, 'pageSize');
+    }
+
+    final database = AppDatabase.instance;
+    var downloaded = 0;
+    var failed = 0;
+
+    for (final entityType in const ['parties', 'products']) {
+      var offset = 0;
+      while (true) {
+        final rows = await _client
+            .from('business_records')
+            .select('entity_type,record_id,payload,is_deleted')
+            .eq('business_id', businessId)
+            .eq('entity_type', entityType)
+            .order('record_id')
+            .range(offset, offset + pageSize - 1);
+
+        for (final rawRow in rows) {
+          final row = Map<String, dynamic>.from(rawRow as Map);
+          final recordId = row['record_id'] as String;
+          try {
+            final hasLocalPendingChange =
+                await database.hasPendingSyncOperation(
+              tableName: entityType,
+              recordId: recordId,
+            );
+            if (hasLocalPendingChange) continue;
+
+            final payload = Map<String, dynamic>.from(
+              row['payload'] as Map,
+            );
+            await database.applyRemoteSyncRecord(
+              tableName: entityType,
+              recordId: recordId,
+              payload: payload,
+              isDeleted: row['is_deleted'] as bool? ?? false,
+            );
+            downloaded++;
+          } catch (_) {
+            failed++;
+          }
+        }
+
+        offset += rows.length;
+        if (rows.length < pageSize) break;
+      }
+    }
+
+    return (downloaded, failed);
   }
 }
