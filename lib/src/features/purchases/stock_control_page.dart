@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import '../../data/local/app_database.dart';
 import '../../data/local/accounting_service.dart';
 import '../../data/local/inventory_cost_service.dart';
+import '../../data/sync/business_sync_service.dart';
 import '../invoices/invoice_pdf_service.dart';
 
 
@@ -32,6 +33,16 @@ class _StockControlPageState extends State<StockControlPage> {
   void initState() {
     super.initState();
     _loadMovements();
+  }
+
+  Future<void> _syncIfConfigured() async {
+    final businessId = AppDatabase.instance.activeBusinessId;
+    if (businessId == null) return;
+    try {
+      await BusinessSyncService(businessId: businessId).syncNow();
+    } catch (error) {
+      _message('Cloud sync unavailable; stock changes remain saved locally. $error');
+    }
   }
 
   Future<void> _loadMovements() async {
@@ -374,7 +385,8 @@ class _StockControlPageState extends State<StockControlPage> {
               'UPDATE products SET current_stock = current_stock - ?, updated_at = ? WHERE id = ?',
               [qty, now.toIso8601String(), productId],
             );
-            await txn.insert('stock_movements', {
+            final movementId = await txn.insert('stock_movements', {
+              'sync_id': AppDatabase.instance.createSyncId(),
               'product_id': productId,
               'movement_type': 'purchase_return',
               'quantity_change': -qty,
@@ -382,6 +394,8 @@ class _StockControlPageState extends State<StockControlPage> {
               'notes': 'Against ${original['invoice_number']}. ${notes.text.trim()}'.trim(),
               'created_at': now.toIso8601String(),
             });
+            await AppDatabase.instance.enqueueProductSyncById(txn, productId);
+            await AppDatabase.instance.enqueueStockMovementSync(txn, movementId);
           }
           await AccountingService.postPurchaseReturn(
             txn,
@@ -393,6 +407,7 @@ class _StockControlPageState extends State<StockControlPage> {
             total: subtotal + taxTotal,
           );
         });
+        await _syncIfConfigured();
         _message('Purchase return saved and stock reduced for all selected items.');
         await _loadMovements();
       } catch (error) {
@@ -643,6 +658,7 @@ class _StockControlPageState extends State<StockControlPage> {
             [signedQty, now.toIso8601String(), productId],
           );
           final movementId = await txn.insert('stock_movements', {
+            'sync_id': AppDatabase.instance.createSyncId(),
             'product_id': productId,
             'movement_type': 'adjustment',
             'quantity_change': signedQty,
@@ -650,6 +666,8 @@ class _StockControlPageState extends State<StockControlPage> {
             'notes': reason.text.trim(),
             'created_at': now.toIso8601String(),
           });
+          await AppDatabase.instance.enqueueProductSyncById(txn, productId!);
+          await AppDatabase.instance.enqueueStockMovementSync(txn, movementId);
           await AccountingService.postStockAdjustment(
             txn,
             movementId: movementId,
@@ -659,6 +677,7 @@ class _StockControlPageState extends State<StockControlPage> {
             inventoryCost: adjustmentCost,
           );
         });
+        await _syncIfConfigured();
         _message('Stock adjusted successfully.');
         await _loadMovements();
       } catch (error) {

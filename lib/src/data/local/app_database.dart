@@ -14,7 +14,7 @@ class AppDatabase {
   AppDatabase._();
 
   static final AppDatabase instance = AppDatabase._();
-  static const int _databaseVersion = 18;
+  static const int _databaseVersion = 19;
   String? _databasePath;
   String? _activeBusinessId;
   Database? _database;
@@ -200,6 +200,20 @@ class AppDatabase {
             await db.insert('sync_queue', {'table_name': 'payments', 'record_id': syncId, 'operation': 'insert', 'payload': jsonEncode(payload)});
           }
         }
+        if (oldVersion < 19) {
+          await db.execute('ALTER TABLE stock_movements ADD COLUMN sync_id TEXT');
+          await _backfillSyncIds(db, 'stock_movements');
+          await db.execute('CREATE UNIQUE INDEX idx_stock_movements_sync_id ON stock_movements(sync_id)');
+          final legacyMovements = await db.query('stock_movements', orderBy: 'id ASC');
+          for (final row in legacyMovements) {
+            final productRows = await db.query('products', columns: ['sync_id'], where: 'id = ?', whereArgs: [row['product_id']], limit: 1);
+            final productSyncId = productRows.isEmpty ? null : productRows.first['sync_id'] as String?;
+            if (productSyncId == null || productSyncId.isEmpty) throw StateError('A legacy stock movement is missing its product cloud identifier.');
+            final syncId = row['sync_id'] as String;
+            final payload = Map<String, dynamic>.from(row)..remove('id')..remove('product_id')..['sync_id'] = syncId..['product_sync_id'] = productSyncId;
+            await db.insert('sync_queue', {'table_name': 'stock_movements', 'record_id': syncId, 'operation': 'insert', 'payload': jsonEncode(payload)});
+          }
+        }
         if (oldVersion < 11) {
           await db.execute('ALTER TABLE stock_movements RENAME TO stock_movements_old');
           await db.execute("""
@@ -272,7 +286,7 @@ class AppDatabase {
 
   Future<void> _backfillSyncIds(DatabaseExecutor db, String tableName) async {
     if (tableName != 'parties' && tableName != 'products' && tableName != 'expenses' &&
-        tableName != 'invoices' && tableName != 'invoice_items') {
+        tableName != 'invoices' && tableName != 'invoice_items' && tableName != 'stock_movements') {
       throw ArgumentError.value(tableName, 'tableName');
     }
     final rows = await db.query(
@@ -478,8 +492,9 @@ class AppDatabase {
     await db.execute('CREATE INDEX idx_invoices_parent ON invoices(parent_invoice_id)');
     await db.execute('''CREATE TABLE stock_movements (
       id INTEGER PRIMARY KEY AUTOINCREMENT,
+      sync_id TEXT UNIQUE,
       product_id INTEGER NOT NULL,
-      movement_type TEXT NOT NULL CHECK (movement_type IN ('purchase_return','adjustment')),
+      movement_type TEXT NOT NULL CHECK (movement_type IN ('purchase_return','sales_return','adjustment')),
       quantity_change REAL NOT NULL,
       reference TEXT,
       notes TEXT,
@@ -487,6 +502,7 @@ class AppDatabase {
       FOREIGN KEY (product_id) REFERENCES products(id) ON DELETE RESTRICT
     )''');
     await db.execute('CREATE INDEX idx_stock_movements_product ON stock_movements(product_id)');
+    await db.execute('CREATE INDEX idx_stock_movements_sync_id ON stock_movements(sync_id)');
     await _createAccountingSchema(db);
     await _seedDefaultAccounts(db);
     await _createInventoryCostSchema(db);
@@ -634,6 +650,32 @@ class AppDatabase {
         conflictAlgorithm: ConflictAlgorithm.ignore,
       );
     }
+  }
+
+  /// Queues the latest product snapshot after an inventory quantity change.
+  Future<void> enqueueProductSyncById(DatabaseExecutor executor, int productId) async {
+    final rows = await executor.query('products', where: 'id = ?', whereArgs: [productId], limit: 1);
+    if (rows.isEmpty) throw StateError('Updated inventory product could not be reloaded.');
+    final payload = Map<String, dynamic>.from(rows.single);
+    final syncId = payload['sync_id'] as String?;
+    if (syncId == null || syncId.isEmpty) throw StateError('Inventory product is missing its cloud identifier.');
+    await enqueueSyncOperation(tableName: 'products', recordId: syncId, operation: 'update', payload: payload, executor: executor);
+  }
+
+  /// Queues a stock-ledger row using its stable cloud ID and product link.
+  Future<void> enqueueStockMovementSync(DatabaseExecutor executor, int movementId) async {
+    final rows = await executor.query('stock_movements', where: 'id = ?', whereArgs: [movementId], limit: 1);
+    if (rows.isEmpty) throw StateError('Stock movement could not be reloaded for sync.');
+    final row = Map<String, dynamic>.from(rows.single);
+    final syncId = row['sync_id'] as String?;
+    if (syncId == null || syncId.isEmpty) throw StateError('Stock movement is missing its cloud identifier.');
+    final productRows = await executor.query('products', columns: ['sync_id'], where: 'id = ?', whereArgs: [row['product_id']], limit: 1);
+    final productSyncId = productRows.isEmpty ? null : productRows.first['sync_id'] as String?;
+    if (productSyncId == null || productSyncId.isEmpty) throw StateError('Stock movement product is missing its cloud identifier.');
+    row.remove('id');
+    row.remove('product_id');
+    row['product_sync_id'] = productSyncId;
+    await enqueueSyncOperation(tableName: 'stock_movements', recordId: syncId, operation: 'insert', payload: row, executor: executor);
   }
 
   /// Adds a local change to the durable queue for later cloud delivery.
@@ -786,13 +828,31 @@ class AppDatabase {
     required bool isDeleted,
   }) async {
     if (tableName != 'parties' && tableName != 'products' &&
-        tableName != 'expenses' && tableName != 'invoices' && tableName != 'payments') {
+        tableName != 'expenses' && tableName != 'invoices' && tableName != 'payments' &&
+        tableName != 'stock_movements') {
       throw ArgumentError.value(tableName, 'tableName');
     }
     final db = await database;
     await db.transaction((txn) async {
       if (isDeleted) {
         await txn.delete(tableName, where: 'sync_id = ?', whereArgs: [recordId]);
+        return;
+      }
+
+      if (tableName == 'stock_movements') {
+        final productSyncId = payload['product_sync_id'] as String?;
+        if (productSyncId == null || productSyncId.isEmpty) throw const FormatException('Stock movement product link is missing.');
+        final productRows = await txn.query('products', columns: ['id'], where: 'sync_id = ?', whereArgs: [productSyncId], limit: 1);
+        if (productRows.isEmpty) throw StateError('Stock movement product is not available on this device yet.');
+        final existing = await txn.query('stock_movements', columns: ['id'], where: 'sync_id = ?', whereArgs: [recordId], limit: 1);
+        final values = Map<String, dynamic>.from(payload)..remove('id')..remove('product_sync_id')..['product_id'] = productRows.first['id'] as int..['sync_id'] = recordId;
+        if (existing.isEmpty) {
+          await txn.insert('stock_movements', values);
+        } else {
+          await txn.update('stock_movements', values, where: 'sync_id = ?', whereArgs: [recordId]);
+        }
+        // Quantity is synced as a separate product snapshot. Do not apply the
+        // movement delta here, or repeated full pulls would double-count stock.
         return;
       }
 

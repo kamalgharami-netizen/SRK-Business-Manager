@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import '../../data/local/accounting_service.dart';
 import '../../data/local/app_database.dart';
 import '../../data/local/inventory_cost_service.dart';
+import '../../data/sync/business_sync_service.dart';
 
 class SalesReturnsPage extends StatefulWidget {
   const SalesReturnsPage({super.key});
@@ -20,6 +21,16 @@ class _SalesReturnsPageState extends State<SalesReturnsPage> {
   void initState() {
     super.initState();
     _load();
+  }
+
+  Future<void> _syncIfConfigured() async {
+    final businessId = AppDatabase.instance.activeBusinessId;
+    if (businessId == null) return;
+    try {
+      await BusinessSyncService(businessId: businessId).syncNow();
+    } catch (error) {
+      _message('Cloud sync unavailable; stock changes remain saved locally. $error');
+    }
   }
 
   Future<void> _load() async {
@@ -277,7 +288,8 @@ class _SalesReturnsPageState extends State<SalesReturnsPage> {
             'UPDATE products SET current_stock = current_stock + ?, updated_at = ? WHERE id = ?',
             [item['quantity'], now.toIso8601String(), productId],
           );
-          await txn.insert('stock_movements', {
+          final movementId = await txn.insert('stock_movements', {
+            'sync_id': AppDatabase.instance.createSyncId(),
             'product_id': productId,
             'movement_type': 'sales_return',
             'quantity_change': item['quantity'],
@@ -285,6 +297,8 @@ class _SalesReturnsPageState extends State<SalesReturnsPage> {
             'notes': 'Return against invoice ${invoice['invoice_number']}',
             'created_at': now.toIso8601String(),
           });
+          await AppDatabase.instance.enqueueProductSyncById(txn, productId);
+          await AppDatabase.instance.enqueueStockMovementSync(txn, movementId);
         }
         await AccountingService.postSalesReturn(
           txn,
@@ -297,6 +311,7 @@ class _SalesReturnsPageState extends State<SalesReturnsPage> {
           costOfGoodsReturned: restoredCost,
         );
       });
+      await _syncIfConfigured();
       _message('Sales return saved. Stock and accounting entries were updated.');
       await _load();
     } catch (error) {
