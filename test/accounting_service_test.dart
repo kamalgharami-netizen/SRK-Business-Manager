@@ -284,5 +284,51 @@ void main() {
 
       expect(await db.query('journal_entries'), isEmpty);
     });
+
+    test('posts a balanced customer receipt journal', () async {
+      final db = await _openAccountingDatabase();
+      addTearDown(db.close);
+
+      await db.transaction((txn) => AccountingService.postPayment(
+            txn,
+            paymentId: 41,
+            date: '2026-10-31',
+            paymentType: 'receipt',
+            mode: 'upi',
+            amount: 250,
+            reference: 'UPI-REF-41',
+          ));
+
+      final entry = (await db.query('journal_entries')).single;
+      final lines = await db.query('journal_lines');
+      expect(entry['source_type'], 'receipt');
+      expect(entry['source_id'], 41);
+      expect(lines, hasLength(2));
+      expect(lines[0]['debit'], 250);
+      expect(lines[1]['credit'], 250);
+    });
+
+    test('posts a balanced supplier payment journal', () async {
+      final db = await _openAccountingDatabase();
+      addTearDown(db.close);
+
+      await db.transaction((txn) => AccountingService.postPayment(
+            txn,
+            paymentId: 42,
+            date: '2026-10-31',
+            paymentType: 'payment',
+            mode: 'cash',
+            amount: 375,
+            reference: 'CASH-REF-42',
+          ));
+
+      final entry = (await db.query('journal_entries')).single;
+      final lines = await db.query('journal_lines');
+      expect(entry['source_type'], 'payment');
+      expect(entry['source_id'], 42);
+      expect(lines, hasLength(2));
+      expect(lines[0]['debit'], 375);
+      expect(lines[1]['credit'], 375);
+    });
   });
 }
