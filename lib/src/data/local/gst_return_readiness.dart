@@ -106,61 +106,13 @@ class GstReturnReadiness {
       final recipientGstin = (invoice['party_gstin'] as String? ?? '').trim().toUpperCase();
       final recipientState = (invoice['party_state'] as String? ?? '').trim();
       if (recipientGstin.isNotEmpty &&
-          (!RegExp(r'^[0-9]{2}[A-Z]{5}[0-9]{4}[A-Z][1-9A-Z]Z[0-9A-Z]
-        issues.add(GstReadinessIssue(
-          severity: GstReadinessSeverity.error,
-          code: 'recipient_gstin_invalid',
-          message: 'Invoice $number contains an invalid recipient GSTIN.',
-        ));
-      }
-
-      final items = invoice['items'];
-      if (items is! List || items.isEmpty) {
-        issues.add(GstReadinessIssue(
-          severity: GstReadinessSeverity.error,
-          code: 'invoice_items_missing',
-          message: 'Invoice $number has no invoice line items.',
-        ));
-        continue;
-      }
-      for (final rawItem in items) {
-        if (rawItem is! Map) continue;
-        final hsn = (rawItem['hsn_sac'] as String? ?? '').trim();
-        if (hsn.isEmpty) {
-          issues.add(GstReadinessIssue(
-            severity: GstReadinessSeverity.warning,
-            code: 'hsn_sac_missing',
-            message: 'Invoice $number contains a line without HSN/SAC; verify the applicable reporting requirement.',
-          ));
-        }
-        final tax = (rawItem['tax_amount'] as num?)?.toDouble();
-        final taxable = (rawItem['taxable_value'] as num?)?.toDouble();
-        if (tax == null || taxable == null ||
-            !tax.isFinite || !taxable.isFinite || tax < 0 || taxable < 0) {
-          issues.add(GstReadinessIssue(
-            severity: GstReadinessSeverity.error,
-            code: 'invalid_tax_values',
-            message: 'Invoice $number contains invalid taxable value or GST amount.',
-          ));
-        }
-      }
-    }
-
-    issues.add(const GstReadinessIssue(
-      severity: GstReadinessSeverity.warning,
-      code: 'manual_scope_review',
-      message: 'This preflight does not cover every GSTR-1 table, amendments, advances, exports, e-commerce supplies, or GSTN schema validation. Review these separately before filing.',
-    ));
-    return GstReadinessReport(List.unmodifiable(issues));
-  }
-}
-)
+          (!RegExp(r'^[0-9]{2}[A-Z]{5}[0-9]{4}[A-Z][1-9A-Z]Z[0-9A-Z]$')
                   .hasMatch(recipientGstin) ||
               !IndianStates.gstinMatchesState(recipientGstin, recipientState))) {
         issues.add(GstReadinessIssue(
           severity: GstReadinessSeverity.error,
           code: 'recipient_gstin_invalid',
-          message: 'Invoice $number contains an invalid recipient GSTIN.',
+          message: 'Invoice $number contains an invalid recipient GSTIN or GSTIN/state mismatch.',
         ));
       }
 
