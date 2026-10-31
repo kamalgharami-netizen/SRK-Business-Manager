@@ -210,6 +210,45 @@ class _ReportsPageState extends State<ReportsPage> {
       WHERE a.is_active = 1
       ORDER BY a.account_code
     """, journalDateArgs);
+
+    // Party opening balances are stored on party records rather than journal
+    // entries. Include receivables/payables and balance them through equity.
+    final openingBalances = await db.rawQuery("""
+      SELECT
+        COALESCE(SUM(CASE WHEN balance_type = 'receivable' THEN opening_balance ELSE 0 END), 0) AS receivable,
+        COALESCE(SUM(CASE WHEN balance_type = 'payable' THEN opening_balance ELSE 0 END), 0) AS payable
+      FROM parties
+    """);
+    final openingReceivable =
+        (openingBalances.first['receivable'] as num).toDouble();
+    final openingPayable =
+        (openingBalances.first['payable'] as num).toDouble();
+
+    Map<String, Object?>? accountRow(String code) {
+      for (final row in journalRows) {
+        if (row['account_code'] == code) return row;
+      }
+      return null;
+    }
+
+    void addOpeningAmount(String code, {double debit = 0, double credit = 0}) {
+      final row = accountRow(code);
+      if (row == null) return;
+      row['total_debit'] =
+          (row['total_debit'] as num).toDouble() + debit;
+      row['total_credit'] =
+          (row['total_credit'] as num).toDouble() + credit;
+    }
+
+    addOpeningAmount('1100', debit: openingReceivable);
+    addOpeningAmount('2000', credit: openingPayable);
+    final openingEquityOffset = openingReceivable - openingPayable;
+    if (openingEquityOffset >= 0) {
+      addOpeningAmount('3200', credit: openingEquityOffset);
+    } else {
+      addOpeningAmount('3200', debit: -openingEquityOffset);
+    }
+
     double trialDebit = 0;
     double trialCredit = 0;
     double profitIncome = 0;
@@ -391,7 +430,7 @@ class _ReportsPageState extends State<ReportsPage> {
                   ),
                 )),
             ],
-            const Text('This Trial Balance includes only posted journal entries created by the new accounting workflow. Opening balances and older transactions have not been imported.'),
+            const Text('This Trial Balance includes posted journal entries and party opening receivable/payable balances. Cash/bank opening balances and older transactions not migrated to the accounting ledger are excluded.'),
           ] else if (title == 'Balance Sheet') ...[
             _metric('Total assets', _money(_balanceAssets), Icons.account_balance_wallet),
             _metric('Total liabilities', _money(_balanceLiabilities), Icons.receipt_long),
@@ -420,7 +459,7 @@ class _ReportsPageState extends State<ReportsPage> {
                   title: Text('${row['account_code']} • ${row['account_name']}'),
                   trailing: Text(_money((row['balance'] as num).toDouble())),
                 )),
-            const Text('Preliminary balance sheet from posted journal entries only. It excludes unposted transactions, unrecorded depreciation, return adjustments and legacy transactions not migrated to the accounting ledger. Current earnings are added to equity for presentation. Verify balances before statutory or lending use.'),
+            const Text('Preliminary balance sheet includes posted journal entries and party opening receivable/payable balances. It excludes cash/bank opening balances, unposted transactions, unrecorded depreciation and legacy transactions not migrated to the accounting ledger. Current earnings are added to equity for presentation. Verify balances before statutory or lending use.'),
           ] else if (title == 'Profit & Loss') ...[
             _metric('Recorded income', _money(_profitIncome), Icons.trending_up),
             _metric('Recorded expenses', _money(_profitExpense), Icons.receipt_long),
