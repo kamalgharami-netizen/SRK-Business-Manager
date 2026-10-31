@@ -39,6 +39,9 @@ jobs:
       - name: Analyze Dart code
         run: flutter analyze
 
+      - name: Run automated tests
+        run: flutter test
+
       - name: Build Android APK
         run: flutter build apk --debug
 
@@ -71,6 +74,9 @@ jobs:
 
       - name: Analyze Dart code
         run: flutter analyze
+
+      - name: Run automated tests
+        run: flutter test
 
       - name: Build Windows application
         run: flutter build windows --release
