@@ -69,11 +69,41 @@ class _ReportsPageState extends State<ReportsPage> {
     }
     final dateClause = where.isEmpty ? '' : ' AND ${where.join(' AND ')}';
     final sales = await db.rawQuery(
-      "SELECT COALESCE(SUM(grand_total),0) AS total, COALESCE(SUM(tax_total),0) AS tax, COALESCE(SUM(cgst_total),0) AS cgst, COALESCE(SUM(sgst_total),0) AS sgst, COALESCE(SUM(igst_total),0) AS igst, COUNT(*) AS count FROM invoices WHERE invoice_type='sale'$dateClause",
+      """
+      SELECT
+        COALESCE(SUM(CASE WHEN invoice_type = 'sale' THEN grand_total
+                          WHEN invoice_type = 'sales_return' THEN -grand_total ELSE 0 END), 0) AS total,
+        COALESCE(SUM(CASE WHEN invoice_type = 'sale' THEN tax_total
+                          WHEN invoice_type = 'sales_return' THEN -tax_total ELSE 0 END), 0) AS tax,
+        COALESCE(SUM(CASE WHEN invoice_type = 'sale' THEN cgst_total
+                          WHEN invoice_type = 'sales_return' THEN -cgst_total ELSE 0 END), 0) AS cgst,
+        COALESCE(SUM(CASE WHEN invoice_type = 'sale' THEN sgst_total
+                          WHEN invoice_type = 'sales_return' THEN -sgst_total ELSE 0 END), 0) AS sgst,
+        COALESCE(SUM(CASE WHEN invoice_type = 'sale' THEN igst_total
+                          WHEN invoice_type = 'sales_return' THEN -igst_total ELSE 0 END), 0) AS igst,
+        COUNT(CASE WHEN invoice_type = 'sale' THEN 1 END) AS count
+      FROM invoices
+      WHERE invoice_type IN ('sale', 'sales_return')$dateClause
+      """,
       args,
     );
     final purchases = await db.rawQuery(
-      "SELECT COALESCE(SUM(grand_total),0) AS total, COALESCE(SUM(tax_total),0) AS tax, COALESCE(SUM(cgst_total),0) AS cgst, COALESCE(SUM(sgst_total),0) AS sgst, COALESCE(SUM(igst_total),0) AS igst, COUNT(*) AS count FROM invoices WHERE invoice_type='purchase'$dateClause",
+      """
+      SELECT
+        COALESCE(SUM(CASE WHEN invoice_type = 'purchase' THEN grand_total
+                          WHEN invoice_type = 'purchase_return' THEN -grand_total ELSE 0 END), 0) AS total,
+        COALESCE(SUM(CASE WHEN invoice_type = 'purchase' THEN tax_total
+                          WHEN invoice_type = 'purchase_return' THEN -tax_total ELSE 0 END), 0) AS tax,
+        COALESCE(SUM(CASE WHEN invoice_type = 'purchase' THEN cgst_total
+                          WHEN invoice_type = 'purchase_return' THEN -cgst_total ELSE 0 END), 0) AS cgst,
+        COALESCE(SUM(CASE WHEN invoice_type = 'purchase' THEN sgst_total
+                          WHEN invoice_type = 'purchase_return' THEN -sgst_total ELSE 0 END), 0) AS sgst,
+        COALESCE(SUM(CASE WHEN invoice_type = 'purchase' THEN igst_total
+                          WHEN invoice_type = 'purchase_return' THEN -igst_total ELSE 0 END), 0) AS igst,
+        COUNT(CASE WHEN invoice_type = 'purchase' THEN 1 END) AS count
+      FROM invoices
+      WHERE invoice_type IN ('purchase', 'purchase_return')$dateClause
+      """,
       args,
     );
     final expense = await db.rawQuery("SELECT COALESCE(SUM(amount),0) AS total, COUNT(*) AS count FROM expenses");
@@ -109,7 +139,12 @@ class _ReportsPageState extends State<ReportsPage> {
     """);
     final journalDateWhere = <String>[];
     final journalDateArgs = <Object?>[];
-    if (_startDate != null) {
+    // Trial Balance and Balance Sheet are point-in-time reports: include all
+    // posted entries up to the selected end date, not only movements inside
+    // the selected period. Profit & Loss uses the complete selected date range.
+    final pointInTimeReport = widget.reportType == 'Trial Balance' ||
+        widget.reportType == 'Balance Sheet';
+    if (!pointInTimeReport && _startDate != null) {
       journalDateWhere.add('je.entry_date >= ?');
       journalDateArgs.add(_date(_startDate!));
     }
@@ -246,9 +281,13 @@ class _ReportsPageState extends State<ReportsPage> {
               title == 'Profit & Loss' || title == 'Balance Sheet') ...[
             _gstDateFilter(),
             const SizedBox(height: 8),
-            Text(_startDate == null && _endDate == null
-              ? 'Period: All recorded dates'
-              : 'Period: ${_startDate == null ? 'Beginning' : _date(_startDate!)} to ${_endDate == null ? 'Latest' : _date(_endDate!)}'),
+            Text(
+              title == 'Trial Balance' || title == 'Balance Sheet'
+                ? 'As of: ${_endDate == null ? 'Latest recorded date' : _date(_endDate!)} (opening balances included)'
+                : _startDate == null && _endDate == null
+                  ? 'Period: All recorded dates'
+                  : 'Period: ${_startDate == null ? 'Beginning' : _date(_startDate!)} to ${_endDate == null ? 'Latest' : _date(_endDate!)}',
+            ),
           ],
           if (title == 'GST Reports') ...[
             _metric('Sales taxable + tax total', _money(_number('sales')), Icons.point_of_sale),
