@@ -553,6 +553,7 @@ class AppDatabase {
     required String recordId,
     required String operation,
     required Map<String, dynamic> payload,
+    DatabaseExecutor? executor,
   }) async {
     const allowedOperations = {'insert', 'update', 'delete'};
     if (!allowedOperations.contains(operation)) {
@@ -561,7 +562,7 @@ class AppDatabase {
     if (tableName.trim().isEmpty || recordId.trim().isEmpty) {
       throw ArgumentError('Table name and record ID are required.');
     }
-    final db = await database;
+    final db = executor ?? await database;
     return db.insert('sync_queue', {
       'table_name': tableName.trim(),
       'record_id': recordId.trim(),
