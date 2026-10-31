@@ -213,12 +213,48 @@ class _ReportsPageState extends State<ReportsPage> {
 
     // Party opening balances are stored on party records rather than journal
     // entries. Include receivables/payables and balance them through equity.
-    final openingBalances = await db.rawQuery("""
-      SELECT
-        COALESCE(SUM(CASE WHEN balance_type = 'receivable' THEN opening_balance ELSE 0 END), 0) AS receivable,
-        COALESCE(SUM(CASE WHEN balance_type = 'payable' THEN opening_balance ELSE 0 END), 0) AS payable
-      FROM parties
-    """);
+    final openingDateRows = await db.query(
+      'app_settings',
+      columns: ['setting_value'],
+      where: 'setting_key = ?',
+      whereArgs: ['opening_balance_date'],
+      limit: 1,
+    );
+    String? openingBalanceDate = openingDateRows.isNotEmpty
+        ? openingDateRows.first['setting_value'] as String
+        : null;
+    if (openingBalanceDate == null) {
+      final legacyOpeningDate = await db.rawQuery("""
+        SELECT MIN(entry_date) AS opening_date
+        FROM journal_entries
+        WHERE source_type = 'opening_balance' AND status = 'posted'
+      """);
+      final legacyValue = legacyOpeningDate.first['opening_date'] as String?;
+      if (legacyValue != null) {
+        openingBalanceDate = legacyValue.substring(0, 10);
+      } else {
+        final firstPartyOpening = await db.rawQuery("""
+          SELECT MIN(created_at) AS opening_date
+          FROM parties
+          WHERE opening_balance > 0
+        """);
+        final partyValue = firstPartyOpening.first['opening_date'] as String?;
+        if (partyValue != null) openingBalanceDate = partyValue.substring(0, 10);
+      }
+    }
+    final includePartyOpeningBalances = _endDate == null ||
+        openingBalanceDate == null ||
+        openingBalanceDate.compareTo(_date(_endDate!)) <= 0;
+    final openingBalances = includePartyOpeningBalances
+        ? await db.rawQuery("""
+            SELECT
+              COALESCE(SUM(CASE WHEN balance_type = 'receivable' THEN opening_balance ELSE 0 END), 0) AS receivable,
+              COALESCE(SUM(CASE WHEN balance_type = 'payable' THEN opening_balance ELSE 0 END), 0) AS payable
+            FROM parties
+          """)
+        : [
+            {'receivable': 0, 'payable': 0}
+          ];
     final openingReceivable =
         (openingBalances.first['receivable'] as num).toDouble();
     final openingPayable =

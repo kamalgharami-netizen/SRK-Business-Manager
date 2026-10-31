@@ -14,6 +14,7 @@ class _AccountsPageState extends State<AccountsPage> {
   bool _savingOpening = false;
   List<Map<String, Object?>> _accounts = [];
   bool _openingPosted = false;
+  DateTime _openingDate = DateTime.now();
   final Map<int, TextEditingController> _amounts = {};
   final Map<int, String> _sides = {};
 
@@ -37,11 +38,25 @@ class _AccountsPageState extends State<AccountsPage> {
     final accounts = await db.query('accounts', orderBy: 'account_code COLLATE NOCASE');
     final opening = await db.query(
       'journal_entries',
-      columns: ['id'],
+      columns: ['id', 'entry_date'],
       where: 'source_type = ? AND status = ?',
       whereArgs: ['opening_balance', 'posted'],
+      orderBy: 'entry_date ASC',
       limit: 1,
     );
+    final savedOpeningDate = await db.query(
+      'app_settings',
+      columns: ['setting_value'],
+      where: 'setting_key = ?',
+      whereArgs: ['opening_balance_date'],
+      limit: 1,
+    );
+    final storedDate = savedOpeningDate.isNotEmpty
+        ? savedOpeningDate.first['setting_value'] as String
+        : opening.isNotEmpty
+            ? (opening.first['entry_date'] as String).substring(0, 10)
+            : DateTime.now().toIso8601String().substring(0, 10);
+    final parsedOpeningDate = DateTime.tryParse(storedDate) ?? DateTime.now();
     for (final controller in _amounts.values) {
       controller.dispose();
     }
@@ -56,6 +71,7 @@ class _AccountsPageState extends State<AccountsPage> {
     setState(() {
       _accounts = accounts;
       _openingPosted = opening.isNotEmpty;
+      _openingDate = DateTime(parsedOpeningDate.year, parsedOpeningDate.month, parsedOpeningDate.day);
       _loading = false;
     });
   }
@@ -224,7 +240,7 @@ class _AccountsPageState extends State<AccountsPage> {
         if (existing.isNotEmpty) throw StateError('Opening balances were already posted.');
         final entryId = await txn.insert('journal_entries', {
           'entry_number': 'OB-${DateTime.now().microsecondsSinceEpoch}',
-          'entry_date': DateTime.now().toIso8601String(),
+          'entry_date': _openingDate.toIso8601String(),
           'source_type': 'opening_balance',
           'source_id': 1,
           'memo': 'Initial business opening balances',
@@ -234,6 +250,11 @@ class _AccountsPageState extends State<AccountsPage> {
           await txn.insert('journal_lines', {'journal_entry_id': entryId, ...line});
         }
         await txn.update('journal_entries', {'status': 'posted'}, where: 'id = ?', whereArgs: [entryId]);
+        await txn.delete('app_settings', where: 'setting_key = ?', whereArgs: ['opening_balance_date']);
+        await txn.insert('app_settings', {
+          'setting_key': 'opening_balance_date',
+          'setting_value': _openingDate.toIso8601String().substring(0, 10),
+        });
       });
       await _load();
       _message('Opening balances posted successfully.');
@@ -317,7 +338,26 @@ class _AccountsPageState extends State<AccountsPage> {
                         Text('Opening Balances', style: Theme.of(context).textTheme.titleLarge),
                         const SizedBox(height: 6),
                         const Text('Enter balances as on the date you start using SRK Business Manager. Cash (1000), Bank (1010), other Asset, Liability and Equity accounts are included. Enter customer receivables and supplier payables in each Party profile; their control accounts are excluded here to prevent duplicate reporting.'),
-                        const SizedBox(height: 12),
+                        const SizedBox(height: 8),
+                        ListTile(
+                          contentPadding: EdgeInsets.zero,
+                          title: const Text('Opening balance date'),
+                          subtitle: Text('${_openingDate.year.toString().padLeft(4, '0')}-${_openingDate.month.toString().padLeft(2, '0')}-${_openingDate.day.toString().padLeft(2, '0')}'),
+                          trailing: TextButton(
+                            onPressed: _openingPosted ? null : () async {
+                              final selected = await showDatePicker(
+                                context: context,
+                                initialDate: _openingDate,
+                                firstDate: DateTime(2000),
+                                lastDate: DateTime(2100),
+                              );
+                              if (selected != null && mounted) {
+                                setState(() => _openingDate = DateTime(selected.year, selected.month, selected.day));
+                              }
+                            },
+                            child: const Text('Choose date'),
+                          ),
+                        ),
                         if (_openingPosted)
                           const ListTile(
                             leading: Icon(Icons.lock, color: Colors.green),
