@@ -1,70 +1,117 @@
-# SRK Business Manager — Phase 1 Foundation
+# SRK Business Manager
 
-Original Flutter foundation for a new Windows + Android business accounting application. This repository is independent of SRK Case Manager.
+Offline-first GST billing and accounting application for Windows and Android. This repository is independent of **SRK Case Manager**.
 
-## Current scope
-- Flutter application shell and dashboard
-- Windows and Android targets
-- Supabase configuration through --dart-define
-- Feature-module navigation placeholders
-- Initial multi-company PostgreSQL schema with membership and Row Level Security
-- Separate offline SQLite database for each selected cloud business
-- Business-scoped backup folders and database-identity validation during restore
-- Durable local sync queue with retry tracking
-- First-stage two-way cloud sync for parties, products and expenses; sales invoices and their line items are included after migrations 0003, 0004 and 0005
+## Current implementation status
 
-## Important
-This is a foundation, not a finished accounting product. Do not use it for live bookkeeping, GST filing, or statutory reporting until the remaining modules, validations, tests, backup/restore, and security review are complete.
+The repository contains a working Flutter application foundation and feature modules for:
+
+- Business registration, sign-in, company workspace and separate local SQLite database per selected cloud business
+- Parties, products, sales invoices, estimates, sales returns, purchase invoices and purchase returns
+- Expenses, receipts and payments
+- Inventory quantities, stock adjustments and FIFO inventory-cost layers
+- Double-entry journal posting, chart of accounts, trial balance, profit & loss and balance sheet
+- GST invoice tax calculation fields, HSN/SAC, place of supply and tax summaries
+- Staff profile management (local profiles) and cloud business-user access roles
+- Local database backup and restore with business-identity validation
+- Durable offline sync queue, retry scheduling, optimistic cloud revision checks and a conflict-resolution screen
+- First-stage two-way cloud sync for parties, products, expenses, invoices (including purchase/sales invoices and returns), payments and stock movements
+
+**This is not yet a finished production accounting or statutory GST product.** Do not rely on it for live bookkeeping, GST returns/filing, statutory submissions or tax compliance until the remaining accounting, GST, sync, security and device-level acceptance tests have been completed.
+
+## Implemented sync limitations
+
+- Purchase invoices and their line items can be transferred as invoice records. Downloading a purchase invoice does not yet recreate its accounting journal, FIFO cost layers or inventory valuation on the receiving device.
+- Stock movements and product quantity snapshots sync separately. The receiver does not replay movement deltas, to avoid double-counting during repeated pulls.
+- Cloud sync currently performs paged reconciliation of supported records; production-scale incremental sync and broader entity coverage remain pending.
+- Staff profiles are local records. Cloud login accounts and the role-based permissions in the Team & Access screen are separate concepts.
+- A team member must already have registered for a cloud account before an owner/admin can add that account to a business. The current flow does not send invitation emails.
+- The local backup/restore feature does not replace a tested off-device backup and disaster-recovery plan.
 
 ## Prerequisites
-- Flutter SDK (stable)
-- Android Studio + Android SDK
-- Visual Studio 2022 with Desktop development with C++ workload (Windows builds)
-- A Supabase project
 
-## Create the Flutter project
-In PowerShell:
+- Flutter SDK (stable channel; Dart 3.6 or later)
+- Android Studio and Android SDK for Android development
+- Visual Studio 2022 with **Desktop development with C++** workload for Windows builds
+- A Supabase project for cloud authentication, team access and two-way sync (optional for local demo mode)
+
+## Set up the project
+
+Clone or download this repository, then from its root directory run:
+
 ```powershell
-flutter create --platforms=android,windows srk_business_manager
-cd srk_business_manager
-```
-Copy the `lib/` and `supabase/` folders from this repository into the new Flutter project. Replace `pubspec.yaml` with the supplied file, then run:
-```powershell
+flutter create --platforms=android,windows --project-name=srk_business_manager .
 flutter pub get
 flutter doctor
+flutter analyze
+flutter test
 ```
 
+The GitHub Actions workflow generates the platform runner files on clean build agents, so generated Android/Windows platform directories do not need to be committed.
+
 ## Configure Supabase
-1. Create a new Supabase project.
-2. Open SQL Editor and run `supabase/migrations/0001_initial_schema.sql`, then `0002_auth_membership_policy_fix.sql`, then `0003_business_records_sync.sql`, then `0004_expenses_sync.sql`, then `0005_sales_invoice_sync.sql`.
-3. Copy the Project URL and publishable key from Supabase project settings.
-4. In GitHub, open this repository → Settings → Secrets and variables → Actions → New repository secret. Add:
-   - `SUPABASE_URL`: the Supabase Project URL
-   - `SUPABASE_PUBLISHABLE_KEY`: the Supabase publishable key
-   The release workflow passes these values into both Android and Windows builds. If the secrets are not set, the application builds in local demo mode. Never add the Supabase service-role key to the client application.
-5. Run on Windows:
+
+Create a dedicated Supabase project for SRK Business Manager. In the Supabase SQL Editor, run these migrations **in numerical order**:
+
+1. `supabase/migrations/0001_initial_schema.sql`
+2. `supabase/migrations/0002_auth_membership_policy_fix.sql`
+3. `supabase/migrations/0003_business_records_sync.sql`
+4. `supabase/migrations/0004_expenses_sync.sql`
+5. `supabase/migrations/0005_sales_invoice_sync.sql`
+6. `supabase/migrations/0006_payments_sync.sql`
+7. `supabase/migrations/0007_stock_movements_sync.sql`
+8. `supabase/migrations/0008_team_access_and_permissions.sql`
+
+In GitHub, open **Settings → Secrets and variables → Actions** and add these repository secrets:
+
+- `SUPABASE_URL`: the Supabase project URL
+- `SUPABASE_PUBLISHABLE_KEY`: the Supabase publishable key
+
+Never place the Supabase service-role key in this client application or in GitHub build variables.
+
+If the two secrets are absent, the app builds in local demo mode. To run with cloud access, supply the same values using Dart defines:
+
 ```powershell
 flutter run -d windows --dart-define=SUPABASE_URL=https://YOUR_PROJECT.supabase.co --dart-define=SUPABASE_PUBLISHABLE_KEY=YOUR_PUBLISHABLE_KEY
 ```
+
 For Android, enable USB debugging and run:
+
 ```powershell
 flutter run -d android --dart-define=SUPABASE_URL=https://YOUR_PROJECT.supabase.co --dart-define=SUPABASE_PUBLISHABLE_KEY=YOUR_PUBLISHABLE_KEY
 ```
-The app launches in local demo mode without credentials. When Supabase credentials are configured, the app shows email/password sign-up and sign-in, followed by a basic business list and company-creation screen. If email confirmation is enabled in Supabase Auth, users must confirm their email before signing in. Do not put a Supabase service-role key in the app; use only the project publishable key. Authentication and business membership are connected. Each selected cloud business now opens a separate offline SQLite database under its own business ID; the original device-local database is preserved and is not automatically moved. Backups are stored in separate local/business folders, and restore validation rejects a backup whose business identity does not match the active database. The cloud sync uploads and downloads parties, products, expenses, sales invoices and their line items through the business-scoped `business_records` table. Invoice payloads use stable UUIDs to map customers and products across devices with different local SQLite integer IDs. Invoice creation and product stock changes are queued in the same local SQLite transaction as the invoice. Cloud writes use optimistic revision checks against updated_at; when another device changes a record first, the local edit remains queued and is not allowed to overwrite the cloud version. A user-facing conflict-resolution screen is still pending. Expense additions and deletions are queued in the same local SQLite transaction as the accounting entry. Local edits are added to the durable queue in the same SQLite transaction as the edit; failed uploads remain queued with retry information. Pull skips records that still have pending local changes. Purchase invoices, payments, independent stock-ledger sync, staff, the conflict-resolution screen, and production-scale incremental sync are not yet implemented. Downloaded sales invoices recreate invoice headers and line items but do not replay local accounting journals, FIFO cost layers, or inventory valuation; this is not yet a complete accounting-ledger sync. The current pull reads the supported cloud records in pages and reconciles them on each sync.
 
-## Build
+Each selected cloud business uses a separate local SQLite database under that business UUID. The original device-local database is preserved and is not automatically migrated into a cloud business database.
+
+## Build locally
+
 ```powershell
 flutter build windows --release --dart-define=SUPABASE_URL=https://YOUR_PROJECT.supabase.co --dart-define=SUPABASE_PUBLISHABLE_KEY=YOUR_PUBLISHABLE_KEY
 flutter build apk --release --dart-define=SUPABASE_URL=https://YOUR_PROJECT.supabase.co --dart-define=SUPABASE_PUBLISHABLE_KEY=YOUR_PUBLISHABLE_KEY
 ```
 
-## Planned implementation sequence
-1. Foundation, tenant schema, authentication and company setup
-2. Offline SQLite repository (per-business database isolation added), durable sync queue integration and conflict handling
-3. Parties, products, units, warehouses and stock ledger
-4. Sales, estimates, invoices, returns and PDF/thermal printing
-5. Purchase, expenses, receipts, payments and cash/bank books
-6. Double-entry accounting, trial balance, P&L and balance sheet
-7. GST engine, HSN/SAC, tax summaries, GSTR reports and validation
-8. Barcode, staff roles, audit logs, backup/restore and reports
-9. Automated tests, security review and release builds
+Windows output: `build/windows/x64/runner/Release/` (the EXE and its required runtime files must be distributed together).
+
+Android output: `build/app/outputs/flutter-apk/app-release.apk`.
+
+## GitHub Actions builds
+
+Workflow: `.github/workflows/cloud-build.yml`
+
+Every push to `main`, pull request targeting `main`, or manual workflow dispatch runs Android and Windows jobs. Each job installs Flutter dependencies, runs `flutter analyze` and `flutter test`, builds its release target, and uploads a build artifact. The Windows artifact is a ZIP containing the EXE and its required runtime files; the Android artifact is the release APK.
+
+Check **Actions → SRK Business Manager - Cloud Build** for the latest run and download the artifacts from that successful run. Artifacts are temporary and expire according to the workflow retention setting.
+
+## Remaining work before production release
+
+1. Complete accounting-ledger replication for cloud-downloaded purchase invoices, purchase returns, payments and inventory-cost layers; add reconciliation checks for cross-device balances.
+2. Complete the GST engine and statutory reports, including validated GSTR-1 / GSTR-3B data exports and tax-period controls. Independently verify all tax calculations against current official GST rules before release.
+3. Add cloud sync for remaining business data (including staff profiles where appropriate), company settings, warehouses and other inventory records.
+4. Improve incremental sync, large-dataset performance, conflict recovery and end-to-end multi-device tests.
+5. Complete role/permission tests, audit trails, security review and backup/restore disaster-recovery tests.
+6. Expand automated tests for invoice workflows, purchase workflows, GST edge cases, reports, database migrations and Windows/Android device behavior.
+7. Perform user acceptance testing on real Windows 11 and Android devices before publishing a production release.
+
+## Important accounting and tax notice
+
+This application is under active development. A successful CI build confirms that the current source passes the configured analyzer/tests and that the Windows and Android packages can be built; it does **not** certify accounting correctness, GST compliance, security or production readiness.
