@@ -9,7 +9,7 @@ class AppDatabase {
   AppDatabase._();
 
   static final AppDatabase instance = AppDatabase._();
-  static const int _databaseVersion = 11;
+  static const int _databaseVersion = 12;
   String? _databasePath;
   Database? _database;
 
@@ -96,6 +96,9 @@ class AppDatabase {
         if (oldVersion < 10) {
           await db.execute('ALTER TABLE invoice_items ADD COLUMN original_invoice_item_id INTEGER');
           await db.execute('CREATE INDEX idx_invoice_items_original ON invoice_items(original_invoice_item_id)');
+        }
+        if (oldVersion < 12) {
+          await db.execute('ALTER TABLE inventory_cost_layers ADD COLUMN source_item_id INTEGER');
         }
         if (oldVersion < 11) {
           await db.execute('ALTER TABLE stock_movements RENAME TO stock_movements_old');
@@ -369,6 +372,7 @@ class AppDatabase {
         product_id INTEGER NOT NULL,
         source_type TEXT NOT NULL,
         source_id INTEGER,
+        source_item_id INTEGER,
         received_at TEXT NOT NULL,
         quantity_received REAL NOT NULL CHECK (quantity_received > 0),
         quantity_remaining REAL NOT NULL CHECK (quantity_remaining >= 0),
