@@ -13,8 +13,9 @@ class InventoryCostService {
     required double unitCost,
     required String receivedAt,
   }) async {
-    if (quantity <= 0 || unitCost < 0) {
-      throw StateError('Purchase quantity and cost must be valid.');
+    if (!quantity.isFinite || !unitCost.isFinite ||
+        quantity <= 0 || unitCost < 0) {
+      throw StateError('Purchase quantity and cost must be finite valid numbers.');
     }
     await txn.insert('inventory_cost_layers', {
       'product_id': productId,
@@ -38,7 +39,9 @@ class InventoryCostService {
     required double quantity,
     required String soldAt,
   }) async {
-    if (quantity <= 0) throw StateError('Sale quantity must be positive.');
+    if (!quantity.isFinite || quantity <= 0) {
+      throw StateError('Sale quantity must be a finite positive number.');
+    }
     var remaining = quantity;
     var totalCost = 0.0;
     final layers = await txn.query(
@@ -50,9 +53,14 @@ class InventoryCostService {
     for (final layer in layers) {
       if (remaining <= 0.0000001) break;
       final available = (layer['quantity_remaining'] as num).toDouble();
-      final used = available < remaining ? available : remaining;
       final unitCost = (layer['unit_cost'] as num).toDouble();
+      if (!available.isFinite || available <= 0 ||
+          !unitCost.isFinite || unitCost < 0) {
+        throw StateError('An inventory cost layer contains invalid values.');
+      }
+      final used = available < remaining ? available : remaining;
       final cost = used * unitCost;
+      if (!cost.isFinite) throw StateError('Calculated inventory cost is invalid.');
       await txn.rawUpdate(
         'UPDATE inventory_cost_layers SET quantity_remaining = quantity_remaining - ? WHERE id = ?',
         [used, layer['id']],
@@ -79,6 +87,9 @@ class InventoryCostService {
       );
       if (products.isEmpty) throw StateError('Product cost information is missing.');
       final fallbackCost = (products.first['purchase_price'] as num).toDouble();
+      if (!fallbackCost.isFinite || fallbackCost < 0) {
+        throw StateError('Product purchase price is invalid.');
+      }
       final layerId = await txn.insert('inventory_cost_layers', {
         'product_id': productId,
         'source_type': 'legacy_fallback',
@@ -90,6 +101,7 @@ class InventoryCostService {
         'is_estimated': 1,
       });
       final cost = remaining * fallbackCost;
+      if (!cost.isFinite) throw StateError('Calculated inventory cost is invalid.');
       await txn.insert('invoice_item_costs', {
         'invoice_item_id': invoiceItemId,
         'layer_id': layerId,
@@ -162,8 +174,15 @@ class InventoryCostService {
     for (final layer in layers) {
       if (remaining <= 0.0000001) break;
       final available = (layer['quantity_remaining'] as num).toDouble();
-      final used = available < remaining ? available : remaining;
       final unitCost = (layer['unit_cost'] as num).toDouble();
+      if (!available.isFinite || available <= 0 ||
+          !unitCost.isFinite || unitCost < 0) {
+        throw StateError('An inventory cost layer contains invalid values.');
+      }
+      final used = available < remaining ? available : remaining;
+      if (!(used * unitCost).isFinite) {
+        throw StateError('Calculated inventory cost is invalid.');
+      }
       await txn.rawUpdate(
         'UPDATE inventory_cost_layers SET quantity_remaining = quantity_remaining - ? WHERE id = ?',
         [used, layer['id']],
@@ -235,7 +254,11 @@ class InventoryCostService {
       if (remaining <= 0.0000001) break;
       final usedQty = available < remaining ? available : remaining;
       final unitCost = (allocation['unit_cost'] as num).toDouble();
+      if (!unitCost.isFinite || unitCost < 0) {
+        throw StateError('An original sale cost allocation contains invalid values.');
+      }
       final cost = usedQty * unitCost;
+      if (!cost.isFinite) throw StateError('Calculated return cost is invalid.');
       final layerId = await txn.insert('inventory_cost_layers', {
         'product_id': productId,
         'source_type': 'sales_return',
@@ -267,7 +290,11 @@ class InventoryCostService {
       );
       if (rows.isEmpty) throw StateError('Product cost information is missing.');
       final unitCost = (rows.first['purchase_price'] as num).toDouble();
+      if (!unitCost.isFinite || unitCost < 0) {
+        throw StateError('Product purchase price is invalid.');
+      }
       final cost = remaining * unitCost;
+      if (!cost.isFinite) throw StateError('Calculated return cost is invalid.');
       final layerId = await txn.insert('inventory_cost_layers', {
         'product_id': productId,
         'source_type': 'sales_return_estimate',
