@@ -16,6 +16,7 @@ The repository contains a working Flutter application foundation and feature mod
 - Local database backup and restore with business-identity validation
 - Durable offline sync queue, retry scheduling, optimistic cloud revision checks and a conflict-resolution screen
 - First-stage two-way cloud sync for parties, products, expenses, invoices (including purchase/sales invoices and returns), payments and stock movements
+- Linked receipt/payment reconciliation on cloud download, with party/invoice type validation, invoice paid-balance reconciliation that avoids duplicate counting, and idempotent journal posting
 
 **This is not yet a finished production accounting or statutory GST product.** Do not rely on it for live bookkeeping, GST returns/filing, statutory submissions or tax compliance until the remaining accounting, GST, sync, security and device-level acceptance tests have been completed.
 
@@ -105,7 +106,7 @@ Check **Actions → SRK Business Manager - Cloud Build** for the latest run and 
 
 ## Remaining work before production release
 
-1. Complete cross-device payment allocation and party-ledger reconciliation tests, including linked and unlinked receipts/payments and concurrent edits.
+1. Complete real-device cross-device payment allocation and party-ledger reconciliation tests, including linked and unlinked receipts/payments, concurrent edits, and conflict recovery. The current sync handler validates linked parties/invoices, reconciles invoice paid snapshots against synced allocations, and avoids duplicate payment journal posting; real-device acceptance remains pending.
 2. Complete GST statutory reporting and validated GSTR-1 / GSTR-3B data exports, tax-period controls, and independent verification against current official GST rules. The central paise-rounded invoice calculation engine is implemented with automated unit tests.
 3. Add cloud sync for remaining business data (including staff profiles where appropriate), company settings, warehouses and other inventory records.
 4. Improve incremental sync, large-dataset performance, conflict recovery and end-to-end multi-device tests.
