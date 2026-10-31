@@ -134,11 +134,31 @@ class _PartiesPageState extends State<PartiesPage> {
         'state': state,
         'updated_at': DateTime.now().toIso8601String(),
       };
-      if (party == null) {
-        await db.insert('parties', values);
-      } else {
-        await db.update('parties', values, where: 'id = ?', whereArgs: [party['id']]);
-      }
+      final syncId = party == null
+          ? AppDatabase.instance.createSyncId()
+          : party['sync_id'] as String? ?? AppDatabase.instance.createSyncId();
+      values['sync_id'] = syncId;
+      await db.transaction((txn) async {
+        if (party == null) {
+          await txn.insert('parties', values);
+          await AppDatabase.instance.enqueueSyncOperation(
+            tableName: 'parties',
+            recordId: syncId,
+            operation: 'insert',
+            payload: Map<String, dynamic>.from(values),
+            executor: txn,
+          );
+        } else {
+          await txn.update('parties', values, where: 'id = ?', whereArgs: [party['id']]);
+          await AppDatabase.instance.enqueueSyncOperation(
+            tableName: 'parties',
+            recordId: syncId,
+            operation: 'update',
+            payload: Map<String, dynamic>.from(values),
+            executor: txn,
+          );
+        }
+      });
       await _loadParties();
     }
 
@@ -163,7 +183,18 @@ class _PartiesPageState extends State<PartiesPage> {
     );
     if (confirmed != true) return;
     final db = await AppDatabase.instance.database;
-    await db.delete('parties', where: 'id = ?', whereArgs: [party['id']]);
+    final syncId = party['sync_id'] as String? ?? AppDatabase.instance.createSyncId();
+    final payload = Map<String, dynamic>.from(party)..['sync_id'] = syncId;
+    await db.transaction((txn) async {
+      await AppDatabase.instance.enqueueSyncOperation(
+        tableName: 'parties',
+        recordId: syncId,
+        operation: 'delete',
+        payload: payload,
+        executor: txn,
+      );
+      await txn.delete('parties', where: 'id = ?', whereArgs: [party['id']]);
+    });
     await _loadParties();
   }
 
