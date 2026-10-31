@@ -36,7 +36,7 @@ void main() {
 
     test('quotes invoice numbers and review notes containing commas', () {
       const summary = Gstr1ClassificationSummary([
-        const Gstr1InvoiceClassification(
+        Gstr1InvoiceClassification(
           invoiceNumber: 'INV, "003"',
           category: Gstr1SupplyCategory.review,
           invoiceValue: 0,
