@@ -17,15 +17,17 @@ void main() {
       ],
     };
 
-    test('accepts valid core invoice data but keeps scope warning visible', () {
-      final report = GstReturnReadiness.validateGstr1(
-        supplierGstin: '19ABCDE1234F1Z5',
-        supplierState: 'West Bengal',
-        periodStart: periodStart,
-        periodEnd: periodEnd,
-        invoices: [validInvoice()],
-      );
+    GstReadinessReport validate(List<Map<String, Object?>> invoices) =>
+        GstReturnReadiness.validateGstr1(
+          supplierGstin: '19ABCDE1234F1Z5',
+          supplierState: 'West Bengal',
+          periodStart: periodStart,
+          periodEnd: periodEnd,
+          invoices: invoices,
+        );
 
+    test('accepts valid core invoice data but keeps scope warning visible', () {
+      final report = validate([validInvoice()]);
       expect(report.errorCount, 0);
       expect(report.canPrepareDraft, isTrue);
       expect(report.issues.any((issue) => issue.code == 'manual_scope_review'), isTrue);
@@ -40,26 +42,18 @@ void main() {
         periodEnd: periodEnd,
         invoices: [invoice],
       );
-
       expect(report.issues.any((issue) => issue.code == 'supplier_gstin_invalid'), isTrue);
       expect(report.issues.any((issue) => issue.code == 'invoice_date_outside_period'), isTrue);
       expect(report.canPrepareDraft, isFalse);
     });
 
-    test('flags missing place of supply, line items and warns for missing HSN', () {
+    test('flags missing place of supply and warns for missing HSN', () {
       final invoice = validInvoice()
         ..['place_of_supply'] = ''
         ..['items'] = [
           {'hsn_sac': '', 'taxable_value': 500.0, 'tax_amount': 90.0},
         ];
-      final report = GstReturnReadiness.validateGstr1(
-        supplierGstin: '19ABCDE1234F1Z5',
-        supplierState: 'West Bengal',
-        periodStart: periodStart,
-        periodEnd: periodEnd,
-        invoices: [invoice],
-      );
-
+      final report = validate([invoice]);
       expect(report.issues.any((issue) => issue.code == 'place_of_supply_missing'), isTrue);
       expect(report.issues.any((issue) => issue.code == 'hsn_sac_missing'), isTrue);
       expect(report.canPrepareDraft, isFalse);
@@ -67,29 +61,39 @@ void main() {
 
     test('flags recipient GSTIN that does not match party state', () {
       final invoice = validInvoice()..['party_state'] = 'Bihar';
-      final report = GstReturnReadiness.validateGstr1(
-        supplierGstin: '19ABCDE1234F1Z5',
-        supplierState: 'West Bengal',
-        periodStart: periodStart,
-        periodEnd: periodEnd,
-        invoices: [invoice],
-      );
-
+      final report = validate([invoice]);
       expect(report.issues.any((issue) => issue.code == 'recipient_gstin_invalid'), isTrue);
       expect(report.canPrepareDraft, isFalse);
     });
 
     test('detects duplicate invoice numbers case-insensitively', () {
       final second = validInvoice()..['invoice_number'] = 'inv-001';
-      final report = GstReturnReadiness.validateGstr1(
-        supplierGstin: '19ABCDE1234F1Z5',
-        supplierState: 'West Bengal',
-        periodStart: periodStart,
-        periodEnd: periodEnd,
-        invoices: [validInvoice(), second],
-      );
-
+      final report = validate([validInvoice(), second]);
       expect(report.issues.any((issue) => issue.code == 'duplicate_invoice_number'), isTrue);
+    });
+
+    test('does not silently ignore malformed invoice line items', () {
+      final invoice = validInvoice()..['items'] = [null, 'not a row'];
+      final report = validate([invoice]);
+      expect(report.issues.where((issue) => issue.code == 'invoice_item_malformed').length, 2);
+      expect(report.canPrepareDraft, isFalse);
+    });
+
+    test('flags non-finite and negative line tax values', () {
+      final invoice = validInvoice()
+        ..['items'] = [
+          {'hsn_sac': '9983', 'taxable_value': double.infinity, 'tax_amount': 10.0},
+          {'hsn_sac': '9983', 'taxable_value': 10.0, 'tax_amount': -1.0},
+        ];
+      final report = validate([invoice]);
+      expect(report.issues.where((issue) => issue.code == 'invalid_tax_values').length, 2);
+      expect(report.canPrepareDraft, isFalse);
+    });
+
+    test('warns when no outward invoices exist in the selected period', () {
+      final report = validate([]);
+      expect(report.issues.any((issue) => issue.code == 'no_outward_invoices'), isTrue);
+      expect(report.errorCount, 0);
     });
   });
 }

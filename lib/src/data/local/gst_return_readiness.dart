@@ -26,8 +26,7 @@ class GstReadinessReport {
   bool get canPrepareDraft => errorCount == 0;
 }
 
-/// Preflight checks for locally recorded outward invoices before GSTR-1
-/// preparation. This deliberately does not generate a GSTN upload JSON file.
+/// Core preflight checks only; this does not generate GSTN upload JSON.
 class GstReturnReadiness {
   GstReturnReadiness._();
 
@@ -63,6 +62,14 @@ class GstReturnReadiness {
         severity: GstReadinessSeverity.error,
         code: 'supplier_state_missing',
         message: 'Select a valid GST registration state.',
+      ));
+    }
+
+    if (invoices.isEmpty) {
+      issues.add(const GstReadinessIssue(
+        severity: GstReadinessSeverity.warning,
+        code: 'no_outward_invoices',
+        message: 'No outward sales invoices were found for the selected period.',
       ));
     }
 
@@ -125,8 +132,16 @@ class GstReturnReadiness {
         ));
         continue;
       }
-      for (final rawItem in items) {
-        if (rawItem is! Map) continue;
+      for (var index = 0; index < items.length; index++) {
+        final rawItem = items[index];
+        if (rawItem is! Map) {
+          issues.add(GstReadinessIssue(
+            severity: GstReadinessSeverity.error,
+            code: 'invoice_item_malformed',
+            message: 'Invoice $number contains an unreadable line item at row ${index + 1}.',
+          ));
+          continue;
+        }
         final hsn = (rawItem['hsn_sac'] as String? ?? '').trim();
         if (hsn.isEmpty) {
           issues.add(GstReadinessIssue(
@@ -135,10 +150,9 @@ class GstReturnReadiness {
             message: 'Invoice $number contains a line without HSN/SAC; verify the applicable reporting requirement.',
           ));
         }
-        final tax = (rawItem['tax_amount'] as num?)?.toDouble();
-        final taxable = (rawItem['taxable_value'] as num?)?.toDouble();
-        if (tax == null || taxable == null ||
-            !tax.isFinite || !taxable.isFinite || tax < 0 || taxable < 0) {
+        final tax = _finiteNumber(rawItem['tax_amount']);
+        final taxable = _finiteNumber(rawItem['taxable_value']);
+        if (tax == null || taxable == null || tax < 0 || taxable < 0) {
           issues.add(GstReadinessIssue(
             severity: GstReadinessSeverity.error,
             code: 'invalid_tax_values',
@@ -154,5 +168,11 @@ class GstReturnReadiness {
       message: 'This preflight does not cover every GSTR-1 table, amendments, advances, exports, e-commerce supplies, or GSTN schema validation. Review these separately before filing.',
     ));
     return GstReadinessReport(List.unmodifiable(issues));
+  }
+
+  static double? _finiteNumber(Object? value) {
+    if (value is! num) return null;
+    final number = value.toDouble();
+    return number.isFinite ? number : null;
   }
 }
