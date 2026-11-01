@@ -83,6 +83,16 @@ class Gstr1DomesticClassifier {
         continue;
       }
 
+      // This classifier currently handles domestic supplies only. Do not
+      // silently classify a B2B invoice when supplier state or POS is unknown.
+      if (!IndianStates.isKnown(supplier) ||
+          !IndianStates.isKnown(placeOfSupply)) {
+        results.add(_review(number,
+            'Supplier state or place of supply is missing or invalid.',
+            invoiceValue, taxableValue, taxAmount));
+        continue;
+      }
+
       if (recipientGstin.isNotEmpty) {
         if (!_isValidGstinFormat(recipientGstin)) {
           results.add(_review(number, 'Recipient GSTIN format is invalid.',
@@ -103,14 +113,6 @@ class Gstr1DomesticClassifier {
           taxableValue: taxableValue,
           taxAmount: taxAmount,
         ));
-        continue;
-      }
-
-      if (!IndianStates.isKnown(supplier) ||
-          !IndianStates.isKnown(placeOfSupply)) {
-        results.add(_review(number,
-            'Supplier state or place of supply is missing or invalid.',
-            invoiceValue, taxableValue, taxAmount));
         continue;
       }
 

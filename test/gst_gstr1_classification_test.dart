@@ -26,6 +26,24 @@ void main() {
       expect(result.count(Gstr1SupplyCategory.b2b), 1);
     });
 
+    test('routes B2B invoice with missing place of supply to review', () {
+      final result = Gstr1DomesticClassifier.classify(
+        [invoice(gstin: '19ABCDE1234F1Z5', partyState: 'West Bengal', place: '')],
+        supplierState: 'West Bengal',
+      );
+      expect(result.count(Gstr1SupplyCategory.review), 1);
+      expect(result.invoices.single.reason,
+          'Supplier state or place of supply is missing or invalid.');
+    });
+
+    test('routes B2B invoice with unknown supplier state to review', () {
+      final result = Gstr1DomesticClassifier.classify(
+        [invoice(gstin: '19ABCDE1234F1Z5', partyState: 'West Bengal')],
+        supplierState: 'Unknown State',
+      );
+      expect(result.count(Gstr1SupplyCategory.review), 1);
+    });
+
     test('routes a recipient GSTIN and state mismatch to review', () {
       final result = Gstr1DomesticClassifier.classify(
         [invoice(gstin: '19ABCDE1234F1Z5', partyState: 'Bihar')],
