@@ -27,13 +27,29 @@ class BusinessSyncService {
   final SupabaseClient _client;
 
   Future<BusinessSyncResult> syncNow({
-    int batchSize = 100,
+    int batchSize = 500,
   }) async {
-    final upload = await _pushPending(batchSize: batchSize);
+    if (batchSize < 1 || batchSize > 500) {
+      throw RangeError.range(batchSize, 1, 500, 'batchSize');
+    }
+
+    // Drain successive ready batches so a large offline queue is not silently
+    // limited to the first 100 records. Failed records receive a retry delay
+    // and are therefore not selected repeatedly in this same sync run.
+    var uploaded = 0;
+    var uploadFailures = 0;
+    const maxUploadBatches = 20; // Bound one sync run to at most 10,000 attempts.
+    for (var batch = 0; batch < maxUploadBatches; batch++) {
+      final result = await _pushPending(batchSize: batchSize);
+      uploaded += result.$1;
+      uploadFailures += result.$2;
+      if (result.$1 + result.$2 < batchSize) break;
+    }
+
     final download = await _pullChanges(pageSize: batchSize);
     return BusinessSyncResult(
-      uploaded: upload.$1,
-      uploadFailures: upload.$2,
+      uploaded: uploaded,
+      uploadFailures: uploadFailures,
       downloaded: download.$1,
       downloadFailures: download.$2,
     );
