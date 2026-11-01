@@ -189,7 +189,6 @@ class GstReturnReadiness {
           ));
         }
       }
-    }
 
       if (invoice.containsKey('tax_total')) {
         final headerTaxTotal = _finiteNumber(invoice['tax_total']);
