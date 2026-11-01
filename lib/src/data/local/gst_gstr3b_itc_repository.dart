@@ -185,7 +185,9 @@ class Gstr3bItcRepository {
     final blocking = issues.where((e) => e != 'Supplier GSTIN is missing.').toList();
     if (blocking.isNotEmpty) throw FormatException(blocking.join(' '));
     final gstin = (rows.first['supplier_gstin'] as String? ?? '').trim().toUpperCase();
-    final gstinValid = RegExp(r'^[0-9]{2}[A-Z]{5}[0-9]{4}[A-Z][1-9A-Z]Z[0-9A-Z]
+    final gstinValid = RegExp(r'^[0-9]{2}[A-Z]{5}[0-9]{4}[A-Z][1-9A-Z]Z[0-9A-Z]$').hasMatch(gstin);
+    final safeTreatment = gstinValid ? treatment : Gstr3bItcTreatment.pendingReview;
+    await executor.insert('purchase_itc_assessments', {
       'purchase_invoice_id': purchaseInvoiceId,
       'supplier_invoice_number': supplierInvoiceNumber.trim(),
       'supplier_invoice_date': _dateOnly(supplierInvoiceDate)!,
