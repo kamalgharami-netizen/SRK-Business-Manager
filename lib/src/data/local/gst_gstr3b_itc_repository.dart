@@ -353,65 +353,7 @@ class Gstr3bItcRepository {
   }
 
   static Future<List<Map<String, Object?>>> listAdjustmentAuditTrail(String returnPeriod) async {
-    if (!RegExp(r'^\\d{4}-(0[1-9]|1[0-2])
     if (!RegExp(r'^\d{4}-(0[1-9]|1[0-2])$').hasMatch(returnPeriod)) {
-      throw const FormatException('Return period must use YYYY-MM format.');
-    }
-    final db = await AppDatabase.instance.database;
-    final rows = await db.rawQuery('''
-      SELECT a.*, p.gstin AS supplier_gstin
-      FROM purchase_itc_assessments a
-      JOIN invoices i ON i.id = a.purchase_invoice_id
-      LEFT JOIN parties p ON p.id = i.party_id
-      WHERE a.return_period = ? ORDER BY a.purchase_invoice_id
-    ''', [returnPeriod]);
-    final entries = <Gstr3bItcEntry>[];
-    for (final row in rows) {
-      final gstin = (row['supplier_gstin'] as String? ?? '').trim().toUpperCase();
-      final status = row['gstr2b_status'] as String? ?? 'pending_review';
-      final rawTreatment = Gstr3bItcTreatment.values.firstWhere(
-        (v) => v.name == row['treatment'],
-        orElse: () => Gstr3bItcTreatment.pendingReview,
-      );
-      final gstinValid = RegExp(r'^[0-9]{2}[A-Z]{5}[0-9]{4}[A-Z][1-9A-Z]Z[0-9A-Z]$').hasMatch(gstin);
-      final treatment = rawTreatment == Gstr3bItcTreatment.ineligible
-          ? rawTreatment
-          : status == 'matched' && gstinValid
-              ? rawTreatment
-              : Gstr3bItcTreatment.pendingReview;
-      entries.add(Gstr3bItcEntry(
-        documentReference: '$gstin|${row['supplier_invoice_number']}|${row['supplier_invoice_date']}',
-        category: Gstr3bItcCategory.values.firstWhere((v) => v.name == row['category'], orElse: () => Gstr3bItcCategory.other),
-        treatment: treatment,
-        tax: Gstr3bTaxAmounts(
-          igst: (row['igst'] as num).toDouble(), cgst: (row['cgst'] as num).toDouble(),
-          sgst: (row['sgst'] as num).toDouble(), cess: (row['cess'] as num).toDouble(),
-        ),
-      ));
-    }
-    final adjustments = await db.query('gst_itc_adjustments',
-      where: 'return_period = ?', whereArgs: [returnPeriod], orderBy: 'id');
-    for (final row in adjustments) {
-      entries.add(Gstr3bItcEntry(
-        documentReference: 'ADJ|${row['id']}|${row['document_reference']}',
-        category: Gstr3bItcCategory.other,
-        treatment: Gstr3bItcTreatment.values.firstWhere((v) => v.name == row['treatment']),
-        tax: Gstr3bTaxAmounts(
-          igst: (row['igst'] as num).toDouble(), cgst: (row['cgst'] as num).toDouble(),
-          sgst: (row['sgst'] as num).toDouble(), cess: (row['cess'] as num).toDouble(),
-        ),
-      ));
-    }
-    return Gstr3bItcCalculator.summarize(entries);
-  }
-}
-
-String? _dateOnly(String value) {
-  final date = DateTime.tryParse(value.trim());
-  if (date == null) return null;
-  return '${date.year.toString().padLeft(4, '0')}-${date.month.toString().padLeft(2, '0')}-${date.day.toString().padLeft(2, '0')}';
-}
-).hasMatch(returnPeriod)) {
       throw const FormatException('Return period must use YYYY-MM format.');
     }
     final db = await AppDatabase.instance.database;
