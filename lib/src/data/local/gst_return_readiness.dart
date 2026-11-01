@@ -208,8 +208,8 @@ class GstReturnReadiness {
         }
       }
 
+      final headerTaxTotal = _finiteNumber(invoice['tax_total']);
       if (invoice.containsKey('tax_total')) {
-        final headerTaxTotal = _finiteNumber(invoice['tax_total']);
         if (headerTaxTotal == null || headerTaxTotal < 0 ||
             (itemTaxValuesValid &&
                 (itemTaxTotal - headerTaxTotal).abs() > 0.01)) {
@@ -217,6 +217,30 @@ class GstReturnReadiness {
             severity: GstReadinessSeverity.error,
             code: 'invoice_tax_total_mismatch',
             message: 'Invoice $number header GST total does not match the sum of its line-item GST amounts.',
+          ));
+        }
+      }
+
+      final hasHeaderTaxComponents = invoice.containsKey('cgst_total') ||
+          invoice.containsKey('sgst_total') ||
+          invoice.containsKey('igst_total');
+      if (hasHeaderTaxComponents) {
+        final headerCgst = _finiteNumber(invoice['cgst_total']);
+        final headerSgst = _finiteNumber(invoice['sgst_total']);
+        final headerIgst = _finiteNumber(invoice['igst_total']);
+        final componentsValid = headerCgst != null &&
+            headerSgst != null &&
+            headerIgst != null &&
+            headerCgst >= 0 &&
+            headerSgst >= 0 &&
+            headerIgst >= 0;
+        if (!componentsValid ||
+            (headerTaxTotal != null &&
+                (headerCgst! + headerSgst! + headerIgst! - headerTaxTotal).abs() > 0.01)) {
+          issues.add(GstReadinessIssue(
+            severity: GstReadinessSeverity.error,
+            code: 'invoice_tax_components_mismatch',
+            message: 'Invoice $number header CGST, SGST and IGST do not reconcile with its total GST.',
           ));
         }
       }

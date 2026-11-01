@@ -183,12 +183,30 @@ void main() {
       expect(report.canPrepareDraft, isFalse);
     });
 
-    test('accepts invoice header GST total matching its line-item GST sum', () {
-      final invoice = validInvoice()..['tax_total'] = 180.0;
+    test('accepts invoice header GST total and components matching line items', () {
+      final invoice = validInvoice()
+        ..['tax_total'] = 180.0
+        ..['cgst_total'] = 90.0
+        ..['sgst_total'] = 90.0
+        ..['igst_total'] = 0.0;
       final report = validate([invoice]);
       expect(report.issues.any((issue) =>
           issue.code == 'invoice_tax_total_mismatch'), isFalse);
+      expect(report.issues.any((issue) =>
+          issue.code == 'invoice_tax_components_mismatch'), isFalse);
       expect(report.errorCount, 0);
+    });
+
+    test('flags invoice header GST components that do not reconcile', () {
+      final invoice = validInvoice()
+        ..['tax_total'] = 180.0
+        ..['cgst_total'] = 80.0
+        ..['sgst_total'] = 90.0
+        ..['igst_total'] = 0.0;
+      final report = validate([invoice]);
+      expect(report.issues.any((issue) =>
+          issue.code == 'invoice_tax_components_mismatch'), isTrue);
+      expect(report.canPrepareDraft, isFalse);
     });
 
     test('warns when no outward invoices exist in the selected period', () {
