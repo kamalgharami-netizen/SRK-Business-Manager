@@ -2,6 +2,7 @@
 class Gstr1HsnRateSummary {
   const Gstr1HsnRateSummary({
     required this.hsnSac,
+    this.supplyCategory = 'B2C',
     required this.gstRate,
     required this.unit,
     required this.quantity,
@@ -13,6 +14,8 @@ class Gstr1HsnRateSummary {
     required this.igst,
   });
   final String hsnSac;
+  /// GSTN Table 12 bucket: B2B, B2C, or REVIEW when recipient status is unclear.
+  final String supplyCategory;
   final double gstRate;
   /// Unit exactly as stored on invoice lines; not an official GST UQC mapping.
   final String unit;
@@ -31,9 +34,11 @@ class Gstr1HsnRateAggregator {
   static List<Gstr1HsnRateSummary> aggregate(
     List<Map<String, Object?>> rows,
   ) {
-    final totals = <(String, double, String), List<double>>{};
+    final totals = <(String, String, double, String), List<double>>{};
     for (final row in rows) {
       final hsn = (row['hsn_sac'] as String? ?? '').trim();
+      final rawCategory = (row['supply_category'] as String? ?? 'B2C').trim().toUpperCase();
+      final supplyCategory = const {'B2B', 'B2C', 'REVIEW'}.contains(rawCategory) ? rawCategory : 'REVIEW';
       final rate = _number(row['gst_rate']);
       final quantity = _number(row['quantity']);
       final unit = (row['unit'] as String? ?? '').trim();
@@ -49,7 +54,7 @@ class Gstr1HsnRateAggregator {
           (cgst + sgst + igst - tax).abs() > 0.01) {
         continue;
       }
-      final key = (hsn.isEmpty ? 'HSN/SAC অনুল্লিখিত' : hsn, rate,
+      final key = (supplyCategory, hsn.isEmpty ? 'HSN/SAC অনুল্লিখিত' : hsn, rate,
           unit.isEmpty ? 'একক অনুল্লিখিত' : unit);
       final values = totals.putIfAbsent(key, () => List<double>.filled(7, 0));
       values[0] += quantity;
@@ -61,9 +66,10 @@ class Gstr1HsnRateAggregator {
       values[6] += igst;
     }
     final result = totals.entries.map((entry) => Gstr1HsnRateSummary(
-      hsnSac: entry.key.$1,
-      gstRate: entry.key.$2,
-      unit: entry.key.$3,
+      hsnSac: entry.key.$2,
+      supplyCategory: entry.key.$1,
+      gstRate: entry.key.$3,
+      unit: entry.key.$4,
       quantity: entry.value[0],
       totalValue: entry.value[1],
       taxableValue: entry.value[2],
@@ -73,6 +79,8 @@ class Gstr1HsnRateAggregator {
       igst: entry.value[6],
     )).toList();
     result.sort((a, b) {
+      final categoryOrder = a.supplyCategory.compareTo(b.supplyCategory);
+      if (categoryOrder != 0) return categoryOrder;
       final hsnOrder = a.hsnSac.compareTo(b.hsnSac);
       return hsnOrder != 0 ? hsnOrder : a.gstRate.compareTo(b.gstRate);
     });

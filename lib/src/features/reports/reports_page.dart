@@ -461,7 +461,26 @@ class _ReportsPageState extends State<ReportsPage> {
         financialYearInvoiceNumbers: financialYearInvoiceNumbers,
       );
       final classification = Gstr1DomesticClassifier.classify(invoices, supplierState: settings['company_state'] ?? '');
-      final hsnRows = await db.rawQuery('''SELECT ii.hsn_sac, ii.gst_rate, ii.quantity, ii.unit, ii.line_total, ii.tax_amount, ii.cgst_amount, ii.sgst_amount, ii.igst_amount FROM invoice_items ii INNER JOIN invoices i ON i.id = ii.invoice_id WHERE i.invoice_type = 'sale' AND i.invoice_date >= ? AND i.invoice_date < ? ORDER BY ii.hsn_sac, ii.gst_rate''', [_date(_startDate!), _date(_endDate!.add(const Duration(days: 1)))]);
+      final hsnRows = await db.rawQuery(
+        '''
+        SELECT ii.hsn_sac, ii.gst_rate, ii.quantity, ii.unit, ii.line_total,
+          ii.tax_amount, ii.cgst_amount, ii.sgst_amount, ii.igst_amount,
+          CASE
+            WHEN p.gstin IS NULL OR TRIM(p.gstin) = '' THEN 'B2C'
+            WHEN LENGTH(TRIM(p.gstin)) = 15
+              AND UPPER(TRIM(p.gstin)) GLOB '[0-9][0-9]?????????????'
+              THEN 'B2B'
+            ELSE 'REVIEW'
+          END AS supply_category
+        FROM invoice_items ii
+        INNER JOIN invoices i ON i.id = ii.invoice_id
+        LEFT JOIN parties p ON p.id = i.party_id
+        WHERE i.invoice_type = 'sale'
+          AND i.invoice_date >= ? AND i.invoice_date < ?
+        ORDER BY supply_category, ii.hsn_sac, ii.gst_rate
+        ''',
+        [_date(_startDate!), _date(_endDate!.add(const Duration(days: 1)))],
+      );
       final hsnSummary = Gstr1HsnRateAggregator.aggregate(hsnRows);
       if (!mounted) return;
       setState(() { _gstr1ReadinessReport = report; _gstr1ClassificationSummary = classification; _gstr1HsnSummary = hsnSummary; });
@@ -650,11 +669,11 @@ class _ReportsPageState extends State<ReportsPage> {
         else
           for (final row in _gstr1HsnSummary)
             ListTile(dense: true, contentPadding: EdgeInsets.zero,
-              title: Text('${row.hsnSac} • ${row.gstRate.toStringAsFixed(2)}%'),
+              title: Text('${row.supplyCategory} • ${row.hsnSac} • ${row.gstRate.toStringAsFixed(2)}%'),
               subtitle: Text('পরিমাণ: ${row.quantity.toStringAsFixed(2)} ${row.unit} • মোট মূল্য: ${_money(row.totalValue)} • করযোগ্য: ${_money(row.taxableValue)} • CGST: ${_money(row.cgst)} • SGST: ${_money(row.sgst)} • IGST: ${_money(row.igst)}'),
               trailing: Text(_money(row.taxAmount), style: const TextStyle(fontWeight: FontWeight.bold)),
             ),
-        const Text('একক স্থানীয় invoice line থেকে নেওয়া; সরকারি UQC কোডে রূপান্তর করা হয়নি। এটি প্রাথমিক ব্যবস্থাপনা সারাংশ, GSTN-এর পূর্ণ HSN summary mapping বা upload file নয়।'),
+        const Text('B2B ও B2C সরবরাহ আলাদা করে দেখানো হয়েছে। UQC এখনও স্থানীয় একক; সরকারি UQC mapping, HSN directory validation বা GSTN upload schema যাচাই করা হয়নি। REVIEW সারির গ্রাহক GSTIN যাচাই করুন। এটি প্রস্তুতিমূলক সারাংশ, filing-ready upload নয়।'),
       ],
     )));
   }

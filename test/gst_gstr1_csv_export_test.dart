@@ -15,9 +15,9 @@ void main() {
       expect(csv, startsWith('\uFEFF'));
       expect(csv, contains('Supplier GSTIN,19ABCDE1234F1Z5'));
       expect(csv, contains('2026-10-01 to 2026-10-31'));
-      expect(csv, contains('1001,5.00,pcs,2.00,105.00,100.00,5.00,2.50,2.50,0.00'));
+      expect(csv, contains('B2C,1001,5.00,pcs,2.00,105.00,100.00,5.00,2.50,2.50,0.00'));
       expect(csv, contains('Unit (as entered)'));
-      expect(csv, contains('TOTAL,,,,105.00,100.00,5.00,2.50,2.50,0.00'));
+      expect(csv, contains('TOTAL,,,,,105.00,100.00,5.00,2.50,2.50,0.00'));
     });
 
     test('omits total row when there are no HSN rows', () {

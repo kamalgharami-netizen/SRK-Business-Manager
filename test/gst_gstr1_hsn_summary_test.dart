@@ -40,6 +40,17 @@ void main() {
       expect(result.single.hsnSac, '1002');
     });
 
+    test('keeps B2B and B2C supplies in separate HSN summaries', () {
+      final result = Gstr1HsnRateAggregator.aggregate([
+        {'supply_category':'B2B','hsn_sac':'1001','gst_rate':5,'quantity':2,'unit':'pcs','line_total':105,'tax_amount':5,'cgst_amount':2.5,'sgst_amount':2.5,'igst_amount':0},
+        {'supply_category':'B2C','hsn_sac':'1001','gst_rate':5,'quantity':3,'unit':'pcs','line_total':157.5,'tax_amount':7.5,'cgst_amount':3.75,'sgst_amount':3.75,'igst_amount':0},
+        {'supply_category':'REVIEW','hsn_sac':'1001','gst_rate':5,'quantity':1,'unit':'pcs','line_total':52.5,'tax_amount':2.5,'cgst_amount':1.25,'sgst_amount':1.25,'igst_amount':0},
+      ]);
+      expect(result, hasLength(3));
+      expect(result.map((row) => row.supplyCategory), ['B2B', 'B2C', 'REVIEW']);
+      expect(result.map((row) => row.quantity), [2, 3, 1]);
+    });
+
     test('does not combine different units into one quantity total', () {
       final result = Gstr1HsnRateAggregator.aggregate([
         {'hsn_sac':'1001','gst_rate':5,'quantity':2,'unit':'kg','line_total':105,'tax_amount':5,'cgst_amount':2.5,'sgst_amount':2.5,'igst_amount':0},
