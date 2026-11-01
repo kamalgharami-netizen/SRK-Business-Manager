@@ -119,10 +119,41 @@ void main() {
       expect(report.canPrepareDraft, isFalse);
     });
 
-    test('detects duplicate invoice numbers case-insensitively', () {
+    test('detects duplicate invoice numbers case-insensitively in the selected period', () {
       final second = validInvoice()..['invoice_number'] = 'inv-001';
       final report = validate([validInvoice(), second]);
       expect(report.issues.any((issue) => issue.code == 'duplicate_invoice_number'), isTrue);
+    });
+
+    test('detects a duplicate invoice number used in another month of the same financial year', () {
+      final report = GstReturnReadiness.validateGstr1(
+        supplierGstin: '19ABCDE1234F1Z5',
+        supplierState: 'West Bengal',
+        periodStart: periodStart,
+        periodEnd: periodEnd,
+        invoices: [validInvoice()],
+        financialYearInvoiceNumbers: ['INV-001', 'inv-001'],
+      );
+      expect(
+        report.issues.where((issue) => issue.code == 'duplicate_invoice_number'),
+        hasLength(1),
+      );
+      expect(report.canPrepareDraft, isFalse);
+    });
+
+    test('does not flag a number repeated only once in the financial year', () {
+      final report = GstReturnReadiness.validateGstr1(
+        supplierGstin: '19ABCDE1234F1Z5',
+        supplierState: 'West Bengal',
+        periodStart: periodStart,
+        periodEnd: periodEnd,
+        invoices: [validInvoice()],
+        financialYearInvoiceNumbers: ['INV-001'],
+      );
+      expect(
+        report.issues.any((issue) => issue.code == 'duplicate_invoice_number'),
+        isFalse,
+      );
     });
 
     test('does not silently ignore malformed invoice line items', () {

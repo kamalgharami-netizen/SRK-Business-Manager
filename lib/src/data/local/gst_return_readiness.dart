@@ -36,6 +36,7 @@ class GstReturnReadiness {
     required DateTime periodStart,
     required DateTime periodEnd,
     required List<Map<String, Object?>> invoices,
+    List<String> financialYearInvoiceNumbers = const [],
   }) {
     final issues = <GstReadinessIssue>[];
     final gstin = supplierGstin.trim().toUpperCase();
@@ -74,6 +75,17 @@ class GstReturnReadiness {
     }
 
     final seenNumbers = <String>{};
+    final financialYearNumberCounts = <String, int>{};
+    for (final value in financialYearInvoiceNumbers) {
+      final normalized = value.trim().toUpperCase();
+      if (normalized.isNotEmpty) {
+        financialYearNumberCounts.update(
+          normalized,
+          (count) => count + 1,
+          ifAbsent: () => 1,
+        );
+      }
+    }
     for (final invoice in invoices) {
       final number = (invoice['invoice_number'] as String? ?? '').trim();
       final dateText = (invoice['invoice_date'] as String? ?? '').trim();
@@ -91,12 +103,18 @@ class GstReturnReadiness {
           code: 'invoice_number_format_invalid',
           message: 'Invoice $number must be at most 16 characters and use only letters, numbers, hyphen, ampersand or slash.',
         ));
-      } else if (!seenNumbers.add(number.toUpperCase())) {
-        issues.add(GstReadinessIssue(
-          severity: GstReadinessSeverity.error,
-          code: 'duplicate_invoice_number',
-          message: 'Duplicate invoice number in this return data: $number',
-        ));
+      } else {
+        final normalizedNumber = number.toUpperCase();
+        final duplicateInSelectedPeriod = !seenNumbers.add(normalizedNumber);
+        final duplicateInFinancialYear =
+            (financialYearNumberCounts[normalizedNumber] ?? 0) > 1;
+        if (duplicateInSelectedPeriod || duplicateInFinancialYear) {
+          issues.add(GstReadinessIssue(
+            severity: GstReadinessSeverity.error,
+            code: 'duplicate_invoice_number',
+            message: 'Invoice number $number is duplicated within the financial year.',
+          ));
+        }
       }
       if (date == null ||
           date.isBefore(DateTime(periodStart.year, periodStart.month, periodStart.day)) ||

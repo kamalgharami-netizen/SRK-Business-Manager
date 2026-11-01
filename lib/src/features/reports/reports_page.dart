@@ -420,6 +420,23 @@ class _ReportsPageState extends State<ReportsPage> {
         ''',
         [_date(_startDate!), _date(_endDate!.add(const Duration(days: 1)))],
       );
+      final financialYearStartYear =
+          _startDate!.month >= 4 ? _startDate!.year : _startDate!.year - 1;
+      final financialYearInvoiceRows = await db.rawQuery(
+        '''
+        SELECT invoice_number
+        FROM invoices
+        WHERE invoice_type = 'sale'
+          AND invoice_date >= ? AND invoice_date < ?
+        ''',
+        [
+          _date(DateTime(financialYearStartYear, 4, 1)),
+          _date(DateTime(financialYearStartYear + 1, 4, 1)),
+        ],
+      );
+      final financialYearInvoiceNumbers = financialYearInvoiceRows
+          .map((row) => row['invoice_number'] as String? ?? '')
+          .toList(growable: false);
       final invoices = <Map<String, Object?>>[];
       for (final invoice in invoiceRows) {
         final itemRows = await db.rawQuery(
@@ -441,6 +458,7 @@ class _ReportsPageState extends State<ReportsPage> {
         periodStart: _startDate!,
         periodEnd: _endDate!,
         invoices: invoices,
+        financialYearInvoiceNumbers: financialYearInvoiceNumbers,
       );
       final classification = Gstr1DomesticClassifier.classify(invoices, supplierState: settings['company_state'] ?? '');
       final hsnRows = await db.rawQuery('''SELECT ii.hsn_sac, ii.gst_rate, ii.quantity, ii.unit, ii.line_total, ii.tax_amount, ii.cgst_amount, ii.sgst_amount, ii.igst_amount FROM invoice_items ii INNER JOIN invoices i ON i.id = ii.invoice_id WHERE i.invoice_type = 'sale' AND i.invoice_date >= ? AND i.invoice_date < ? ORDER BY ii.hsn_sac, ii.gst_rate''', [_date(_startDate!), _date(_endDate!.add(const Duration(days: 1)))]);
