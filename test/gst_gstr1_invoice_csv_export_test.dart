@@ -50,5 +50,23 @@ void main() {
       );
       expect(csv, contains('"INV, ""003""",REVIEW,0.00,0.00,0.00,"Check GSTIN, place of supply"'));
     });
+
+    test('neutralises formula-like invoice numbers and review notes', () {
+      const summary = Gstr1ClassificationSummary([
+        Gstr1InvoiceClassification(
+          invoiceNumber: '=HYPERLINK("https://example.com")',
+          category: Gstr1SupplyCategory.review,
+          invoiceValue: 0,
+          taxableValue: 0,
+          taxAmount: 0,
+          reason: '  @SUM(A1:A2)',
+        ),
+      ]);
+      final csv = Gstr1InvoiceCsvExport.build(
+        summary, supplierGstin: '', periodStart: 'start', periodEnd: 'end',
+      );
+      expect(csv, contains('''"'=HYPERLINK(""https://example.com"")"'''));
+      expect(csv, contains(",'  @SUM(A1:A2)"));
+    });
   });
 }

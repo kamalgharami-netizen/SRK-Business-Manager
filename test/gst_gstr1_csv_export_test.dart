@@ -27,5 +27,15 @@ void main() {
       ], supplierGstin: '', periodStart: 'start', periodEnd: 'end');
       expect(csv, contains('"HSN, ""other"""'));
     });
+
+    test('neutralises spreadsheet formulas in untrusted HSN text', () {
+      final csv = Gstr1HsnCsvExport.build([
+        const Gstr1HsnRateSummary(
+          hsnSac: '=HYPERLINK("https://example.com")', gstRate: 0,
+          taxableValue: 20, taxAmount: 0, cgst: 0, sgst: 0, igst: 0,
+        ),
+      ], supplierGstin: '', periodStart: 'start', periodEnd: 'end');
+      expect(csv, contains("'=HYPERLINK"));
+    });
   });
 }

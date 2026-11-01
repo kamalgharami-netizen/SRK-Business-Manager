@@ -27,9 +27,19 @@ class Gstr1HsnCsvExport {
   static String _number(double value) => value.toStringAsFixed(2);
 
   static String _escape(String value) {
-    if (value.contains(',') || value.contains('"') ||
-        value.contains('\n') || value.contains('\r')) {
-      return '"${value.replaceAll('"', '""')}"';
+    final safeValue = _protectSpreadsheetFormula(value);
+    if (safeValue.contains(',') || safeValue.contains('"') ||
+        safeValue.contains('\n') || safeValue.contains('\r')) {
+      return '"${safeValue.replaceAll('"', '""')}"';
+    }
+    return safeValue;
+  }
+
+  // Prevent spreadsheet applications from evaluating untrusted text as a formula.
+  static String _protectSpreadsheetFormula(String value) {
+    if (RegExp(r'^[\s]*[=+\-@]').hasMatch(value) ||
+        value.startsWith('\t') || value.startsWith('\r')) {
+      return "'$value";
     }
     return value;
   }
