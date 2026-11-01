@@ -13,7 +13,7 @@ void main() {
       'party_gstin': '19ABCDE1234F1Z5',
       'party_state': 'West Bengal',
       'items': [
-        {'hsn_sac': '9983', 'taxable_value': 1000.0, 'tax_amount': 180.0},
+        {'hsn_sac': '9983', 'line_total': 1180.0, 'tax_amount': 180.0, 'cgst_amount': 90.0, 'sgst_amount': 90.0, 'igst_amount': 0.0},
       ],
     };
 
@@ -31,6 +31,21 @@ void main() {
       expect(report.errorCount, 0);
       expect(report.canPrepareDraft, isTrue);
       expect(report.issues.any((issue) => issue.code == 'manual_scope_review'), isTrue);
+    });
+
+    test('accepts explicit taxable value when supplied by another data source', () {
+      final invoice = validInvoice()..['items'] = [
+        {'hsn_sac': '9983', 'taxable_value': 1000.0, 'tax_amount': 180.0},
+      ];
+      expect(validate([invoice]).errorCount, 0);
+    });
+
+    test('flags tax component mismatch and tax exceeding line total', () {
+      final invoice = validInvoice()..['items'] = [
+        {'hsn_sac': '9983', 'line_total': 1180.0, 'tax_amount': 180.0, 'cgst_amount': 80.0, 'sgst_amount': 90.0, 'igst_amount': 0.0},
+        {'hsn_sac': '9983', 'line_total': 100.0, 'tax_amount': 110.0, 'cgst_amount': 55.0, 'sgst_amount': 55.0, 'igst_amount': 0.0},
+      ];
+      expect(validate([invoice]).issues.where((issue) => issue.code == 'invalid_tax_values').length, 2);
     });
 
     test('flags invalid supplier GSTIN and out-of-period invoice', () {

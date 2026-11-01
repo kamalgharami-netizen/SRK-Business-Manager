@@ -151,12 +151,27 @@ class GstReturnReadiness {
           ));
         }
         final tax = _finiteNumber(rawItem['tax_amount']);
-        final taxable = _finiteNumber(rawItem['taxable_value']);
-        if (tax == null || taxable == null || tax < 0 || taxable < 0) {
+        final storedTaxable = _finiteNumber(rawItem['taxable_value']);
+        final lineTotal = _finiteNumber(rawItem['line_total']);
+        final taxable = storedTaxable ?? (lineTotal != null && tax != null
+            ? lineTotal - tax
+            : null);
+        final cgst = _finiteNumber(rawItem['cgst_amount']);
+        final sgst = _finiteNumber(rawItem['sgst_amount']);
+        final igst = _finiteNumber(rawItem['igst_amount']);
+        final hasTaxComponents = rawItem.containsKey('cgst_amount') ||
+            rawItem.containsKey('sgst_amount') ||
+            rawItem.containsKey('igst_amount');
+        final componentsReconcile = !hasTaxComponents ||
+            (cgst != null && sgst != null && igst != null &&
+                (cgst + sgst + igst - (tax ?? double.nan)).abs() <= 0.01);
+        if (tax == null || taxable == null || tax < 0 || taxable < 0 ||
+            (lineTotal != null && (lineTotal < 0 || tax > lineTotal + 0.01)) ||
+            !componentsReconcile) {
           issues.add(GstReadinessIssue(
             severity: GstReadinessSeverity.error,
             code: 'invalid_tax_values',
-            message: 'Invoice $number contains invalid taxable value or GST amount.',
+            message: 'Invoice $number contains invalid taxable value or GST amount, or tax components do not reconcile.',
           ));
         }
       }
