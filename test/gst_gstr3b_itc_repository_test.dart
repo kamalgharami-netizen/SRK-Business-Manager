@@ -89,6 +89,29 @@ void main() {
       expect(issues, contains('Cash ledger reference is required.'));
       expect(issues, contains('Challan reference is required.'));
     });
+
+    test('rejects non-calendar and non-ISO payment dates', () {
+      for (final date in ['2026-02-30', '31/10/2026', '2026-10-31T10:00:00']) {
+        final issues = Gstr3bRcmValidator.validatePayment(
+          paymentDate: date,
+          cashLedgerReference: 'CASH-1',
+          challanReference: 'CIN-1',
+          tax: const Gstr3bTaxAmounts(igst: 18),
+        );
+        expect(issues, contains('Payment date must be a valid calendar date in YYYY-MM-DD format.'));
+      }
+    });
+
+    test('rejects non-finite and negative RCM amounts', () {
+      final issues = Gstr3bRcmValidator.validateLiability(
+        returnPeriod: '2026-10',
+        documentReference: 'INV-RCM-2',
+        taxableValue: double.infinity,
+        tax: const Gstr3bTaxAmounts(igst: -1),
+      );
+      expect(issues, contains('Taxable value must be finite and non-negative.'));
+      expect(issues, contains('RCM tax must contain at least one positive, valid tax amount.'));
+    });
   });
 
   group('GSTR-2B CSV import', () {
