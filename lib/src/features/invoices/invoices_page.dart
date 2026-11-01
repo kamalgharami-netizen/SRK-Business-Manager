@@ -5,6 +5,7 @@ import '../../data/sync/business_sync_service.dart';
 import '../../data/local/accounting_service.dart';
 import '../../data/local/inventory_cost_service.dart';
 import '../../data/local/gst_calculator.dart';
+import '../../data/local/invoice_number_generator.dart';
 import '../../data/indian_states.dart';
 import 'invoice_pdf_service.dart';
 
@@ -237,7 +238,7 @@ class _InvoicesPageState extends State<InvoicesPage> {
       try {
         await db.transaction((txn) async {
           final now = DateTime.now();
-          final invoiceNumber = 'INV-${now.year}${now.month.toString().padLeft(2, '0')}${now.day.toString().padLeft(2, '0')}-${now.microsecondsSinceEpoch.toString().substring(8)}';
+          final invoiceNumber = InvoiceNumberGenerator.generate(now);
           double subtotal = 0;
           double taxTotal = 0;
           double cgstTotal = 0;
