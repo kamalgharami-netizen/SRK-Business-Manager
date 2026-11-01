@@ -5,23 +5,43 @@ void main() {
   group('Gstr1DomesticClassifier', () {
     Map<String, Object?> invoice({
       String gstin = '',
+      String partyState = '',
       String place = 'West Bengal',
       double value = 50000,
     }) => {
       'invoice_number': 'INV-1',
       'party_gstin': gstin,
+      'party_state': partyState,
       'place_of_supply': place,
       'invoice_value': value,
       'taxable_value': 40000.0,
       'tax_amount': 7200.0,
     };
 
-    test('classifies registered recipient as B2B', () {
+    test('classifies registered recipient as B2B when GSTIN matches party state', () {
+      final result = Gstr1DomesticClassifier.classify(
+        [invoice(gstin: '19ABCDE1234F1Z5', partyState: 'West Bengal')],
+        supplierState: 'West Bengal',
+      );
+      expect(result.count(Gstr1SupplyCategory.b2b), 1);
+    });
+
+    test('routes a recipient GSTIN and state mismatch to review', () {
+      final result = Gstr1DomesticClassifier.classify(
+        [invoice(gstin: '19ABCDE1234F1Z5', partyState: 'Bihar')],
+        supplierState: 'West Bengal',
+      );
+      expect(result.count(Gstr1SupplyCategory.review), 1);
+      expect(result.invoices.single.reason,
+          'Recipient GSTIN does not match a valid recipient state.');
+    });
+
+    test('routes a registered recipient without party state to review', () {
       final result = Gstr1DomesticClassifier.classify(
         [invoice(gstin: '19ABCDE1234F1Z5')],
         supplierState: 'West Bengal',
       );
-      expect(result.count(Gstr1SupplyCategory.b2b), 1);
+      expect(result.count(Gstr1SupplyCategory.review), 1);
     });
 
     test('classifies inter-State unregistered invoice above ₹1 lakh as B2CL', () {
@@ -50,10 +70,9 @@ void main() {
       expect(result.count(Gstr1SupplyCategory.review), 2);
     });
 
-
     test('routes malformed recipient GSTIN to review instead of B2B', () {
       final result = Gstr1DomesticClassifier.classify(
-        [invoice(gstin: 'NOT-A-GSTIN')],
+        [invoice(gstin: 'NOT-A-GSTIN', partyState: 'West Bengal')],
         supplierState: 'West Bengal',
       );
       expect(result.count(Gstr1SupplyCategory.review), 1);

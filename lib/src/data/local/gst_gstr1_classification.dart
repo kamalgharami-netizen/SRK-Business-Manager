@@ -1,3 +1,5 @@
+import '../indian_states.dart';
+
 /// Core B2B/B2C classification for locally recorded domestic outward invoices.
 /// This is a preparation aid, not a complete GSTR-1 table mapper or GSTN export.
 enum Gstr1SupplyCategory { b2b, b2cl, b2cs, review }
@@ -44,21 +46,22 @@ class Gstr1ClassificationSummary {
 class Gstr1DomesticClassifier {
   Gstr1DomesticClassifier._();
 
-  /// The current configured threshold is ₹1,00,000 for inter-State B2C Large.
-  /// Verify the applicable GSTN rules before relying on statutory filing.
+  /// Configured threshold for inter-State B2C Large classification.
+  /// Verify current GSTN rules before relying on statutory filing.
   static const double b2clInvoiceValueThreshold = 100000;
 
   static Gstr1ClassificationSummary classify(
     List<Map<String, Object?>> invoices, {
     required String supplierState,
   }) {
-    final normalizedSupplierState = supplierState.trim();
+    final supplier = supplierState.trim();
     final results = <Gstr1InvoiceClassification>[];
 
     for (final invoice in invoices) {
       final number = (invoice['invoice_number'] as String? ?? '').trim();
       final recipientGstin =
           (invoice['party_gstin'] as String? ?? '').trim().toUpperCase();
+      final recipientState = (invoice['party_state'] as String? ?? '').trim();
       final placeOfSupply =
           (invoice['place_of_supply'] as String? ?? '').trim();
       final invoiceValue = _number(invoice['invoice_value']);
@@ -71,42 +74,28 @@ class Gstr1DomesticClassifier {
           invoiceValue < 0 ||
           taxableValue < 0 ||
           taxAmount < 0) {
-        results.add(Gstr1InvoiceClassification(
-          invoiceNumber: number,
-          category: Gstr1SupplyCategory.review,
-          invoiceValue: 0,
-          taxableValue: 0,
-          taxAmount: 0,
-          reason: 'Invoice values are missing, non-finite or negative.',
-        ));
+        results.add(_review(number, 'Invoice values are missing, non-finite or negative.'));
         continue;
       }
-
       if (number.isEmpty) {
-        results.add(Gstr1InvoiceClassification(
-          invoiceNumber: number,
-          category: Gstr1SupplyCategory.review,
-          invoiceValue: invoiceValue,
-          taxableValue: taxableValue,
-          taxAmount: taxAmount,
-          reason: 'Invoice number is missing.',
-        ));
-        continue;
-      }
-
-      if (recipientGstin.isNotEmpty && !_isValidGstinFormat(recipientGstin)) {
-        results.add(Gstr1InvoiceClassification(
-          invoiceNumber: number,
-          category: Gstr1SupplyCategory.review,
-          invoiceValue: invoiceValue,
-          taxableValue: taxableValue,
-          taxAmount: taxAmount,
-          reason: 'Recipient GSTIN format is invalid.',
-        ));
+        results.add(_review(number, 'Invoice number is missing.',
+            invoiceValue, taxableValue, taxAmount));
         continue;
       }
 
       if (recipientGstin.isNotEmpty) {
+        if (!_isValidGstinFormat(recipientGstin)) {
+          results.add(_review(number, 'Recipient GSTIN format is invalid.',
+              invoiceValue, taxableValue, taxAmount));
+          continue;
+        }
+        if (!IndianStates.isKnown(recipientState) ||
+            !IndianStates.gstinMatchesState(recipientGstin, recipientState)) {
+          results.add(_review(number,
+              'Recipient GSTIN does not match a valid recipient state.',
+              invoiceValue, taxableValue, taxAmount));
+          continue;
+        }
         results.add(Gstr1InvoiceClassification(
           invoiceNumber: number,
           category: Gstr1SupplyCategory.b2b,
@@ -117,21 +106,17 @@ class Gstr1DomesticClassifier {
         continue;
       }
 
-      if (!IndianStateCheck.isKnown(normalizedSupplierState) ||
-          !IndianStateCheck.isKnown(placeOfSupply)) {
-        results.add(Gstr1InvoiceClassification(
-          invoiceNumber: number,
-          category: Gstr1SupplyCategory.review,
-          invoiceValue: invoiceValue,
-          taxableValue: taxableValue,
-          taxAmount: taxAmount,
-          reason: 'Supplier state or place of supply is missing or invalid.',
-        ));
+      if (!IndianStates.isKnown(supplier) ||
+          !IndianStates.isKnown(placeOfSupply)) {
+        results.add(_review(number,
+            'Supplier state or place of supply is missing or invalid.',
+            invoiceValue, taxableValue, taxAmount));
         continue;
       }
 
-      final interState = _normalizeState(normalizedSupplierState) !=
-          _normalizeState(placeOfSupply);
+      final interState =
+          IndianStates.normalizeState(supplier) !=
+          IndianStates.normalizeState(placeOfSupply);
       final category =
           interState && invoiceValue > b2clInvoiceValueThreshold
               ? Gstr1SupplyCategory.b2cl
@@ -148,8 +133,20 @@ class Gstr1DomesticClassifier {
     return Gstr1ClassificationSummary(List.unmodifiable(results));
   }
 
-  static String _normalizeState(String value) =>
-      value.trim().replaceAll(RegExp(r'\s+'), ' ').toLowerCase();
+  static Gstr1InvoiceClassification _review(
+    String number,
+    String reason, [
+    double invoiceValue = 0,
+    double taxableValue = 0,
+    double taxAmount = 0,
+  ]) => Gstr1InvoiceClassification(
+        invoiceNumber: number,
+        category: Gstr1SupplyCategory.review,
+        invoiceValue: invoiceValue,
+        taxableValue: taxableValue,
+        taxAmount: taxAmount,
+        reason: reason,
+      );
 
   /// Checks GSTIN structure only; checksum and registration status are not
   /// verified against the GST portal.
@@ -161,28 +158,5 @@ class Gstr1DomesticClassifier {
     if (value is! num) return null;
     final result = value.toDouble();
     return result.isFinite ? result : null;
-  }
-}
-
-/// Kept local to avoid coupling this pure classification helper to UI code.
-class IndianStateCheck {
-  static const _states = {
-    'Andhra Pradesh', 'Arunachal Pradesh', 'Assam', 'Bihar',
-    'Chhattisgarh', 'Goa', 'Gujarat', 'Haryana', 'Himachal Pradesh',
-    'Jharkhand', 'Karnataka', 'Kerala', 'Madhya Pradesh', 'Maharashtra',
-    'Manipur', 'Meghalaya', 'Mizoram', 'Nagaland', 'Odisha', 'Punjab',
-    'Rajasthan', 'Sikkim', 'Tamil Nadu', 'Telangana', 'Tripura',
-    'Uttar Pradesh', 'Uttarakhand', 'West Bengal',
-    'Andaman and Nicobar Islands', 'Chandigarh',
-    'Dadra and Nagar Haveli and Daman and Diu', 'Delhi',
-    'Jammu and Kashmir', 'Ladakh', 'Lakshadweep', 'Puducherry',
-  };
-
-  static bool isKnown(String state) {
-    final normalized = state
-        .trim()
-        .replaceAll(RegExp(r'\s+'), ' ')
-        .toLowerCase();
-    return _states.any((known) => known.toLowerCase() == normalized);
   }
 }
