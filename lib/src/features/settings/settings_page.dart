@@ -287,9 +287,10 @@ class _SettingsPageState extends State<SettingsPage> {
                   ],
                   const SizedBox(height: 24),
                   const Text(
-                    'Cloud synchronisation, staff sign-in, access enforcement, '
-                    'invoice numbering settings and tax configuration are not '
-                    'enabled yet.',
+                    'Cloud sync for supported business records is managed from Backup & Sync. '
+                    'Company profile settings are currently stored on this device '
+                    'and are not synchronised. Staff profiles are local; cloud '
+                    'team access is managed separately.',
                   ),
                 ],
               ),
