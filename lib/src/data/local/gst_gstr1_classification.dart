@@ -78,6 +78,30 @@ class Gstr1DomesticClassifier {
         continue;
       }
 
+      if (number.isEmpty) {
+        results.add(Gstr1InvoiceClassification(
+          invoiceNumber: number,
+          category: Gstr1SupplyCategory.review,
+          invoiceValue: invoiceValue,
+          taxableValue: taxableValue,
+          taxAmount: taxAmount,
+          reason: 'Invoice number is missing.',
+        ));
+        continue;
+      }
+
+      if (recipientGstin.isNotEmpty && !_isValidGstinFormat(recipientGstin)) {
+        results.add(Gstr1InvoiceClassification(
+          invoiceNumber: number,
+          category: Gstr1SupplyCategory.review,
+          invoiceValue: invoiceValue,
+          taxableValue: taxableValue,
+          taxAmount: taxAmount,
+          reason: 'Recipient GSTIN format is invalid.',
+        ));
+        continue;
+      }
+
       if (recipientGstin.isNotEmpty) {
         results.add(Gstr1InvoiceClassification(
           invoiceNumber: number,
@@ -102,7 +126,8 @@ class Gstr1DomesticClassifier {
         continue;
       }
 
-      final interState = normalizedSupplierState != placeOfSupply;
+      final interState = _normalizeState(normalizedSupplierState) !=
+          _normalizeState(placeOfSupply);
       final category = interState &&
               invoiceValue > b2clInvoiceValueThreshold
           ? Gstr1SupplyCategory.b2cl
@@ -118,6 +143,38 @@ class Gstr1DomesticClassifier {
 
     return Gstr1ClassificationSummary(List.unmodifiable(results));
   }
+
+  static String _normalizeState(String value) =>
+      value.trim().replaceAll(RegExp(r'\\s+'), ' ').toLowerCase();
+
+  /// Checks the 15-character GSTIN structure only; it does not verify checksum
+  /// or registration status against the GST portal.
+  static bool _isValidGstinFormat(String value) => RegExp(
+        r'^[0-9]{2}[A-Z]{5}[0-9]{4}[A-Z][1-9A-Z]Z[0-9A-Z]
+    if (value is! num) return null;
+    final result = value.toDouble();
+    return result.isFinite ? result : null;
+  }
+}
+
+/// Kept local to avoid coupling this pure classification helper to UI code.
+class IndianStateCheck {
+  static const _states = {
+    'Andhra Pradesh', 'Arunachal Pradesh', 'Assam', 'Bihar',
+    'Chhattisgarh', 'Goa', 'Gujarat', 'Haryana', 'Himachal Pradesh',
+    'Jharkhand', 'Karnataka', 'Kerala', 'Madhya Pradesh', 'Maharashtra',
+    'Manipur', 'Meghalaya', 'Mizoram', 'Nagaland', 'Odisha', 'Punjab',
+    'Rajasthan', 'Sikkim', 'Tamil Nadu', 'Telangana', 'Tripura',
+    'Uttar Pradesh', 'Uttarakhand', 'West Bengal',
+    'Andaman and Nicobar Islands', 'Chandigarh',
+    'Dadra and Nagar Haveli and Daman and Diu', 'Delhi',
+    'Jammu and Kashmir', 'Ladakh', 'Lakshadweep', 'Puducherry',
+  };
+
+  static bool isKnown(String state) => _states.contains(state);
+}
+,
+      ).hasMatch(value);
 
   static double? _number(Object? value) {
     if (value is! num) return null;

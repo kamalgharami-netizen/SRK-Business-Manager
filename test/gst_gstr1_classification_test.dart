@@ -50,6 +50,35 @@ void main() {
       expect(result.count(Gstr1SupplyCategory.review), 2);
     });
 
+
+    test('routes malformed recipient GSTIN to review instead of B2B', () {
+      final result = Gstr1DomesticClassifier.classify(
+        [invoice(gstin: 'NOT-A-GSTIN')],
+        supplierState: 'West Bengal',
+      );
+      expect(result.count(Gstr1SupplyCategory.review), 1);
+      expect(result.invoices.single.reason, 'Recipient GSTIN format is invalid.');
+    });
+
+    test('compares state names without case or extra-space differences', () {
+      final result = Gstr1DomesticClassifier.classify(
+        [invoice(place: ' west   bengal ')],
+        supplierState: 'West Bengal',
+      );
+      expect(result.count(Gstr1SupplyCategory.b2cs), 1);
+      expect(result.count(Gstr1SupplyCategory.b2cl), 0);
+    });
+
+    test('routes missing invoice number to review', () {
+      final row = invoice()..['invoice_number'] = '  ';
+      final result = Gstr1DomesticClassifier.classify(
+        [row],
+        supplierState: 'West Bengal',
+      );
+      expect(result.count(Gstr1SupplyCategory.review), 1);
+      expect(result.invoices.single.reason, 'Invoice number is missing.');
+    });
+
     test('provides category totals', () {
       final result = Gstr1DomesticClassifier.classify(
         [invoice(value: 120000, place: 'Bihar')],
