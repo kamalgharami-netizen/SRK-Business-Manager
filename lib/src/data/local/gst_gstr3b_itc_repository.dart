@@ -559,7 +559,23 @@ class Gstr3bRcmRepository {
 }
 
 String? _dateOnly(String value) {
-  final date = DateTime.tryParse(value.trim());
-  if (date == null) return null;
-  return '${date.year.toString().padLeft(4, '0')}-${date.month.toString().padLeft(2, '0')}-${date.day.toString().padLeft(2, '0')}';
+  final normalized = value.trim();
+  if (!RegExp(r'^\\d{4}-\\d{2}-\\d{2}(?:[Tt ].*)?
+).hasMatch(normalized)) {
+    return null;
+  }
+  final year = int.tryParse(normalized.substring(0, 4));
+  final month = int.tryParse(normalized.substring(5, 7));
+  final day = int.tryParse(normalized.substring(8, 10));
+  if (year == null || month == null || day == null) return null;
+  final calendarDate = DateTime.utc(year, month, day);
+  if (calendarDate.year != year ||
+      calendarDate.month != month ||
+      calendarDate.day != day) {
+    return null;
+  }
+  if (normalized.length > 10 && DateTime.tryParse(normalized) == null) {
+    return null;
+  }
+  return normalized.substring(0, 10);
 }
