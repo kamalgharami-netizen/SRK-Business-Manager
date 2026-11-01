@@ -18,7 +18,7 @@ void main() {
       expect(csv, contains('B2C,1001,5.00,pcs,PCS,2.00,105.00,100.00,5.00,2.50,2.50,0.00'));
       expect(csv, contains('Unit (as entered),UQC'));
       expect(csv, contains('PCS'));
-      expect(csv, contains('UNMAPPED') == false);
+      expect(csv, isNot(contains('UNMAPPED')));
       expect(csv, contains('TOTAL,,,,,,105.00,100.00,5.00,2.50,2.50,0.00'));
     });
 
