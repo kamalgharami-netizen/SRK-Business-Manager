@@ -15,7 +15,7 @@ class AppDatabase {
   AppDatabase._();
 
   static final AppDatabase instance = AppDatabase._();
-  static const int _databaseVersion = 20;
+  static const int _databaseVersion = 21;
   String? _databasePath;
   String? _activeBusinessId;
   String? _activeBusinessRole;
@@ -278,6 +278,11 @@ class AppDatabase {
         if (oldVersion < 20) {
           await db.execute('ALTER TABLE sync_queue ADD COLUMN next_retry_at TEXT');
         }
+        if (oldVersion < 21) {
+          await db.execute('ALTER TABLE invoice_items ADD COLUMN taxable_value REAL NOT NULL DEFAULT 0');
+          await db.execute('UPDATE invoice_items SET taxable_value = MAX(0, line_total - tax_amount) WHERE taxable_value = 0');
+          await _createGstr3bItcSchema(db);
+        }
         if (oldVersion < 19) {
           await db.execute('ALTER TABLE stock_movements ADD COLUMN sync_id TEXT');
           await _backfillSyncIds(db, 'stock_movements');
@@ -440,6 +445,7 @@ class AppDatabase {
         discount REAL NOT NULL DEFAULT 0,
         gst_rate REAL NOT NULL DEFAULT 0,
         tax_amount REAL NOT NULL DEFAULT 0,
+        taxable_value REAL NOT NULL DEFAULT 0,
         hsn_sac TEXT,
         cgst_amount REAL NOT NULL DEFAULT 0,
         sgst_amount REAL NOT NULL DEFAULT 0,
@@ -557,9 +563,71 @@ class AppDatabase {
     )''');
     await db.execute('CREATE INDEX idx_stock_movements_product ON stock_movements(product_id)');
     await db.execute('CREATE INDEX idx_stock_movements_sync_id ON stock_movements(sync_id)');
+    await _createGstr3bItcSchema(db);
     await _createAccountingSchema(db);
     await _seedDefaultAccounts(db);
     await _createInventoryCostSchema(db);
+  }
+
+  Future<void> _createGstr3bItcSchema(DatabaseExecutor db) async {
+    await db.execute('''
+      CREATE TABLE IF NOT EXISTS gstr2b_documents (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        supplier_gstin TEXT NOT NULL,
+        invoice_number TEXT NOT NULL,
+        invoice_date TEXT NOT NULL,
+        return_period TEXT NOT NULL,
+        taxable_value REAL NOT NULL CHECK (taxable_value >= 0),
+        igst REAL NOT NULL DEFAULT 0 CHECK (igst >= 0),
+        cgst REAL NOT NULL DEFAULT 0 CHECK (cgst >= 0),
+        sgst REAL NOT NULL DEFAULT 0 CHECK (sgst >= 0),
+        cess REAL NOT NULL DEFAULT 0 CHECK (cess >= 0),
+        source_reference TEXT,
+        imported_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+      )
+    ''');
+    await db.execute('''
+      CREATE UNIQUE INDEX IF NOT EXISTS idx_gstr2b_document_identity
+      ON gstr2b_documents(upper(trim(supplier_gstin)), upper(trim(invoice_number)), invoice_date, return_period)
+    ''');
+    await db.execute('''
+      CREATE TABLE IF NOT EXISTS purchase_itc_assessments (
+        purchase_invoice_id INTEGER PRIMARY KEY,
+        supplier_invoice_number TEXT NOT NULL,
+        supplier_invoice_date TEXT NOT NULL,
+        return_period TEXT NOT NULL,
+        category TEXT NOT NULL CHECK (category IN ('importGoods','importServices','reverseCharge','inputServiceDistributor','other')),
+        treatment TEXT NOT NULL CHECK (treatment IN ('eligible','ineligible','reversalRules38_42_43And17_5','reversalOther','reclaimedPreviousReversal','pendingReview')),
+        taxable_value REAL NOT NULL CHECK (taxable_value >= 0),
+        igst REAL NOT NULL DEFAULT 0 CHECK (igst >= 0),
+        cgst REAL NOT NULL DEFAULT 0 CHECK (cgst >= 0),
+        sgst REAL NOT NULL DEFAULT 0 CHECK (sgst >= 0),
+        cess REAL NOT NULL DEFAULT 0 CHECK (cess >= 0),
+        gstr2b_status TEXT NOT NULL DEFAULT 'pending_review' CHECK (gstr2b_status IN ('matched','not_matched','not_in_statement','pending_review')),
+        gstr2b_document_id INTEGER,
+        gstr2b_reference TEXT,
+        assessment_note TEXT,
+        updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+        FOREIGN KEY (purchase_invoice_id) REFERENCES invoices(id) ON DELETE CASCADE,
+        FOREIGN KEY (gstr2b_document_id) REFERENCES gstr2b_documents(id) ON DELETE SET NULL
+      )
+    ''');
+    await db.execute('CREATE INDEX IF NOT EXISTS idx_purchase_itc_period ON purchase_itc_assessments(return_period, treatment)');
+    await db.execute('''
+      CREATE TABLE IF NOT EXISTS gst_itc_adjustments (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        document_reference TEXT NOT NULL,
+        return_period TEXT NOT NULL,
+        treatment TEXT NOT NULL CHECK (treatment IN ('reversalRules38_42_43And17_5','reversalOther','reclaimedPreviousReversal')),
+        igst REAL NOT NULL DEFAULT 0 CHECK (igst >= 0),
+        cgst REAL NOT NULL DEFAULT 0 CHECK (cgst >= 0),
+        sgst REAL NOT NULL DEFAULT 0 CHECK (sgst >= 0),
+        cess REAL NOT NULL DEFAULT 0 CHECK (cess >= 0),
+        notes TEXT,
+        created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+      )
+    ''');
+    await db.execute('CREATE INDEX IF NOT EXISTS idx_gst_itc_adjustments_period ON gst_itc_adjustments(return_period, treatment)');
   }
 
   Future<void> _createAccountingSchema(Database db) async {
