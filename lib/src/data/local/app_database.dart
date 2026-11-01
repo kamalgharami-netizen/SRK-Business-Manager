@@ -1430,6 +1430,8 @@ class AppDatabase {
             subtotal: (payload['subtotal'] as num).toDouble(),
             tax: (payload['tax_total'] as num).toDouble(),
             total: (payload['grand_total'] as num).toDouble(),
+            // Older cloud payloads do not carry the ITC assessment; never assume eligibility.
+            itcTreatment: 'pendingReview',
           );
         }
         if (isSaleInvoice && isNewInvoice) {

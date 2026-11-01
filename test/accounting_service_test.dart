@@ -282,7 +282,6 @@ void main() {
             subtotal: 100,
             tax: 18,
             total: 118,
-            itcTreatment: 'eligible',
           ));
 
       final lines = await db.query('journal_lines');
