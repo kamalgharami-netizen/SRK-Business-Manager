@@ -554,7 +554,8 @@ class Gstr3bRcmRepository {
       FROM gst_rcm_liabilities l
       LEFT JOIN (
         SELECT liability_id, SUM(igst) AS igst_paid, SUM(cgst) AS cgst_paid,
-          SUM(sgst) AS sgst_paid, SUM(cess) AS cess_paid, COUNT(*) AS payment_count
+          SUM(sgst) AS sgst_paid, SUM(cess) AS cess_paid, COUNT(*) AS payment_count,
+          GROUP_CONCAT(payment_date || ' • ' || cash_ledger_reference || ' • ' || challan_reference, char(10)) AS payment_references
         FROM gst_rcm_payments GROUP BY liability_id
       ) p ON p.liability_id = l.id
       WHERE l.return_period = ?
