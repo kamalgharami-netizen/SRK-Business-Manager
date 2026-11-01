@@ -16,6 +16,7 @@ class _Gstr3bItcPageState extends State<Gstr3bItcPage> {
   );
   Gstr3bItcSummary? _summary;
   List<Map<String, Object?>> _reviewItems = const [];
+  List<Map<String, Object?>> _auditItems = const [];
   bool _loading = false;
   String? _error;
 
@@ -56,11 +57,13 @@ class _Gstr3bItcPageState extends State<Gstr3bItcPage> {
       final results = await Future.wait([
         Gstr3bItcRepository.summarizePeriod(period),
         Gstr3bItcRepository.listPeriodReviewItems(period),
+        Gstr3bItcRepository.listAdjustmentAuditTrail(period),
       ]);
       if (!mounted) return;
       setState(() {
         _summary = results[0] as Gstr3bItcSummary;
         _reviewItems = results[1] as List<Map<String, Object?>>;
+        _auditItems = results[2] as List<Map<String, Object?>>;
       });
     } catch (error) {
       if (!mounted) return;
@@ -291,6 +294,43 @@ class _Gstr3bItcPageState extends State<Gstr3bItcPage> {
     ),
   );
 
+  Widget _auditCard() => Card(
+    child: Padding(
+      padding: const EdgeInsets.all(12),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          Text('ITC Adjustment Audit Trail', style: Theme.of(context).textTheme.titleMedium),
+          const Text('Database-triggered history of adjustment creation, edits and deletion. Audit rows cannot be edited or deleted through the application database.'),
+          if (_auditItems.isEmpty)
+            const ListTile(
+              contentPadding: EdgeInsets.zero,
+              title: Text('এই Return Period-এ কোনো adjustment audit event নেই।'),
+            )
+          else
+            for (final row in _auditItems)
+              ListTile(
+                contentPadding: EdgeInsets.zero,
+                leading: Icon(
+                  row['action'] == 'insert' ? Icons.add_circle_outline
+                    : row['action'] == 'update' ? Icons.edit_outlined
+                    : Icons.delete_outline,
+                ),
+                title: Text('${row['action'].toString().toUpperCase()} • ${row['document_reference']}'),
+                subtitle: Text(
+                  '${row['changed_at']} • ${row['treatment']}\n'
+                  'IGST ${_money((row['igst'] as num).toDouble())} • '
+                  'CGST ${_money((row['cgst'] as num).toDouble())} • '
+                  'SGST ${_money((row['sgst'] as num).toDouble())} • '
+                  'Cess ${_money((row['cess'] as num).toDouble())}'
+                  '${(row['notes'] as String?)?.isNotEmpty == true ? '\\n${row['notes']}' : ''}',
+                ),
+              ),
+        ],
+      ),
+    ),
+  );
+
   @override
   Widget build(BuildContext context) => Scaffold(
     appBar: AppBar(
@@ -342,6 +382,7 @@ class _Gstr3bItcPageState extends State<Gstr3bItcPage> {
         )),
         if (_summary != null) _summaryCard(_summary!),
         _reviewCard(),
+        _auditCard(),
       ],
     ),
   );

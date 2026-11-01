@@ -15,7 +15,7 @@ class AppDatabase {
   AppDatabase._();
 
   static final AppDatabase instance = AppDatabase._();
-  static const int _databaseVersion = 21;
+  static const int _databaseVersion = 22;
   String? _databasePath;
   String? _activeBusinessId;
   String? _activeBusinessRole;
@@ -282,6 +282,9 @@ class AppDatabase {
           await db.execute('ALTER TABLE invoice_items ADD COLUMN taxable_value REAL NOT NULL DEFAULT 0');
           await db.execute('UPDATE invoice_items SET taxable_value = MAX(0, line_total - tax_amount) WHERE taxable_value = 0');
           await _createGstr3bItcSchema(db);
+        }
+        if (oldVersion < 22) {
+          await _createGstr3bItcAuditSchema(db);
         }
         if (oldVersion < 19) {
           await db.execute('ALTER TABLE stock_movements ADD COLUMN sync_id TEXT');
@@ -628,6 +631,80 @@ class AppDatabase {
       )
     ''');
     await db.execute('CREATE INDEX IF NOT EXISTS idx_gst_itc_adjustments_period ON gst_itc_adjustments(return_period, treatment)');
+    await _createGstr3bItcAuditSchema(db);
+  }
+
+  Future<void> _createGstr3bItcAuditSchema(DatabaseExecutor db) async {
+    await db.execute('''
+      CREATE TABLE IF NOT EXISTS gst_itc_adjustment_audit (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        adjustment_id INTEGER NOT NULL,
+        action TEXT NOT NULL CHECK (action IN ('insert','update','delete')),
+        document_reference TEXT NOT NULL,
+        return_period TEXT NOT NULL,
+        treatment TEXT NOT NULL,
+        igst REAL NOT NULL,
+        cgst REAL NOT NULL,
+        sgst REAL NOT NULL,
+        cess REAL NOT NULL,
+        notes TEXT,
+        changed_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+      )
+    ''');
+    await db.execute('''
+      CREATE TRIGGER IF NOT EXISTS trg_gst_itc_adjustment_audit_insert
+      AFTER INSERT ON gst_itc_adjustments
+      BEGIN
+        INSERT INTO gst_itc_adjustment_audit
+          (adjustment_id, action, document_reference, return_period, treatment,
+           igst, cgst, sgst, cess, notes)
+        VALUES
+          (NEW.id, 'insert', NEW.document_reference, NEW.return_period, NEW.treatment,
+           NEW.igst, NEW.cgst, NEW.sgst, NEW.cess, NEW.notes);
+      END
+    ''');
+    await db.execute('''
+      CREATE TRIGGER IF NOT EXISTS trg_gst_itc_adjustment_audit_update
+      AFTER UPDATE ON gst_itc_adjustments
+      BEGIN
+        INSERT INTO gst_itc_adjustment_audit
+          (adjustment_id, action, document_reference, return_period, treatment,
+           igst, cgst, sgst, cess, notes)
+        VALUES
+          (NEW.id, 'update', NEW.document_reference, NEW.return_period, NEW.treatment,
+           NEW.igst, NEW.cgst, NEW.sgst, NEW.cess, NEW.notes);
+      END
+    ''');
+    await db.execute('''
+      CREATE TRIGGER IF NOT EXISTS trg_gst_itc_adjustment_audit_delete
+      AFTER DELETE ON gst_itc_adjustments
+      BEGIN
+        INSERT INTO gst_itc_adjustment_audit
+          (adjustment_id, action, document_reference, return_period, treatment,
+           igst, cgst, sgst, cess, notes)
+        VALUES
+          (OLD.id, 'delete', OLD.document_reference, OLD.return_period, OLD.treatment,
+           OLD.igst, OLD.cgst, OLD.sgst, OLD.cess, OLD.notes);
+      END
+    ''');
+    await db.execute('''
+      CREATE TRIGGER IF NOT EXISTS trg_gst_itc_adjustment_audit_no_update
+      BEFORE UPDATE ON gst_itc_adjustment_audit
+      BEGIN
+        SELECT RAISE(ABORT, 'ITC adjustment audit history is immutable');
+      END
+    ''');
+    await db.execute('''
+      CREATE TRIGGER IF NOT EXISTS trg_gst_itc_adjustment_audit_no_delete
+      BEFORE DELETE ON gst_itc_adjustment_audit
+      BEGIN
+        SELECT RAISE(ABORT, 'ITC adjustment audit history is immutable');
+      END
+    ''');
+    await db.execute('''
+      CREATE INDEX IF NOT EXISTS idx_gst_itc_adjustment_audit_period
+      ON gst_itc_adjustment_audit(return_period, changed_at)
+    ''');
   }
 
   Future<void> _createAccountingSchema(Database db) async {
