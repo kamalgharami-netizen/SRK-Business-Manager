@@ -445,7 +445,10 @@ class Gstr3bRcmValidator {
     required Gstr3bTaxAmounts tax,
   }) {
     final issues = <String>[];
-    if (DateTime.tryParse(paymentDate.trim()) == null) issues.add('Payment date is invalid.');
+    final normalizedPaymentDate = _dateOnly(paymentDate);
+    if (normalizedPaymentDate == null || normalizedPaymentDate != paymentDate.trim()) {
+      issues.add('Payment date must be a valid calendar date in YYYY-MM-DD format.');
+    }
     if (cashLedgerReference.trim().isEmpty) issues.add('Cash ledger reference is required.');
     if (challanReference.trim().isEmpty) issues.add('Challan reference is required.');
     if (!tax.isValid || tax.isZero) issues.add('Payment must contain at least one positive, valid tax amount.');
