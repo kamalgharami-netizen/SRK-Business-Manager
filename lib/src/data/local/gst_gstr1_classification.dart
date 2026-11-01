@@ -178,5 +178,11 @@ class IndianStateCheck {
     'Jammu and Kashmir', 'Ladakh', 'Lakshadweep', 'Puducherry',
   };
 
-  static bool isKnown(String state) => _states.contains(state);
+  static bool isKnown(String state) {
+    final normalized = state
+        .trim()
+        .replaceAll(RegExp(r'\\s+'), ' ')
+        .toLowerCase();
+    return _states.any((known) => known.toLowerCase() == normalized);
+  }
 }
