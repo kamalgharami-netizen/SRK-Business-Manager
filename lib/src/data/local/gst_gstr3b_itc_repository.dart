@@ -124,40 +124,92 @@ class Gstr2bCsvImporter {
   }
 
   static List<List<String>> _parseCsvRows(String input) {
+    // Accept UTF-8 BOMs commonly added by spreadsheet exports.
+    final source = input.startsWith('\uFEFF') ? input.substring(1) : input;
     final rows = <List<String>>[];
     var row = <String>[];
     var field = StringBuffer();
     var quoted = false;
-    for (var i = 0; i < input.length; i++) {
-      final char = input[i];
-      if (char == '"') {
-        if (quoted && i + 1 < input.length && input[i + 1] == '"') {
-          field.write('"');
-          i++;
+    var quoteClosed = false;
+
+    void finishField() {
+      row.add(field.toString());
+      field = StringBuffer();
+      quoteClosed = false;
+    }
+
+    void finishRow() {
+      finishField();
+      if (row.any((value) => value.trim().isNotEmpty)) {
+        rows.add(row);
+      }
+      row = <String>[];
+    }
+
+    for (var i = 0; i < source.length; i++) {
+      final char = source[i];
+      if (quoted) {
+        if (char == '"') {
+          if (i + 1 < source.length && source[i + 1] == '"') {
+            field.write('"');
+            i++;
+          } else {
+            quoted = false;
+            quoteClosed = true;
+          }
         } else {
-          quoted = !quoted;
+          field.write(char);
         }
-      } else if (char == ',' && !quoted) {
-        row.add(field.toString());
-        field = StringBuffer();
-      } else if ((char == '\n' || char == '\r') && !quoted) {
-        if (char == '\r' && i + 1 < input.length && input[i + 1] == '\n') i++;
-        row.add(field.toString());
-        field = StringBuffer();
-        if (row.any((v) => v.trim().isNotEmpty)) rows.add(row);
-        row = <String>[];
+        continue;
+      }
+
+      if (quoteClosed) {
+        if (char == ',') {
+          finishField();
+        } else if (char == '\n' || char == '\r') {
+          if (char == '\r' &&
+              i + 1 < source.length &&
+              source[i + 1] == '\n') {
+            i++;
+          }
+          finishRow();
+        } else {
+          throw const FormatException(
+            'CSV contains unexpected characters after a closing quote.',
+          );
+        }
+        continue;
+      }
+
+      if (char == '"') {
+        if (field.length != 0) {
+          throw const FormatException(
+            'CSV contains a quote inside an unquoted field.',
+          );
+        }
+        quoted = true;
+      } else if (char == ',') {
+        finishField();
+      } else if (char == '\n' || char == '\r') {
+        if (char == '\r' &&
+            i + 1 < source.length &&
+            source[i + 1] == '\n') {
+          i++;
+        }
+        finishRow();
       } else {
         field.write(char);
       }
     }
-    if (quoted) throw const FormatException('CSV contains an unclosed quoted field.');
-    if (field.length > 0 || row.isNotEmpty) {
-      row.add(field.toString());
-      if (row.any((v) => v.trim().isNotEmpty)) rows.add(row);
+
+    if (quoted) {
+      throw const FormatException('CSV contains an unclosed quoted field.');
+    }
+    if (quoteClosed || field.length > 0 || row.isNotEmpty) {
+      finishRow();
     }
     return rows;
-  }
-}
+  }}
 
 class Gstr3bItcRepository {
   Gstr3bItcRepository._();

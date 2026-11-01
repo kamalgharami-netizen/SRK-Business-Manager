@@ -139,6 +139,35 @@ void main() {
       expect(records.single.sourceReference, 'Sheet 1, Row 2');
     });
 
+    test('accepts a UTF-8 BOM, CRLF rows and escaped quotes', () {
+      final records = Gstr2bCsvImporter.parse(
+        '\uFEFFsupplier_gstin,invoice_number,invoice_date,return_period,taxable_value,igst,cgst,sgst,cess,source_reference\\r\\n'
+        '27AAPFU0939F1ZV,INV-101,2026-10-12,2026-10,100,18,0,0,0,"Supplier ""A"", branch 2"\\r\\n',
+      );
+      expect(records, hasLength(1));
+      expect(records.single.sourceReference, 'Supplier "A", branch 2');
+    });
+
+    test('rejects quotes embedded in unquoted CSV fields', () {
+      expect(
+        () => Gstr2bCsvImporter.parse(
+          'supplier_gstin,invoice_number,invoice_date,return_period,taxable_value,igst,cgst,sgst,cess\\n'
+          '27AAPFU0939F1ZV,INV"102,2026-10-12,2026-10,100,18,0,0,0',
+        ),
+        throwsFormatException,
+      );
+    });
+
+    test('rejects characters after a closing quoted CSV field', () {
+      expect(
+        () => Gstr2bCsvImporter.parse(
+          'supplier_gstin,invoice_number,invoice_date,return_period,taxable_value,igst,cgst,sgst,cess\\n'
+          '27AAPFU0939F1ZV,"INV-103"x,2026-10-12,2026-10,100,18,0,0,0',
+        ),
+        throwsFormatException,
+      );
+    });
+
     test('rejects a CSV without mandatory headers', () {
       expect(
         () => Gstr2bCsvImporter.parse('invoice_number,igst\nINV-1,18'),
