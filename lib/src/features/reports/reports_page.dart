@@ -463,25 +463,31 @@ class _ReportsPageState extends State<ReportsPage> {
       final classification = Gstr1DomesticClassifier.classify(invoices, supplierState: settings['company_state'] ?? '');
       final hsnRows = await db.rawQuery(
         '''
-        SELECT ii.hsn_sac, ii.gst_rate, ii.quantity, ii.unit, ii.line_total,
-          ii.tax_amount, ii.cgst_amount, ii.sgst_amount, ii.igst_amount,
-          CASE
-            WHEN p.gstin IS NULL OR TRIM(p.gstin) = '' THEN 'B2C'
-            WHEN LENGTH(TRIM(p.gstin)) = 15
-              AND UPPER(TRIM(p.gstin)) GLOB '[0-9][0-9]?????????????'
-              THEN 'B2B'
-            ELSE 'REVIEW'
-          END AS supply_category
+        SELECT i.invoice_number, ii.hsn_sac, ii.gst_rate, ii.quantity, ii.unit,
+          ii.line_total, ii.tax_amount, ii.cgst_amount, ii.sgst_amount, ii.igst_amount
         FROM invoice_items ii
         INNER JOIN invoices i ON i.id = ii.invoice_id
-        LEFT JOIN parties p ON p.id = i.party_id
         WHERE i.invoice_type = 'sale'
           AND i.invoice_date >= ? AND i.invoice_date < ?
-        ORDER BY supply_category, ii.hsn_sac, ii.gst_rate
+        ORDER BY i.invoice_number, ii.hsn_sac, ii.gst_rate
         ''',
         [_date(_startDate!), _date(_endDate!.add(const Duration(days: 1)))],
       );
-      final hsnSummary = Gstr1HsnRateAggregator.aggregate(hsnRows);
+      final categoryByInvoice = {
+        for (final item in classification.invoices)
+          item.invoiceNumber.toUpperCase(): switch (item.category) {
+            Gstr1SupplyCategory.b2b => 'B2B',
+            Gstr1SupplyCategory.b2cl || Gstr1SupplyCategory.b2cs => 'B2C',
+            Gstr1SupplyCategory.review => 'REVIEW',
+          },
+      };
+      final categorizedHsnRows = hsnRows.map((row) => {
+        ...row,
+        'supply_category': categoryByInvoice[
+              (row['invoice_number'] as String? ?? '').trim().toUpperCase()
+            ] ?? 'REVIEW',
+      }).toList(growable: false);
+      final hsnSummary = Gstr1HsnRateAggregator.aggregate(categorizedHsnRows);
       if (!mounted) return;
       setState(() { _gstr1ReadinessReport = report; _gstr1ClassificationSummary = classification; _gstr1HsnSummary = hsnSummary; });
     } catch (error) {
