@@ -84,6 +84,141 @@ class GstReturnReadiness {
           code: 'invoice_number_missing',
           message: 'An outward invoice has no invoice number.',
         ));
+      } else if (number.length > 16 ||
+          !RegExp(r'^[A-Za-z0-9&/-]+
+        issues.add(GstReadinessIssue(
+          severity: GstReadinessSeverity.error,
+          code: 'duplicate_invoice_number',
+          message: 'Duplicate invoice number in this return data: $number',
+        ));
+      }
+      if (date == null ||
+          date.isBefore(DateTime(periodStart.year, periodStart.month, periodStart.day)) ||
+          date.isAfter(DateTime(periodEnd.year, periodEnd.month, periodEnd.day, 23, 59, 59))) {
+        issues.add(GstReadinessIssue(
+          severity: GstReadinessSeverity.error,
+          code: 'invoice_date_outside_period',
+          message: 'Invoice $number has a missing or out-of-period invoice date.',
+        ));
+      }
+
+      final placeOfSupply = (invoice['place_of_supply'] as String? ?? '').trim();
+      if (!IndianStates.isKnown(placeOfSupply)) {
+        issues.add(GstReadinessIssue(
+          severity: GstReadinessSeverity.error,
+          code: 'place_of_supply_missing',
+          message: 'Invoice $number has no valid place of supply state.',
+        ));
+      }
+
+      final recipientGstin = (invoice['party_gstin'] as String? ?? '').trim().toUpperCase();
+      final recipientState = (invoice['party_state'] as String? ?? '').trim();
+      if (recipientGstin.isNotEmpty &&
+          (!RegExp(r'^[0-9]{2}[A-Z]{5}[0-9]{4}[A-Z][1-9A-Z]Z[0-9A-Z]$')
+                  .hasMatch(recipientGstin) ||
+              !IndianStates.gstinMatchesState(recipientGstin, recipientState))) {
+        issues.add(GstReadinessIssue(
+          severity: GstReadinessSeverity.error,
+          code: 'recipient_gstin_invalid',
+          message: 'Invoice $number contains an invalid recipient GSTIN or GSTIN/state mismatch.',
+        ));
+      }
+
+      final items = invoice['items'];
+      if (items is! List || items.isEmpty) {
+        issues.add(GstReadinessIssue(
+          severity: GstReadinessSeverity.error,
+          code: 'invoice_items_missing',
+          message: 'Invoice $number has no invoice line items.',
+        ));
+        continue;
+      }
+      var itemTaxTotal = 0.0;
+      var itemTaxValuesValid = true;
+      for (var index = 0; index < items.length; index++) {
+        final rawItem = items[index];
+        if (rawItem is! Map) {
+          issues.add(GstReadinessIssue(
+            severity: GstReadinessSeverity.error,
+            code: 'invoice_item_malformed',
+            message: 'Invoice $number contains an unreadable line item at row ${index + 1}.',
+          ));
+          continue;
+        }
+        final hsn = (rawItem['hsn_sac'] as String? ?? '').trim();
+        if (hsn.isEmpty) {
+          issues.add(GstReadinessIssue(
+            severity: GstReadinessSeverity.warning,
+            code: 'hsn_sac_missing',
+            message: 'Invoice $number contains a line without HSN/SAC; verify the applicable reporting requirement.',
+          ));
+        }
+        final tax = _finiteNumber(rawItem['tax_amount']);
+        if (tax == null) {
+          itemTaxValuesValid = false;
+        } else {
+          itemTaxTotal += tax;
+        }
+        final storedTaxable = _finiteNumber(rawItem['taxable_value']);
+        final lineTotal = _finiteNumber(rawItem['line_total']);
+        final taxable = storedTaxable ?? (lineTotal != null && tax != null
+            ? lineTotal - tax
+            : null);
+        final cgst = _finiteNumber(rawItem['cgst_amount']);
+        final sgst = _finiteNumber(rawItem['sgst_amount']);
+        final igst = _finiteNumber(rawItem['igst_amount']);
+        final hasTaxComponents = rawItem.containsKey('cgst_amount') ||
+            rawItem.containsKey('sgst_amount') ||
+            rawItem.containsKey('igst_amount');
+        final componentsReconcile = !hasTaxComponents ||
+            (cgst != null && sgst != null && igst != null &&
+                (cgst + sgst + igst - (tax ?? double.nan)).abs() <= 0.01);
+        if (tax == null || taxable == null || tax < 0 || taxable < 0 ||
+            (lineTotal != null && (lineTotal < 0 || tax > lineTotal + 0.01)) ||
+            !componentsReconcile) {
+          issues.add(GstReadinessIssue(
+            severity: GstReadinessSeverity.error,
+            code: 'invalid_tax_values',
+            message: 'Invoice $number contains invalid taxable value or GST amount, or tax components do not reconcile.',
+          ));
+        }
+      }
+
+      // Compare the invoice header tax with the sum of its stored line taxes.
+      // This check is enabled when the caller supplies the header tax field.
+      if (invoice.containsKey('tax_total')) {
+        final headerTaxTotal = _finiteNumber(invoice['tax_total']);
+        if (headerTaxTotal == null || headerTaxTotal < 0 ||
+            (itemTaxValuesValid && (itemTaxTotal - headerTaxTotal).abs() > 0.01)) {
+          issues.add(GstReadinessIssue(
+            severity: GstReadinessSeverity.error,
+            code: 'invoice_tax_total_mismatch',
+            message: 'Invoice $number header GST total does not match the sum of its line-item GST amounts.',
+          ));
+        }
+      }
+    }
+
+    issues.add(const GstReadinessIssue(
+      severity: GstReadinessSeverity.warning,
+      code: 'manual_scope_review',
+      message: 'This preflight does not cover every GSTR-1 table, amendments, advances, exports, e-commerce supplies, or GSTN schema validation. Review these separately before filing.',
+    ));
+    return GstReadinessReport(List.unmodifiable(issues));
+  }
+
+  static double? _finiteNumber(Object? value) {
+    if (value is! num) return null;
+    final number = value.toDouble();
+    return number.isFinite ? number : null;
+  }
+}
+).hasMatch(number)) {
+        issues.add(GstReadinessIssue(
+          severity: GstReadinessSeverity.error,
+          code: 'invoice_number_format_invalid',
+          message: 'Invoice $number must be at most 16 characters and use only letters, numbers, hyphen, ampersand or slash.',
+        ));
       } else if (!seenNumbers.add(number.toUpperCase())) {
         issues.add(GstReadinessIssue(
           severity: GstReadinessSeverity.error,

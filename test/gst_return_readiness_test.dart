@@ -68,6 +68,24 @@ void main() {
       expect(validate([invoice]).issues.where((issue) => issue.code == 'invalid_tax_values').length, 2);
     });
 
+
+    test('rejects invoice numbers longer than 16 characters or with unsupported symbols', () {
+      final tooLong = validInvoice()..['invoice_number'] = 'INV-1234567890123';
+      final unsupported = validInvoice()..['invoice_number'] = 'INV_001';
+      final report = validate([tooLong, unsupported]);
+      expect(report.issues.where((issue) =>
+          issue.code == 'invoice_number_format_invalid').length, 2);
+      expect(report.canPrepareDraft, isFalse);
+    });
+
+    test('accepts invoice numbers using permitted characters within 16 characters', () {
+      final invoice = validInvoice()..['invoice_number'] = 'AB-12/34&X';
+      final report = validate([invoice]);
+      expect(report.issues.any((issue) =>
+          issue.code == 'invoice_number_format_invalid'), isFalse);
+      expect(report.errorCount, 0);
+    });
+
     test('flags invalid supplier GSTIN and out-of-period invoice', () {
       final invoice = validInvoice()..['invoice_date'] = '2026-09-30';
       final report = GstReturnReadiness.validateGstr1(
