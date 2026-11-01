@@ -34,6 +34,20 @@ void main() {
       );
     });
 
+    test('rejects impossible calendar invoice dates', () {
+      for (final date in ['2026-02-30', '2026-13-01', '31/10/2026']) {
+        final issues = Gstr3bItcAssessmentValidator.validate(
+          supplierGstin: '27AAPFU0939F1ZV',
+          supplierInvoiceNumber: 'INV-100',
+          supplierInvoiceDate: date,
+          returnPeriod: '2026-10',
+          taxableValue: 100,
+          tax: tax,
+        );
+        expect(issues, contains('Supplier invoice date is invalid.'));
+      }
+    });
+
     test('rejects invalid invoice dates, periods and negative taxable value', () {
       final issues = Gstr3bItcAssessmentValidator.validate(
         supplierGstin: '27AAPFU0939F1ZV',
