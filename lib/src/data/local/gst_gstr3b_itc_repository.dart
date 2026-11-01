@@ -560,8 +560,9 @@ class Gstr3bRcmRepository {
 
 String? _dateOnly(String value) {
   final normalized = value.trim();
-  if (!RegExp(r'^\\d{4}-\\d{2}-\\d{2}(?:[Tt ].*)?
-).hasMatch(normalized)) {
+  if (normalized.length < 10 ||
+      normalized[4] != '-' ||
+      normalized[7] != '-') {
     return null;
   }
   final year = int.tryParse(normalized.substring(0, 4));
@@ -574,8 +575,12 @@ String? _dateOnly(String value) {
       calendarDate.day != day) {
     return null;
   }
-  if (normalized.length > 10 && DateTime.tryParse(normalized) == null) {
-    return null;
+  if (normalized.length > 10) {
+    final separator = normalized[10];
+    if (separator != 'T' && separator != 't' && separator != ' ') {
+      return null;
+    }
+    if (DateTime.tryParse(normalized) == null) return null;
   }
   return normalized.substring(0, 10);
 }
