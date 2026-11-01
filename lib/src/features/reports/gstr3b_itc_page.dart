@@ -298,7 +298,7 @@ class _Gstr3bItcPageState extends State<Gstr3bItcPage> {
   );
 
 
-  double _readAmount(String value) => double.tryParse(value.trim()) ?? 0;
+  double _readAmount(String value) => double.tryParse(value.trim()) ?? double.nan;
 
   Future<void> _addRcmLiability() async {
     final reference = TextEditingController();
@@ -363,7 +363,7 @@ class _Gstr3bItcPageState extends State<Gstr3bItcPage> {
       final saved = await showDialog<bool>(
         context: context,
         builder: (dialogContext) => AlertDialog(
-          title: Text('Record Cash Payment • \${row['document_reference']}'),
+          title: Text('Record Cash Payment • ${row['document_reference']}'),
           content: SizedBox(width: 460, child: SingleChildScrollView(child: Column(
             mainAxisSize: MainAxisSize.min,
             children: [
@@ -422,11 +422,14 @@ class _Gstr3bItcPageState extends State<Gstr3bItcPage> {
             );
             final totalDue = due.igst + due.cgst + due.sgst + due.cess;
             return ExpansionTile(
-              title: Text('\${row['document_reference']} • \${row['supplier_name'] ?? 'Supplier'}'),
-              subtitle: Text('Liability ₹\${(amount('igst') + amount('cgst') + amount('sgst') + amount('cess')).toStringAsFixed(2)} • Paid ₹\${(amount('igst_paid') + amount('cgst_paid') + amount('sgst_paid') + amount('cess_paid')).toStringAsFixed(2)} • Outstanding ₹\${totalDue.toStringAsFixed(2)}'),
+              title: Text('${row['document_reference']} • ${row['supplier_name'] ?? 'Supplier'}'),
+              subtitle: Text('Liability ₹${(amount('igst') + amount('cgst') + amount('sgst') + amount('cess')).toStringAsFixed(2)} • Paid ₹${(amount('igst_paid') + amount('cgst_paid') + amount('sgst_paid') + amount('cess_paid')).toStringAsFixed(2)} • Outstanding ₹${totalDue.toStringAsFixed(2)}'),
               children: [
                 ListTile(title: const Text('Outstanding by tax head'), subtitle: Text(_taxText(due))),
-                ListTile(title: Text('Cash challan payments: \${row['payment_count']}')),
+                ListTile(
+                  title: Text('Cash challan payments: ${row['payment_count']}'),
+                  subtitle: Text((row['payment_references'] as String?) ?? 'No cash payment reference recorded.'),
+                ),
                 Align(alignment: Alignment.centerRight, child: TextButton.icon(
                   onPressed: totalDue <= 0.005 ? null : () => _recordRcmPayment(row),
                   icon: const Icon(Icons.payments), label: const Text('Record Cash Payment'),
