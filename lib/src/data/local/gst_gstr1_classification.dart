@@ -149,7 +149,7 @@ class Gstr1DomesticClassifier {
   }
 
   static String _normalizeState(String value) =>
-      value.trim().replaceAll(RegExp(r'\\s+'), ' ').toLowerCase();
+      value.trim().replaceAll(RegExp(r'\s+'), ' ').toLowerCase();
 
   /// Checks GSTIN structure only; checksum and registration status are not
   /// verified against the GST portal.
@@ -181,7 +181,7 @@ class IndianStateCheck {
   static bool isKnown(String state) {
     final normalized = state
         .trim()
-        .replaceAll(RegExp(r'\\s+'), ' ')
+        .replaceAll(RegExp(r'\s+'), ' ')
         .toLowerCase();
     return _states.any((known) => known.toLowerCase() == normalized);
   }
