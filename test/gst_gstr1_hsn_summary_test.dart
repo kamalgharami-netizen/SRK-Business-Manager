@@ -31,6 +31,15 @@ void main() {
       expect(result.single.hsnSac, 'HSN/SAC অনুল্লিখিত');
     });
 
+    test('skips rows when tax components do not reconcile to total tax', () {
+      final result = Gstr1HsnRateAggregator.aggregate([
+        {'hsn_sac':'1001','gst_rate':5,'quantity':1,'unit':'pcs','line_total':105,'tax_amount':5,'cgst_amount':2,'sgst_amount':2,'igst_amount':0},
+        {'hsn_sac':'1002','gst_rate':5,'quantity':1,'unit':'pcs','line_total':105,'tax_amount':5.01,'cgst_amount':2.5,'sgst_amount':2.5,'igst_amount':0},
+      ]);
+      expect(result, hasLength(1));
+      expect(result.single.hsnSac, '1002');
+    });
+
     test('does not combine different units into one quantity total', () {
       final result = Gstr1HsnRateAggregator.aggregate([
         {'hsn_sac':'1001','gst_rate':5,'quantity':2,'unit':'kg','line_total':105,'tax_amount':5,'cgst_amount':2.5,'sgst_amount':2.5,'igst_amount':0},

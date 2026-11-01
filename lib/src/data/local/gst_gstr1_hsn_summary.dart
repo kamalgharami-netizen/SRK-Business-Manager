@@ -45,7 +45,8 @@ class Gstr1HsnRateAggregator {
       if (rate == null || quantity == null || lineTotal == null || tax == null ||
           cgst == null || sgst == null || igst == null ||
           rate < 0 || quantity < 0 || lineTotal < 0 || tax < 0 || cgst < 0 ||
-          sgst < 0 || igst < 0 || tax > lineTotal + 0.01) {
+          sgst < 0 || igst < 0 || tax > lineTotal + 0.01 ||
+          (cgst + sgst + igst - tax).abs() > 0.01) {
         continue;
       }
       final key = (hsn.isEmpty ? 'HSN/SAC অনুল্লিখিত' : hsn, rate,
