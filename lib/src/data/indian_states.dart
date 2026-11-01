@@ -81,7 +81,7 @@ class IndianStates {
 
   static String normalizeState(String state) => state
       .trim()
-      .replaceAll(RegExp(r'\\s+'), ' ')
+      .replaceAll(RegExp(r'\s+'), ' ')
       .toLowerCase();
 
   static bool isKnown(String state) {

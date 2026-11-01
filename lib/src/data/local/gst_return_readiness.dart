@@ -57,7 +57,7 @@ class GstReturnReadiness {
         message: 'Enter a valid supplier GSTIN matching the selected registration state.',
       ));
     }
-    if (!IndianStates.all.contains(state)) {
+    if (!IndianStates.isKnown(state)) {
       issues.add(const GstReadinessIssue(
         severity: GstReadinessSeverity.error,
         code: 'supplier_state_missing',
@@ -102,7 +102,7 @@ class GstReturnReadiness {
       }
 
       final placeOfSupply = (invoice['place_of_supply'] as String? ?? '').trim();
-      if (!IndianStates.all.contains(placeOfSupply)) {
+      if (!IndianStates.isKnown(placeOfSupply)) {
         issues.add(GstReadinessIssue(
           severity: GstReadinessSeverity.error,
           code: 'place_of_supply_missing',
