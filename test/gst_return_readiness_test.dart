@@ -125,6 +125,23 @@ void main() {
       expect(report.canPrepareDraft, isFalse);
     });
 
+
+    test('flags invoice header GST total that differs from its line-item GST sum', () {
+      final invoice = validInvoice()..['tax_total'] = 200.0;
+      final report = validate([invoice]);
+      expect(report.issues.any((issue) =>
+          issue.code == 'invoice_tax_total_mismatch'), isTrue);
+      expect(report.canPrepareDraft, isFalse);
+    });
+
+    test('accepts invoice header GST total matching its line-item GST sum', () {
+      final invoice = validInvoice()..['tax_total'] = 180.0;
+      final report = validate([invoice]);
+      expect(report.issues.any((issue) =>
+          issue.code == 'invoice_tax_total_mismatch'), isFalse);
+      expect(report.errorCount, 0);
+    });
+
     test('warns when no outward invoices exist in the selected period', () {
       final report = validate([]);
       expect(report.issues.any((issue) => issue.code == 'no_outward_invoices'), isTrue);
