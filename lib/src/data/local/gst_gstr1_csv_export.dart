@@ -21,6 +21,16 @@ class Gstr1HsnCsvExport {
         [row.hsnSac, _number(row.gstRate), row.unit, _number(row.quantity),
           _number(row.totalValue), _number(row.taxableValue), _number(row.taxAmount),
           _number(row.cgst), _number(row.sgst), _number(row.igst)],
+      if (rows.isNotEmpty)
+        [
+          'TOTAL', '', '', '',
+          _number(rows.fold<double>(0, (sum, row) => sum + row.totalValue)),
+          _number(rows.fold<double>(0, (sum, row) => sum + row.taxableValue)),
+          _number(rows.fold<double>(0, (sum, row) => sum + row.taxAmount)),
+          _number(rows.fold<double>(0, (sum, row) => sum + row.cgst)),
+          _number(rows.fold<double>(0, (sum, row) => sum + row.sgst)),
+          _number(rows.fold<double>(0, (sum, row) => sum + row.igst)),
+        ],
     ];
     return '\uFEFF${lines.map((line) => line.map(_escape).join(',')).join('\r\n')}\r\n';
   }
