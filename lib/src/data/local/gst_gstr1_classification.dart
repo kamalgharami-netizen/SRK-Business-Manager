@@ -46,14 +46,17 @@ class Gstr1ClassificationSummary {
 class Gstr1DomesticClassifier {
   Gstr1DomesticClassifier._();
 
-  /// Configured threshold for inter-State B2C Large classification.
-  /// Verify current GSTN rules before relying on statutory filing.
-  static const double b2clInvoiceValueThreshold = 100000;
+  /// GSTN B2CL threshold changed from ₹2.5 lakh to ₹1 lakh
+  /// for return periods beginning August 2024.
+  static double b2clThresholdForReturnPeriod(DateTime returnPeriod) =>
+      returnPeriod.isBefore(DateTime(2024, 8)) ? 250000 : 100000;
 
   static Gstr1ClassificationSummary classify(
     List<Map<String, Object?>> invoices, {
     required String supplierState,
+    required DateTime returnPeriod,
   }) {
+    final b2clThreshold = b2clThresholdForReturnPeriod(returnPeriod);
     final supplier = supplierState.trim();
     final results = <Gstr1InvoiceClassification>[];
 
@@ -120,7 +123,7 @@ class Gstr1DomesticClassifier {
           IndianStates.normalizeState(supplier) !=
           IndianStates.normalizeState(placeOfSupply);
       final category =
-          interState && invoiceValue > b2clInvoiceValueThreshold
+          interState && invoiceValue > b2clThreshold
               ? Gstr1SupplyCategory.b2cl
               : Gstr1SupplyCategory.b2cs;
       results.add(Gstr1InvoiceClassification(

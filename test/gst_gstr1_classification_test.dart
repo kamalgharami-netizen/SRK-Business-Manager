@@ -3,6 +3,17 @@ import 'package:srk_business_manager/src/data/local/gst_gstr1_classification.dar
 
 void main() {
   group('Gstr1DomesticClassifier', () {
+    Gstr1ClassificationSummary classify(
+      List<Map<String, Object?>> invoices, {
+      String supplierState = 'West Bengal',
+      DateTime? returnPeriod,
+    }) =>
+        Gstr1DomesticClassifier.classify(
+          invoices,
+          supplierState: supplierState,
+          returnPeriod: returnPeriod ?? DateTime(2024, 8),
+        );
+
     Map<String, Object?> invoice({
       String gstin = '',
       String partyState = '',
@@ -114,6 +125,36 @@ void main() {
       );
       expect(result.count(Gstr1SupplyCategory.review), 1);
       expect(result.invoices.single.reason, 'Invoice number is missing.');
+    });
+
+    test('uses the ₹2.5 lakh B2CL threshold through July 2024', () {
+      final result = classify(
+        [invoice(place: 'Bihar', value: 200000)],
+        returnPeriod: DateTime(2024, 7),
+      );
+      expect(result.count(Gstr1SupplyCategory.b2cs), 1);
+      expect(result.count(Gstr1SupplyCategory.b2cl), 0);
+    });
+
+    test('uses the ₹1 lakh B2CL threshold from August 2024', () {
+      final result = classify(
+        [invoice(place: 'Bihar', value: 150000)],
+        returnPeriod: DateTime(2024, 8),
+      );
+      expect(result.count(Gstr1SupplyCategory.b2cl), 1);
+    });
+
+    test('does not classify an invoice exactly at the applicable threshold as B2CL', () {
+      final oldPeriod = classify(
+        [invoice(place: 'Bihar', value: 250000)],
+        returnPeriod: DateTime(2024, 7),
+      );
+      final newPeriod = classify(
+        [invoice(place: 'Bihar', value: 100000)],
+        returnPeriod: DateTime(2024, 8),
+      );
+      expect(oldPeriod.count(Gstr1SupplyCategory.b2cs), 1);
+      expect(newPeriod.count(Gstr1SupplyCategory.b2cs), 1);
     });
 
     test('provides category totals', () {
