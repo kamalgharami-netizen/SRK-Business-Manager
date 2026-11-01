@@ -74,12 +74,6 @@ class _PurchasesPageState extends State<PurchasesPage> {
       return;
     }
 
-    final itcRows = await db.query(
-      'purchase_itc_assessments',
-      where: 'purchase_invoice_id = ?',
-      whereArgs: [invoice['id']],
-      limit: 1,
-    );
     final settingsRows = await db.query('app_settings');
     if (!mounted) return;
     final settings = <String, String>{
@@ -649,6 +643,13 @@ class _PurchasesPageState extends State<PurchasesPage> {
       where: 'invoice_id = ?',
       whereArgs: [invoice['id']],
     );
+    final itcRows = await db.query(
+      'purchase_itc_assessments',
+      where: 'purchase_invoice_id = ?',
+      whereArgs: [invoice['id']],
+      limit: 1,
+    );
+
     final settingsRows = await db.query('app_settings');
     final business = <String, String>{
       for (final row in settingsRows)
