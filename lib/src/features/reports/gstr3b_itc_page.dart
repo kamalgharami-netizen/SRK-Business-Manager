@@ -44,7 +44,7 @@ class _Gstr3bItcPageState extends State<Gstr3bItcPage> {
 
   Future<void> _refresh() async {
     final period = _periodController.text.trim();
-    if (!RegExp(r'^\\d{4}-(0[1-9]|1[0-2])$').hasMatch(period)) {
+    if (!RegExp(r'^\d{4}-(0[1-9]|1[0-2])$').hasMatch(period)) {
       setState(() => _error = 'Return period YYYY-MM ফরম্যাটে লিখুন।');
       return;
     }

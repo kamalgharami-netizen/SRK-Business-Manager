@@ -334,7 +334,7 @@ class Gstr3bItcRepository {
   }
 
   static Future<List<Map<String, Object?>>> listPeriodReviewItems(String returnPeriod) async {
-    if (!RegExp(r'^\\d{4}-(0[1-9]|1[0-2])$').hasMatch(returnPeriod)) {
+    if (!RegExp(r'^\d{4}-(0[1-9]|1[0-2])$').hasMatch(returnPeriod)) {
       throw const FormatException('Return period must use YYYY-MM format.');
     }
     final db = await AppDatabase.instance.database;
