@@ -209,7 +209,8 @@ class Gstr2bCsvImporter {
       finishRow();
     }
     return rows;
-  }}
+  }
+}
 
 class Gstr3bItcRepository {
   Gstr3bItcRepository._();
