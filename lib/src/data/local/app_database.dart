@@ -15,7 +15,7 @@ class AppDatabase {
   AppDatabase._();
 
   static final AppDatabase instance = AppDatabase._();
-  static const int _databaseVersion = 23;
+  static const int _databaseVersion = 24;
   String? _databasePath;
   String? _activeBusinessId;
   String? _activeBusinessRole;
@@ -288,6 +288,9 @@ class AppDatabase {
         }
         if (oldVersion < 23) {
           await _createGstr3bRcmSchema(db);
+        }
+        if (oldVersion < 24) {
+          await _seedDefaultAccounts(db);
         }
         if (oldVersion < 19) {
           await db.execute('ALTER TABLE stock_movements ADD COLUMN sync_id TEXT');
@@ -870,6 +873,7 @@ class AppDatabase {
       {'account_code': '1100', 'account_name': 'Accounts Receivable', 'account_type': 'asset', 'normal_balance': 'debit'},
       {'account_code': '1200', 'account_name': 'Inventory', 'account_type': 'asset', 'normal_balance': 'debit'},
       {'account_code': '1300', 'account_name': 'Input GST', 'account_type': 'asset', 'normal_balance': 'debit'},
+      {'account_code': '1310', 'account_name': 'GST Pending ITC Review', 'account_type': 'asset', 'normal_balance': 'debit'},
       {'account_code': '2000', 'account_name': 'Accounts Payable', 'account_type': 'liability', 'normal_balance': 'credit'},
       {'account_code': '2100', 'account_name': 'Output GST', 'account_type': 'liability', 'normal_balance': 'credit'},
       {'account_code': '3000', 'account_name': 'Owner Capital', 'account_type': 'equity', 'normal_balance': 'credit'},

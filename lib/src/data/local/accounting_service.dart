@@ -35,13 +35,50 @@ class AccountingService {
     await _post(txn, sourceType: 'sales_return', sourceId: returnId, date: date, memo: 'Sales return $returnNumber', lines: lines);
   }
 
-  static Future<void> postPurchaseInvoice(Transaction txn, {required int invoiceId, required String invoiceNumber, required String date, required double subtotal, required double tax, required double total}) async {
+  static Future<void> postPurchaseInvoice(
+    Transaction txn, {
+    required int invoiceId,
+    required String invoiceNumber,
+    required String date,
+    required double subtotal,
+    required double tax,
+    required double total,
+    required String itcTreatment,
+  }) async {
+    if (!subtotal.isFinite || subtotal < 0 ||
+        !tax.isFinite || tax < 0 ||
+        !total.isFinite || total < 0 ||
+        (total - subtotal - tax).abs() > 0.005) {
+      throw StateError('Purchase invoice totals are invalid or do not balance.');
+    }
+    if (!const {'eligible', 'ineligible', 'pendingReview'}.contains(itcTreatment)) {
+      throw StateError('Purchase ITC treatment must be assessed before posting.');
+    }
     final lines = <Map<String, Object?>>[
-      if (subtotal > 0) {'code': '1200', 'debit': subtotal, 'credit': 0.0, 'description': 'Inventory acquired'},
-      if (tax > 0) {'code': '1300', 'debit': tax, 'credit': 0.0, 'description': 'Input GST recorded'},
-      if (total > 0) {'code': '2000', 'debit': 0.0, 'credit': total, 'description': 'Supplier payable'},
+      if (subtotal > 0 || (tax > 0 && itcTreatment == 'ineligible'))
+        {
+          'code': '1200',
+          'debit': subtotal + (itcTreatment == 'ineligible' ? tax : 0),
+          'credit': 0.0,
+          'description': itcTreatment == 'ineligible'
+              ? 'Inventory acquired including non-recoverable GST'
+              : 'Inventory acquired',
+        },
+      if (tax > 0 && itcTreatment == 'eligible')
+        {'code': '1300', 'debit': tax, 'credit': 0.0, 'description': 'Eligible input GST'},
+      if (tax > 0 && itcTreatment == 'pendingReview')
+        {'code': '1310', 'debit': tax, 'credit': 0.0, 'description': 'Input GST pending eligibility review'},
+      if (total > 0)
+        {'code': '2000', 'debit': 0.0, 'credit': total, 'description': 'Supplier payable'},
     ];
-    await _post(txn, sourceType: 'purchase_invoice', sourceId: invoiceId, date: date, memo: 'Purchase invoice $invoiceNumber', lines: lines);
+    await _post(
+      txn,
+      sourceType: 'purchase_invoice',
+      sourceId: invoiceId,
+      date: date,
+      memo: 'Purchase invoice $invoiceNumber',
+      lines: lines,
+    );
   }
 
   static Future<void> postPurchaseReturn(Transaction txn, {required int returnId, required String returnNumber, required String date, required double subtotal, required double tax, required double total}) async {

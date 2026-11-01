@@ -522,6 +522,7 @@ class _PurchasesPageState extends State<PurchasesPage> {
             subtotal: subtotal,
             tax: taxTotal,
             total: subtotal + taxTotal,
+            itcTreatment: itcTreatment.name,
           );
         });
 

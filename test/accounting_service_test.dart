@@ -34,7 +34,7 @@ Future<Database> _openAccountingDatabase() async {
       credit REAL NOT NULL DEFAULT 0
     )
   ''');
-  for (final code in ['1000', '1010', '1100', '1200', '1300', '2000', '2100', '4000', '5000', '5200']) {
+  for (final code in ['1000', '1010', '1100', '1200', '1300', '1310', '2000', '2100', '4000', '5000', '5200']) {
     await db.insert('accounts', {'account_code': code, 'is_active': 1});
   }
   return db;
@@ -158,6 +158,7 @@ void main() {
             subtotal: 1000,
             tax: 180,
             total: 1180,
+            itcTreatment: 'eligible',
           ));
 
       final entries = await db.query('journal_entries');
@@ -180,6 +181,49 @@ void main() {
       expect(credit, 1180);
     });
 
+    test('posts ineligible purchase GST into inventory cost, not input GST', () async {
+      final db = await _openAccountingDatabase();
+      addTearDown(db.close);
+
+      await db.transaction((txn) => AccountingService.postPurchaseInvoice(
+            txn,
+            invoiceId: 33,
+            invoiceNumber: 'PUR-033',
+            date: '2026-10-31',
+            subtotal: 1000,
+            tax: 180,
+            total: 1180,
+            itcTreatment: 'ineligible',
+          ));
+
+      final lines = await db.query('journal_lines');
+      expect(lines, hasLength(2));
+      expect(lines[0]['debit'], 1180);
+      expect(lines[0]['account_id'], 4);
+      expect(lines[1]['credit'], 1180);
+    });
+
+    test('holds pending purchase GST in a separate review account', () async {
+      final db = await _openAccountingDatabase();
+      addTearDown(db.close);
+
+      await db.transaction((txn) => AccountingService.postPurchaseInvoice(
+            txn,
+            invoiceId: 34,
+            invoiceNumber: 'PUR-034',
+            date: '2026-10-31',
+            subtotal: 1000,
+            tax: 180,
+            total: 1180,
+            itcTreatment: 'pendingReview',
+          ));
+
+      final lines = await db.query('journal_lines');
+      expect(lines, hasLength(3));
+      expect(lines[1]['account_id'], 6);
+      expect(lines[1]['debit'], 180);
+    });
+
     test('rejects a purchase invoice whose total does not equal subtotal plus tax', () async {
       final db = await _openAccountingDatabase();
       addTearDown(db.close);
@@ -193,6 +237,7 @@ void main() {
               subtotal: 1000,
               tax: 180,
               total: 1100,
+              itcTreatment: 'eligible',
             )),
         throwsA(isA<StateError>()),
       );
@@ -214,6 +259,7 @@ void main() {
               subtotal: 500,
               tax: 90,
               total: 590,
+              itcTreatment: 'eligible',
             ),
           );
 
@@ -236,6 +282,7 @@ void main() {
             subtotal: 100,
             tax: 18,
             total: 118,
+            itcTreatment: 'eligible',
           ));
 
       final lines = await db.query('journal_lines');
