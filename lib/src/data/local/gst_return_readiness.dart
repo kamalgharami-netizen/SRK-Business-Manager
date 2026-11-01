@@ -184,12 +184,11 @@ class GstReturnReadiness {
         }
       }
 
-      // Compare the invoice header tax with the sum of its stored line taxes.
-      // This check is enabled when the caller supplies the header tax field.
       if (invoice.containsKey('tax_total')) {
         final headerTaxTotal = _finiteNumber(invoice['tax_total']);
         if (headerTaxTotal == null || headerTaxTotal < 0 ||
-            (itemTaxValuesValid && (itemTaxTotal - headerTaxTotal).abs() > 0.01)) {
+            (itemTaxValuesValid &&
+                (itemTaxTotal - headerTaxTotal).abs() > 0.01)) {
           issues.add(GstReadinessIssue(
             severity: GstReadinessSeverity.error,
             code: 'invoice_tax_total_mismatch',
@@ -267,8 +266,6 @@ class GstReturnReadiness {
         ));
         continue;
       }
-      var itemTaxTotal = 0.0;
-      var itemTaxValuesValid = true;
       for (var index = 0; index < items.length; index++) {
         final rawItem = items[index];
         if (rawItem is! Map) {
@@ -288,11 +285,6 @@ class GstReturnReadiness {
           ));
         }
         final tax = _finiteNumber(rawItem['tax_amount']);
-        if (tax == null) {
-          itemTaxValuesValid = false;
-        } else {
-          itemTaxTotal += tax;
-        }
         final storedTaxable = _finiteNumber(rawItem['taxable_value']);
         final lineTotal = _finiteNumber(rawItem['line_total']);
         final taxable = storedTaxable ?? (lineTotal != null && tax != null
@@ -314,20 +306,6 @@ class GstReturnReadiness {
             severity: GstReadinessSeverity.error,
             code: 'invalid_tax_values',
             message: 'Invoice $number contains invalid taxable value or GST amount, or tax components do not reconcile.',
-          ));
-        }
-      }
-
-      // Compare the invoice header tax with the sum of its stored line taxes.
-      // This check is enabled when the caller supplies the header tax field.
-      if (invoice.containsKey('tax_total')) {
-        final headerTaxTotal = _finiteNumber(invoice['tax_total']);
-        if (headerTaxTotal == null || headerTaxTotal < 0 ||
-            (itemTaxValuesValid && (itemTaxTotal - headerTaxTotal).abs() > 0.01)) {
-          issues.add(GstReadinessIssue(
-            severity: GstReadinessSeverity.error,
-            code: 'invoice_tax_total_mismatch',
-            message: 'Invoice $number header GST total does not match the sum of its line-item GST amounts.',
           ));
         }
       }
