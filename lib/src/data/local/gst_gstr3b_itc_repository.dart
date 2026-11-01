@@ -162,7 +162,7 @@ class Gstr2bCsvImporter {
 class Gstr3bItcRepository {
   Gstr3bItcRepository._();
 
-  static Future<void> savePurchaseAssessment(DatabaseExecutor executor, {
+  static Future<Gstr3bItcTreatment> savePurchaseAssessment(DatabaseExecutor executor, {
     required int purchaseInvoiceId, required String supplierInvoiceNumber,
     required String supplierInvoiceDate, required String returnPeriod,
     required Gstr3bItcCategory category, required Gstr3bItcTreatment treatment,
@@ -200,6 +200,7 @@ class Gstr3bItcRepository {
       'gstr2b_status': 'pending_review',
       'updated_at': DateTime.now().toUtc().toIso8601String(),
     }, conflictAlgorithm: ConflictAlgorithm.replace);
+    return safeTreatment;
   }
 
   static Future<Gstr2bImportResult> importGstr2bRecords(Iterable<Gstr2bImportRecord> records) async {

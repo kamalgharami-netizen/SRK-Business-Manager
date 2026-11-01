@@ -391,7 +391,7 @@ class _PurchasesPageState extends State<PurchasesPage> {
             'notes': notes.text.trim(),
           });
 
-          await Gstr3bItcRepository.savePurchaseAssessment(
+          final effectiveItcTreatment = await Gstr3bItcRepository.savePurchaseAssessment(
             txn,
             purchaseInvoiceId: invoiceId,
             supplierInvoiceNumber: supplierInvoiceNumber.text.trim(),
@@ -413,7 +413,7 @@ class _PurchasesPageState extends State<PurchasesPage> {
               unitRate: (item['rate'] as num).toDouble(),
               taxAmount: (item['tax_amount'] as num).toDouble(),
               quantity: (item['quantity'] as num).toDouble(),
-              itcIneligible: itcTreatment == Gstr3bItcTreatment.ineligible,
+              itcIneligible: effectiveItcTreatment == Gstr3bItcTreatment.ineligible,
             );
             await InventoryCostService.receivePurchase(
               txn,
@@ -477,6 +477,12 @@ class _PurchasesPageState extends State<PurchasesPage> {
           if (supplierId != null && (supplierSyncId == null || supplierSyncId.isEmpty)) {
             throw StateError('Selected supplier is missing its sync identifier.');
           }
+          final assessmentRows = await txn.query(
+            'purchase_itc_assessments',
+            where: 'purchase_invoice_id = ?',
+            whereArgs: [invoiceId],
+            limit: 1,
+          );
           final invoiceItems = await txn.query(
             'invoice_items',
             where: 'invoice_id = ?',
@@ -511,7 +517,21 @@ class _PurchasesPageState extends State<PurchasesPage> {
             ..remove('id')
             ..remove('party_id')
             ..['party_sync_id'] = supplierSyncId
-            ..['items'] = syncedItems;
+            ..['items'] = syncedItems
+            ..['purchase_itc_assessment'] = assessmentRows.isEmpty
+                ? null
+                : {
+                    'supplier_invoice_number': assessmentRows.first['supplier_invoice_number'],
+                    'supplier_invoice_date': assessmentRows.first['supplier_invoice_date'],
+                    'return_period': assessmentRows.first['return_period'],
+                    'category': assessmentRows.first['category'],
+                    'treatment': assessmentRows.first['treatment'],
+                    'taxable_value': assessmentRows.first['taxable_value'],
+                    'igst': assessmentRows.first['igst'],
+                    'cgst': assessmentRows.first['cgst'],
+                    'sgst': assessmentRows.first['sgst'],
+                    'cess': assessmentRows.first['cess'],
+                  };
           await AppDatabase.instance.enqueueSyncOperation(
             executor: txn,
             tableName: 'invoices',
@@ -528,7 +548,7 @@ class _PurchasesPageState extends State<PurchasesPage> {
             subtotal: subtotal,
             tax: taxTotal,
             total: subtotal + taxTotal,
-            itcTreatment: itcTreatment.name,
+            itcTreatment: effectiveItcTreatment.name,
           );
         });
 

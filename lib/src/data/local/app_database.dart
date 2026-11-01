@@ -9,6 +9,8 @@ import 'package:sqflite_common_ffi/sqflite_ffi.dart';
 import 'accounting_service.dart';
 import 'payment_reconciliation.dart';
 import 'inventory_cost_service.dart';
+import 'gst_gstr3b_itc.dart';
+import 'gst_gstr3b_itc_repository.dart';
 
 /// Local-first database shared by the Windows and Android applications.
 class AppDatabase {
@@ -1339,6 +1341,46 @@ class AppDatabase {
           await txn.delete('invoice_items', where: 'invoice_id = ?', whereArgs: [localInvoiceId]);
         }
 
+        var syncedPurchaseItcTreatment = 'pendingReview';
+        if (isPurchaseInvoice && isNewInvoice) {
+          final assessmentRaw = payload['purchase_itc_assessment'];
+          if (assessmentRaw is Map) {
+            final assessment = Map<String, dynamic>.from(assessmentRaw);
+            final category = Gstr3bItcCategory.values.byName(
+              assessment['category'] as String,
+            );
+            final treatment = Gstr3bItcTreatment.values.byName(
+              assessment['treatment'] as String,
+            );
+            await Gstr3bItcRepository.savePurchaseAssessment(
+              txn,
+              purchaseInvoiceId: localInvoiceId,
+              supplierInvoiceNumber: assessment['supplier_invoice_number'] as String,
+              supplierInvoiceDate: assessment['supplier_invoice_date'] as String,
+              returnPeriod: assessment['return_period'] as String,
+              category: category,
+              treatment: treatment,
+              taxableValue: (assessment['taxable_value'] as num).toDouble(),
+              tax: Gstr3bTaxAmounts(
+                igst: (assessment['igst'] as num).toDouble(),
+                cgst: (assessment['cgst'] as num).toDouble(),
+                sgst: (assessment['sgst'] as num).toDouble(),
+                cess: (assessment['cess'] as num).toDouble(),
+              ),
+            );
+            final savedAssessment = await txn.query(
+              'purchase_itc_assessments',
+              columns: ['treatment'],
+              where: 'purchase_invoice_id = ?',
+              whereArgs: [localInvoiceId],
+              limit: 1,
+            );
+            if (savedAssessment.isNotEmpty) {
+              syncedPurchaseItcTreatment = savedAssessment.first['treatment'] as String;
+            }
+          }
+        }
+
         final rawItems = payload['items'];
         if (rawItems is! List) {
           throw const FormatException('Invoice items are missing from the cloud record.');
@@ -1416,7 +1458,12 @@ class AppDatabase {
               invoiceId: localInvoiceId,
               purchaseItemId: localItemId,
               quantity: (item['quantity'] as num).toDouble(),
-              unitCost: (item['rate'] as num).toDouble(),
+              unitCost: InventoryCostService.purchaseInventoryUnitCost(
+                unitRate: (item['rate'] as num).toDouble(),
+                taxAmount: (item['tax_amount'] as num).toDouble(),
+                quantity: (item['quantity'] as num).toDouble(),
+                itcIneligible: syncedPurchaseItcTreatment == 'ineligible',
+              ),
               receivedAt: payload['invoice_date'] as String? ?? DateTime.now().toIso8601String(),
             );
           }
@@ -1431,7 +1478,7 @@ class AppDatabase {
             tax: (payload['tax_total'] as num).toDouble(),
             total: (payload['grand_total'] as num).toDouble(),
             // Older cloud payloads do not carry the ITC assessment; never assume eligibility.
-            itcTreatment: 'pendingReview',
+            itcTreatment: syncedPurchaseItcTreatment,
           );
         }
         if (isSaleInvoice && isNewInvoice) {
