@@ -254,7 +254,12 @@ class Gstr3bItcRepository {
       final candidates = gstin.isEmpty ? <Map<String, Object?>>[] : await txn.query(
         'gstr2b_documents',
         where: 'upper(trim(supplier_gstin)) = ? AND upper(trim(invoice_number)) = ? AND invoice_date = ? AND return_period = ?',
-        whereArgs: [gstin, (row['supplier_invoice_number'] as String).trim().toUpperCase(), row['supplier_invoice_date'], row['return_period']],
+        whereArgs: [
+          gstin,
+          (row['supplier_invoice_number'] as String).trim().toUpperCase(),
+          _dateOnly(row['supplier_invoice_date'] as String),
+          row['return_period'],
+        ],
         limit: 1,
       );
       var status = 'not_in_statement';
