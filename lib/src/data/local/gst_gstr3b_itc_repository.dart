@@ -429,12 +429,7 @@ class Gstr3bRcmValidator {
     required Gstr3bTaxAmounts tax,
   }) {
     final issues = <String>[];
-    if (!RegExp(r'^\d{4}-(0[1-9]|1[0-2])
-  final date = DateTime.tryParse(value.trim());
-  if (date == null) return null;
-  return '${date.year.toString().padLeft(4, '0')}-${date.month.toString().padLeft(2, '0')}-${date.day.toString().padLeft(2, '0')}';
-}
-).hasMatch(returnPeriod)) {
+    if (!RegExp(r'^\d{4}-(0[1-9]|1[0-2])$').hasMatch(returnPeriod)) {
       issues.add('Return period must use YYYY-MM format.');
     }
     if (documentReference.trim().isEmpty) issues.add('RCM document reference is required.');
@@ -535,12 +530,7 @@ class Gstr3bRcmRepository {
   }
 
   static Future<List<Map<String, Object?>>> listPeriod(String returnPeriod) async {
-    if (!RegExp(r'^\d{4}-(0[1-9]|1[0-2])
-  final date = DateTime.tryParse(value.trim());
-  if (date == null) return null;
-  return '${date.year.toString().padLeft(4, '0')}-${date.month.toString().padLeft(2, '0')}-${date.day.toString().padLeft(2, '0')}';
-}
-).hasMatch(returnPeriod)) {
+    if (!RegExp(r'^\d{4}-(0[1-9]|1[0-2])$').hasMatch(returnPeriod)) {
       throw const FormatException('Return period must use YYYY-MM format.');
     }
     final db = await AppDatabase.instance.database;
