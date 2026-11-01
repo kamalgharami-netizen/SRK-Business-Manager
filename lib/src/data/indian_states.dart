@@ -79,6 +79,16 @@ class IndianStates {
     '38': 'Ladakh',
   };
 
+  static String normalizeState(String state) => state
+      .trim()
+      .replaceAll(RegExp(r'\\s+'), ' ')
+      .toLowerCase();
+
+  static bool isKnown(String state) {
+    final normalized = normalizeState(state);
+    return all.any((known) => normalizeState(known) == normalized);
+  }
+
   static bool gstinMatchesState(String gstin, String state) {
     final normalized = gstin.trim().toUpperCase();
     final gstinPattern =
@@ -88,6 +98,8 @@ class IndianStates {
       return false;
     }
 
-    return gstCodes[normalized.substring(0, 2)] == state;
+    final expectedState = gstCodes[normalized.substring(0, 2)];
+    return expectedState != null &&
+        normalizeState(expectedState) == normalizeState(state);
   }
 }

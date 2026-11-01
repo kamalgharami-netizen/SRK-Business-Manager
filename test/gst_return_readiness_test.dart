@@ -26,6 +26,26 @@ void main() {
           invoices: invoices,
         );
 
+
+    test('normalizes state casing and repeated whitespace in supplier, place and recipient state', () {
+      final invoice = validInvoice()
+        ..['place_of_supply'] = ' west   bengal '
+        ..['party_state'] = ' WEST  BENGAL ';
+      final report = GstReturnReadiness.validateGstr1(
+        supplierGstin: '19ABCDE1234F1Z5',
+        supplierState: ' west   bengal ',
+        periodStart: periodStart,
+        periodEnd: periodEnd,
+        invoices: [invoice],
+      );
+      expect(report.issues.where((issue) =>
+          issue.code == 'supplier_state_missing' ||
+          issue.code == 'supplier_gstin_invalid' ||
+          issue.code == 'place_of_supply_missing' ||
+          issue.code == 'recipient_gstin_invalid'), isEmpty);
+      expect(report.errorCount, 0);
+    });
+
     test('accepts valid core invoice data but keeps scope warning visible', () {
       final report = validate([validInvoice()]);
       expect(report.errorCount, 0);
