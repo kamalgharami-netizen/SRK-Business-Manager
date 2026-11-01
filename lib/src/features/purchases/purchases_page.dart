@@ -409,20 +409,26 @@ class _PurchasesPageState extends State<PurchasesPage> {
               'invoice_id': invoiceId,
               ...item,
             });
+            final inventoryUnitCost = InventoryCostService.purchaseInventoryUnitCost(
+              unitRate: (item['rate'] as num).toDouble(),
+              taxAmount: (item['tax_amount'] as num).toDouble(),
+              quantity: (item['quantity'] as num).toDouble(),
+              itcIneligible: itcTreatment == Gstr3bItcTreatment.ineligible,
+            );
             await InventoryCostService.receivePurchase(
               txn,
               productId: item['product_id'] as int,
               invoiceId: invoiceId,
               purchaseItemId: purchaseItemId,
               quantity: (item['quantity'] as num).toDouble(),
-              unitCost: (item['rate'] as num).toDouble(),
+              unitCost: inventoryUnitCost,
               receivedAt: now.toIso8601String(),
             );
             await txn.rawUpdate(
               'UPDATE products SET current_stock = current_stock + ?, purchase_price = ?, updated_at = ? WHERE id = ?',
               [
                 item['quantity'],
-                item['rate'],
+                inventoryUnitCost,
                 now.toIso8601String(),
                 item['product_id'],
               ],

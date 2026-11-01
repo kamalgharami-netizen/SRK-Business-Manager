@@ -31,6 +31,28 @@ class InventoryCostService {
     });
   }
 
+
+  /// Calculates stock cost per unit after applying the purchase ITC decision.
+  /// Recoverable or not-yet-reviewed GST stays outside inventory cost;
+  /// finally ineligible GST is capitalised into stock cost.
+  static double purchaseInventoryUnitCost({
+    required double unitRate,
+    required double taxAmount,
+    required double quantity,
+    required bool itcIneligible,
+  }) {
+    if (!unitRate.isFinite || unitRate < 0 ||
+        !taxAmount.isFinite || taxAmount < 0 ||
+        !quantity.isFinite || quantity <= 0) {
+      throw StateError('Purchase rate, tax and quantity must be finite valid numbers.');
+    }
+    final cost = itcIneligible ? unitRate + taxAmount / quantity : unitRate;
+    if (!cost.isFinite || cost < 0) {
+      throw StateError('Calculated purchase inventory unit cost is invalid.');
+    }
+    return cost;
+  }
+
   /// Consumes oldest available cost layers and returns the FIFO cost.
   /// If historical stock has no cost layer, it is valued at the saved product
   /// purchase price and recorded as an estimate rather than silently omitted.
