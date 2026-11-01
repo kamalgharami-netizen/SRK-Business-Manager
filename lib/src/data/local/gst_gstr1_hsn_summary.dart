@@ -1,8 +1,11 @@
+import 'gst_uqc_mapping.dart';
+
 /// HSN/SAC and GST-rate-wise summary for locally recorded outward invoice lines.
 class Gstr1HsnRateSummary {
   const Gstr1HsnRateSummary({
     required this.hsnSac,
     this.supplyCategory = 'B2C',
+    this.uqcCode,
     required this.gstRate,
     required this.unit,
     required this.quantity,
@@ -16,6 +19,9 @@ class Gstr1HsnRateSummary {
   final String hsnSac;
   /// GSTN Table 12 bucket: B2B, B2C, or REVIEW when recipient status is unclear.
   final String supplyCategory;
+  /// Official-style UQC code when the entered unit has an exact supported mapping.
+  /// Null means manual review is required; the raw unit is never guessed.
+  final String? uqcCode;
   final double gstRate;
   /// Unit exactly as stored on invoice lines; not an official GST UQC mapping.
   final String unit;
@@ -68,6 +74,7 @@ class Gstr1HsnRateAggregator {
     final result = totals.entries.map((entry) => Gstr1HsnRateSummary(
       hsnSac: entry.key.$2,
       supplyCategory: entry.key.$1,
+      uqcCode: GstUqcMapping.fromUnit(entry.key.$4),
       gstRate: entry.key.$3,
       unit: entry.key.$4,
       quantity: entry.value[0],

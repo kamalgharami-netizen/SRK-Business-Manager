@@ -16,14 +16,14 @@ class Gstr1HsnCsvExport {
       ['Supplier GSTIN', supplierGstin],
       ['Period', '$periodStart to $periodEnd'],
       [],
-      ['Supply Type', 'HSN/SAC', 'GST Rate (%)', 'Unit (as entered)', 'Quantity', 'Total Value', 'Taxable Value', 'Total GST', 'CGST', 'SGST', 'IGST'],
+      ['Supply Type', 'HSN/SAC', 'GST Rate (%)', 'Unit (as entered)', 'UQC', 'Quantity', 'Total Value', 'Taxable Value', 'Total GST', 'CGST', 'SGST', 'IGST'],
       for (final row in rows)
-        [row.supplyCategory, row.hsnSac, _number(row.gstRate), row.unit, _number(row.quantity),
+        [row.supplyCategory, row.hsnSac, _number(row.gstRate), row.unit, row.uqcCode ?? 'UNMAPPED', _number(row.quantity),
           _number(row.totalValue), _number(row.taxableValue), _number(row.taxAmount),
           _number(row.cgst), _number(row.sgst), _number(row.igst)],
       if (rows.isNotEmpty)
         [
-          'TOTAL', '', '', '', '',
+          'TOTAL', '', '', '', '', '',
           _number(rows.fold<double>(0, (sum, row) => sum + row.totalValue)),
           _number(rows.fold<double>(0, (sum, row) => sum + row.taxableValue)),
           _number(rows.fold<double>(0, (sum, row) => sum + row.taxAmount)),

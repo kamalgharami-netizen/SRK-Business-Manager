@@ -13,6 +13,7 @@ void main() {
       expect(result.first.hsnSac, '1001');
       expect(result.first.gstRate, 5);
       expect(result.first.unit, 'pcs');
+      expect(result.first.uqcCode, 'PCS');
       expect(result.first.quantity, 6);
       expect(result.first.totalValue, 315);
       expect(result.first.taxableValue, 300);
@@ -20,6 +21,13 @@ void main() {
       expect(result.first.cgst, 7.5);
       expect(result.first.sgst, 7.5);
       expect(result.last.igst, 12);
+    });
+
+    test('leaves unrecognised units unmapped instead of guessing a UQC', () {
+      final result = Gstr1HsnRateAggregator.aggregate([
+        {'hsn_sac':'1001','gst_rate':5,'quantity':1,'unit':'basketful','line_total':105,'tax_amount':5,'cgst_amount':2.5,'sgst_amount':2.5,'igst_amount':0},
+      ]);
+      expect(result.single.uqcCode, isNull);
     });
 
     test('keeps missing HSN visible and skips invalid rows', () {
