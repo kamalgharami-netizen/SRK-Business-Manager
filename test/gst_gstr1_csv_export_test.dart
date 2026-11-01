@@ -7,7 +7,7 @@ void main() {
     test('exports HSN totals with period and spreadsheet-friendly BOM', () {
       final csv = Gstr1HsnCsvExport.build([
         const Gstr1HsnRateSummary(
-          hsnSac: '1001', gstRate: 5, taxableValue: 100,
+          hsnSac: '1001', gstRate: 5, unit: 'pcs', quantity: 2, totalValue: 105, taxableValue: 100,
           taxAmount: 5, cgst: 2.5, sgst: 2.5, igst: 0,
         ),
       ], supplierGstin: '19ABCDE1234F1Z5',
@@ -15,13 +15,14 @@ void main() {
       expect(csv, startsWith('\uFEFF'));
       expect(csv, contains('Supplier GSTIN,19ABCDE1234F1Z5'));
       expect(csv, contains('2026-10-01 to 2026-10-31'));
-      expect(csv, contains('1001,5.00,100.00,5.00,2.50,2.50,0.00'));
+      expect(csv, contains('1001,5.00,pcs,2.00,105.00,100.00,5.00,2.50,2.50,0.00'));
+      expect(csv, contains('Unit (as entered)'));
     });
 
     test('escapes commas and quotation marks in HSN text', () {
       final csv = Gstr1HsnCsvExport.build([
         const Gstr1HsnRateSummary(
-          hsnSac: 'HSN, "other"', gstRate: 0, taxableValue: 20,
+          hsnSac: 'HSN, "other"', gstRate: 0, unit: 'pcs', quantity: 1, totalValue: 20, taxableValue: 20,
           taxAmount: 0, cgst: 0, sgst: 0, igst: 0,
         ),
       ], supplierGstin: '', periodStart: 'start', periodEnd: 'end');
@@ -32,7 +33,7 @@ void main() {
       final csv = Gstr1HsnCsvExport.build([
         const Gstr1HsnRateSummary(
           hsnSac: '=HYPERLINK("https://example.com")', gstRate: 0,
-          taxableValue: 20, taxAmount: 0, cgst: 0, sgst: 0, igst: 0,
+          unit: 'pcs', quantity: 1, totalValue: 20, taxableValue: 20, taxAmount: 0, cgst: 0, sgst: 0, igst: 0,
         ),
       ], supplierGstin: '', periodStart: 'start', periodEnd: 'end');
       expect(csv, contains("'=HYPERLINK"));

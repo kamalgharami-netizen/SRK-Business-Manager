@@ -16,10 +16,11 @@ class Gstr1HsnCsvExport {
       ['Supplier GSTIN', supplierGstin],
       ['Period', '$periodStart to $periodEnd'],
       [],
-      ['HSN/SAC', 'GST Rate (%)', 'Taxable Value', 'Total GST', 'CGST', 'SGST', 'IGST'],
+      ['HSN/SAC', 'GST Rate (%)', 'Unit (as entered)', 'Quantity', 'Total Value', 'Taxable Value', 'Total GST', 'CGST', 'SGST', 'IGST'],
       for (final row in rows)
-        [row.hsnSac, _number(row.gstRate), _number(row.taxableValue),
-          _number(row.taxAmount), _number(row.cgst), _number(row.sgst), _number(row.igst)],
+        [row.hsnSac, _number(row.gstRate), row.unit, _number(row.quantity),
+          _number(row.totalValue), _number(row.taxableValue), _number(row.taxAmount),
+          _number(row.cgst), _number(row.sgst), _number(row.igst)],
     ];
     return '\uFEFF${lines.map((line) => line.map(_escape).join(',')).join('\r\n')}\r\n';
   }

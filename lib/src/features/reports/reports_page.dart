@@ -443,7 +443,7 @@ class _ReportsPageState extends State<ReportsPage> {
         invoices: invoices,
       );
       final classification = Gstr1DomesticClassifier.classify(invoices, supplierState: settings['company_state'] ?? '');
-      final hsnRows = await db.rawQuery('''SELECT ii.hsn_sac, ii.gst_rate, ii.line_total, ii.tax_amount, ii.cgst_amount, ii.sgst_amount, ii.igst_amount FROM invoice_items ii INNER JOIN invoices i ON i.id = ii.invoice_id WHERE i.invoice_type = 'sale' AND i.invoice_date >= ? AND i.invoice_date < ? ORDER BY ii.hsn_sac, ii.gst_rate''', [_date(_startDate!), _date(_endDate!.add(const Duration(days: 1)))]);
+      final hsnRows = await db.rawQuery('''SELECT ii.hsn_sac, ii.gst_rate, ii.quantity, ii.unit, ii.line_total, ii.tax_amount, ii.cgst_amount, ii.sgst_amount, ii.igst_amount FROM invoice_items ii INNER JOIN invoices i ON i.id = ii.invoice_id WHERE i.invoice_type = 'sale' AND i.invoice_date >= ? AND i.invoice_date < ? ORDER BY ii.hsn_sac, ii.gst_rate''', [_date(_startDate!), _date(_endDate!.add(const Duration(days: 1)))]);
       final hsnSummary = Gstr1HsnRateAggregator.aggregate(hsnRows);
       if (!mounted) return;
       setState(() { _gstr1ReadinessReport = report; _gstr1ClassificationSummary = classification; _gstr1HsnSummary = hsnSummary; });
@@ -633,10 +633,10 @@ class _ReportsPageState extends State<ReportsPage> {
           for (final row in _gstr1HsnSummary)
             ListTile(dense: true, contentPadding: EdgeInsets.zero,
               title: Text('${row.hsnSac} • ${row.gstRate.toStringAsFixed(2)}%'),
-              subtitle: Text('করযোগ্য: ${_money(row.taxableValue)} • CGST: ${_money(row.cgst)} • SGST: ${_money(row.sgst)} • IGST: ${_money(row.igst)}'),
+              subtitle: Text('পরিমাণ: ${row.quantity.toStringAsFixed(2)} ${row.unit} • মোট মূল্য: ${_money(row.totalValue)} • করযোগ্য: ${_money(row.taxableValue)} • CGST: ${_money(row.cgst)} • SGST: ${_money(row.sgst)} • IGST: ${_money(row.igst)}'),
               trailing: Text(_money(row.taxAmount), style: const TextStyle(fontWeight: FontWeight.bold)),
             ),
-        const Text('এটি স্থানীয় বিক্রয়-লাইন থেকে তৈরি প্রাথমিক সারাংশ; GSTN-এর পূর্ণ HSN summary table mapping বা upload file নয়।'),
+        const Text('একক স্থানীয় invoice line থেকে নেওয়া; সরকারি UQC কোডে রূপান্তর করা হয়নি। এটি প্রাথমিক ব্যবস্থাপনা সারাংশ, GSTN-এর পূর্ণ HSN summary mapping বা upload file নয়।'),
       ],
     )));
   }
