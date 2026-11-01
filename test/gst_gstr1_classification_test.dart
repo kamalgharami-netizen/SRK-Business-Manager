@@ -30,7 +30,7 @@ void main() {
     };
 
     test('classifies registered recipient as B2B when GSTIN matches party state', () {
-      final result = Gstr1DomesticClassifier.classify(
+      final result = classify(
         [invoice(gstin: '19ABCDE1234F1Z5', partyState: 'West Bengal')],
         supplierState: 'West Bengal',
       );
@@ -38,7 +38,7 @@ void main() {
     });
 
     test('routes B2B invoice with missing place of supply to review', () {
-      final result = Gstr1DomesticClassifier.classify(
+      final result = classify(
         [invoice(gstin: '19ABCDE1234F1Z5', partyState: 'West Bengal', place: '')],
         supplierState: 'West Bengal',
       );
@@ -48,7 +48,7 @@ void main() {
     });
 
     test('routes B2B invoice with unknown supplier state to review', () {
-      final result = Gstr1DomesticClassifier.classify(
+      final result = classify(
         [invoice(gstin: '19ABCDE1234F1Z5', partyState: 'West Bengal')],
         supplierState: 'Unknown State',
       );
@@ -56,7 +56,7 @@ void main() {
     });
 
     test('routes a recipient GSTIN and state mismatch to review', () {
-      final result = Gstr1DomesticClassifier.classify(
+      final result = classify(
         [invoice(gstin: '19ABCDE1234F1Z5', partyState: 'Bihar')],
         supplierState: 'West Bengal',
       );
@@ -66,7 +66,7 @@ void main() {
     });
 
     test('routes a registered recipient without party state to review', () {
-      final result = Gstr1DomesticClassifier.classify(
+      final result = classify(
         [invoice(gstin: '19ABCDE1234F1Z5')],
         supplierState: 'West Bengal',
       );
@@ -74,7 +74,7 @@ void main() {
     });
 
     test('classifies inter-State unregistered invoice above ₹1 lakh as B2CL', () {
-      final result = Gstr1DomesticClassifier.classify(
+      final result = classify(
         [invoice(place: 'Bihar', value: 100000.01)],
         supplierState: 'West Bengal',
       );
@@ -82,7 +82,7 @@ void main() {
     });
 
     test('classifies exactly ₹1 lakh and intra-State unregistered as B2CS', () {
-      final result = Gstr1DomesticClassifier.classify(
+      final result = classify(
         [invoice(value: 100000), invoice(place: 'Bihar', value: 90000)],
         supplierState: 'West Bengal',
       );
@@ -92,7 +92,7 @@ void main() {
     test('sends missing place of supply or invalid amounts to review', () {
       final missingPlace = invoice()..['place_of_supply'] = '';
       final invalidAmount = invoice()..['invoice_value'] = double.nan;
-      final result = Gstr1DomesticClassifier.classify(
+      final result = classify(
         [missingPlace, invalidAmount],
         supplierState: 'West Bengal',
       );
@@ -100,7 +100,7 @@ void main() {
     });
 
     test('routes malformed recipient GSTIN to review instead of B2B', () {
-      final result = Gstr1DomesticClassifier.classify(
+      final result = classify(
         [invoice(gstin: 'NOT-A-GSTIN', partyState: 'West Bengal')],
         supplierState: 'West Bengal',
       );
@@ -109,7 +109,7 @@ void main() {
     });
 
     test('compares state names without case or extra-space differences', () {
-      final result = Gstr1DomesticClassifier.classify(
+      final result = classify(
         [invoice(place: ' west   bengal ')],
         supplierState: 'West Bengal',
       );
@@ -119,7 +119,7 @@ void main() {
 
     test('routes missing invoice number to review', () {
       final row = invoice()..['invoice_number'] = '  ';
-      final result = Gstr1DomesticClassifier.classify(
+      final result = classify(
         [row],
         supplierState: 'West Bengal',
       );
@@ -158,7 +158,7 @@ void main() {
     });
 
     test('provides category totals', () {
-      final result = Gstr1DomesticClassifier.classify(
+      final result = classify(
         [invoice(value: 120000, place: 'Bihar')],
         supplierState: 'West Bengal',
       );

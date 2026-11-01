@@ -461,7 +461,7 @@ class _ReportsPageState extends State<ReportsPage> {
         invoices: invoices,
         financialYearInvoiceNumbers: financialYearInvoiceNumbers,
       );
-      final classification = Gstr1DomesticClassifier.classify(invoices, supplierState: settings['company_state'] ?? '');
+      final classification = Gstr1DomesticClassifier.classify(invoices, supplierState: settings['company_state'] ?? '', returnPeriod: DateTime(_startDate!.year, _startDate!.month));
       final hsnRows = await db.rawQuery(
         '''
         SELECT i.invoice_number, ii.hsn_sac, ii.gst_rate, ii.quantity, ii.unit,
