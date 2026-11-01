@@ -540,7 +540,8 @@ class Gstr3bRcmRepository {
         COALESCE(p.cgst_paid, 0) AS cgst_paid,
         COALESCE(p.sgst_paid, 0) AS sgst_paid,
         COALESCE(p.cess_paid, 0) AS cess_paid,
-        COALESCE(p.payment_count, 0) AS payment_count
+        COALESCE(p.payment_count, 0) AS payment_count,
+        COALESCE(p.payment_references, '') AS payment_references
       FROM gst_rcm_liabilities l
       LEFT JOIN (
         SELECT liability_id, SUM(igst) AS igst_paid, SUM(cgst) AS cgst_paid,
