@@ -120,6 +120,18 @@ class Gstr3bItcSummary {
   /// Table 4(C) = Table 4(A) - Table 4(B). A negative result is retained.
   Gstr3bTaxAmounts get netItc => totalAvailable - totalReversed;
 
+  /// Negative Table 4(C) amounts are separately disclosed as liability.
+  /// Values are returned as positive amounts by tax head for clear reporting.
+  Gstr3bTaxAmounts get negativeNetItcLiability {
+    final value = netItc;
+    return Gstr3bTaxAmounts(
+      igst: value.igst < 0 ? -value.igst : 0,
+      cgst: value.cgst < 0 ? -value.cgst : 0,
+      sgst: value.sgst < 0 ? -value.sgst : 0,
+      cess: value.cess < 0 ? -value.cess : 0,
+    );
+  }
+
   bool get canPrepareDraft => issues.isEmpty && pendingReviewCount == 0;
 }
 

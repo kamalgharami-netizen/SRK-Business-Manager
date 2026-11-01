@@ -249,6 +249,15 @@ class _Gstr3bItcPageState extends State<Gstr3bItcPage> {
           _amountRow('Total 4(B)', summary.totalReversed),
           const Divider(),
           _amountRow('Table 4(C) — Net ITC', summary.netItc),
+          if (!summary.negativeNetItcLiability.isZero) ...[
+            _amountRow(
+              'Negative Net ITC — Liability to be considered',
+              summary.negativeNetItcLiability,
+            ),
+            const Text(
+              'Negative Table 4(C) amount must be considered as liability. Verify tax-head-wise figures and statutory payment treatment before filing.',
+            ),
+          ],
           Text('Table 4(D) — Other ITC Disclosure', style: Theme.of(context).textTheme.titleMedium),
           _amountRow('4(D)(1) Reclaimed ITC', summary.reclaimedPreviousReversal),
           _amountRow('4(D)(2) Ineligible ITC', summary.ineligible),

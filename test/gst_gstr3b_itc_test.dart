@@ -134,6 +134,28 @@ void main() {
       expect(summary.netItc.igst, -25);
     });
 
+    test('reports negative Table 4(C) amounts separately as liability', () {
+      final summary = Gstr3bItcCalculator.summarize([
+        const Gstr3bItcEntry(
+          documentReference: 'REV-03',
+          category: Gstr3bItcCategory.other,
+          treatment: Gstr3bItcTreatment.reversalOther,
+          tax: Gstr3bTaxAmounts(igst: 25, cgst: 4),
+        ),
+        const Gstr3bItcEntry(
+          documentReference: 'ITC-03',
+          category: Gstr3bItcCategory.other,
+          treatment: Gstr3bItcTreatment.eligible,
+          tax: Gstr3bTaxAmounts(igst: 10),
+        ),
+      ]);
+
+      expect(summary.netItc.igst, -15);
+      expect(summary.negativeNetItcLiability.igst, 15);
+      expect(summary.negativeNetItcLiability.cgst, 4);
+      expect(summary.negativeNetItcLiability.sgst, 0);
+    });
+
     test('flags entries without a source document reference', () {
       final summary = Gstr3bItcCalculator.summarize([
         const Gstr3bItcEntry(
