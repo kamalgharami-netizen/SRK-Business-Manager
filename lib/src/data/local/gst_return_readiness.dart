@@ -234,9 +234,11 @@ class GstReturnReadiness {
             headerCgst >= 0 &&
             headerSgst >= 0 &&
             headerIgst >= 0;
+        final headerComponentSum =
+            (headerCgst ?? 0) + (headerSgst ?? 0) + (headerIgst ?? 0);
         if (!componentsValid ||
             (headerTaxTotal != null &&
-                ((headerCgst ?? double.nan) + (headerSgst ?? double.nan) + (headerIgst ?? double.nan) - headerTaxTotal).abs() > 0.01)) {
+                (headerComponentSum - headerTaxTotal).abs() > 0.01)) {
           issues.add(GstReadinessIssue(
             severity: GstReadinessSeverity.error,
             code: 'invoice_tax_components_mismatch',
