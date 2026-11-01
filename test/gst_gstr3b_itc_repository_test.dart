@@ -141,8 +141,8 @@ void main() {
 
     test('accepts a UTF-8 BOM, CRLF rows and escaped quotes', () {
       final records = Gstr2bCsvImporter.parse(
-        '\uFEFFsupplier_gstin,invoice_number,invoice_date,return_period,taxable_value,igst,cgst,sgst,cess,source_reference\\r\\n'
-        '27AAPFU0939F1ZV,INV-101,2026-10-12,2026-10,100,18,0,0,0,"Supplier ""A"", branch 2"\\r\\n',
+        '\uFEFFsupplier_gstin,invoice_number,invoice_date,return_period,taxable_value,igst,cgst,sgst,cess,source_reference\r\n'
+        '27AAPFU0939F1ZV,INV-101,2026-10-12,2026-10,100,18,0,0,0,"Supplier ""A"", branch 2"\r\n',
       );
       expect(records, hasLength(1));
       expect(records.single.sourceReference, 'Supplier "A", branch 2');
