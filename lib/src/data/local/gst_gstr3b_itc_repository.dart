@@ -418,6 +418,151 @@ class Gstr3bItcRepository {
   }
 }
 
+
+class Gstr3bRcmValidator {
+  Gstr3bRcmValidator._();
+
+  static List<String> validateLiability({
+    required String returnPeriod,
+    required String documentReference,
+    required double taxableValue,
+    required Gstr3bTaxAmounts tax,
+  }) {
+    final issues = <String>[];
+    if (!RegExp(r'^\d{4}-(0[1-9]|1[0-2])
+  final date = DateTime.tryParse(value.trim());
+  if (date == null) return null;
+  return '${date.year.toString().padLeft(4, '0')}-${date.month.toString().padLeft(2, '0')}-${date.day.toString().padLeft(2, '0')}';
+}
+).hasMatch(returnPeriod)) {
+      issues.add('Return period must use YYYY-MM format.');
+    }
+    if (documentReference.trim().isEmpty) issues.add('RCM document reference is required.');
+    if (!taxableValue.isFinite || taxableValue < 0) issues.add('Taxable value must be finite and non-negative.');
+    if (!tax.isValid || tax.isZero) issues.add('RCM tax must contain at least one positive, valid tax amount.');
+    return List.unmodifiable(issues);
+  }
+
+  static List<String> validatePayment({
+    required String paymentDate,
+    required String cashLedgerReference,
+    required String challanReference,
+    required Gstr3bTaxAmounts tax,
+  }) {
+    final issues = <String>[];
+    if (DateTime.tryParse(paymentDate.trim()) == null) issues.add('Payment date is invalid.');
+    if (cashLedgerReference.trim().isEmpty) issues.add('Cash ledger reference is required.');
+    if (challanReference.trim().isEmpty) issues.add('Challan reference is required.');
+    if (!tax.isValid || tax.isZero) issues.add('Payment must contain at least one positive, valid tax amount.');
+    return List.unmodifiable(issues);
+  }
+}
+
+class Gstr3bRcmRepository {
+  Gstr3bRcmRepository._();
+
+  static Future<int> addLiability({
+    required String returnPeriod,
+    required String documentReference,
+    String? supplierName,
+    required double taxableValue,
+    required Gstr3bTaxAmounts tax,
+    String? notes,
+  }) async {
+    final issues = Gstr3bRcmValidator.validateLiability(
+      returnPeriod: returnPeriod,
+      documentReference: documentReference,
+      taxableValue: taxableValue,
+      tax: tax,
+    );
+    if (issues.isNotEmpty) throw FormatException(issues.join(' '));
+    final db = await AppDatabase.instance.database;
+    return db.insert('gst_rcm_liabilities', {
+      'return_period': returnPeriod,
+      'document_reference': documentReference.trim(),
+      'supplier_name': supplierName?.trim(),
+      'taxable_value': taxableValue,
+      'igst': tax.igst, 'cgst': tax.cgst, 'sgst': tax.sgst, 'cess': tax.cess,
+      'notes': notes,
+    });
+  }
+
+  static Future<int> recordCashPayment({
+    required int liabilityId,
+    required String paymentDate,
+    required String cashLedgerReference,
+    required String challanReference,
+    required Gstr3bTaxAmounts tax,
+    String? notes,
+  }) async {
+    final issues = Gstr3bRcmValidator.validatePayment(
+      paymentDate: paymentDate,
+      cashLedgerReference: cashLedgerReference,
+      challanReference: challanReference,
+      tax: tax,
+    );
+    if (issues.isNotEmpty) throw FormatException(issues.join(' '));
+    final db = await AppDatabase.instance.database;
+    return db.transaction((txn) async {
+      final rows = await txn.query('gst_rcm_liabilities',
+        where: 'id = ?', whereArgs: [liabilityId], limit: 1);
+      if (rows.isEmpty) throw StateError('RCM liability was not found.');
+      final liability = rows.first;
+      final paidRows = await txn.rawQuery('''
+        SELECT COALESCE(SUM(igst), 0) AS igst,
+               COALESCE(SUM(cgst), 0) AS cgst,
+               COALESCE(SUM(sgst), 0) AS sgst,
+               COALESCE(SUM(cess), 0) AS cess
+        FROM gst_rcm_payments WHERE liability_id = ?
+      ''', [liabilityId]);
+      final paid = paidRows.first;
+      bool exceeds(String key, double amount) =>
+          amount > ((liability[key] as num).toDouble() -
+              (paid[key] as num).toDouble()) + 0.005;
+      if (exceeds('igst', tax.igst) || exceeds('cgst', tax.cgst) ||
+          exceeds('sgst', tax.sgst) || exceeds('cess', tax.cess)) {
+        throw StateError('Payment exceeds the outstanding RCM liability for one or more tax heads.');
+      }
+      return txn.insert('gst_rcm_payments', {
+        'liability_id': liabilityId,
+        'payment_date': DateTime.parse(paymentDate).toIso8601String().substring(0, 10),
+        'cash_ledger_reference': cashLedgerReference.trim(),
+        'challan_reference': challanReference.trim(),
+        'igst': tax.igst, 'cgst': tax.cgst, 'sgst': tax.sgst, 'cess': tax.cess,
+        'notes': notes,
+      });
+    });
+  }
+
+  static Future<List<Map<String, Object?>>> listPeriod(String returnPeriod) async {
+    if (!RegExp(r'^\d{4}-(0[1-9]|1[0-2])
+  final date = DateTime.tryParse(value.trim());
+  if (date == null) return null;
+  return '${date.year.toString().padLeft(4, '0')}-${date.month.toString().padLeft(2, '0')}-${date.day.toString().padLeft(2, '0')}';
+}
+).hasMatch(returnPeriod)) {
+      throw const FormatException('Return period must use YYYY-MM format.');
+    }
+    final db = await AppDatabase.instance.database;
+    return db.rawQuery('''
+      SELECT l.*,
+        COALESCE(p.igst_paid, 0) AS igst_paid,
+        COALESCE(p.cgst_paid, 0) AS cgst_paid,
+        COALESCE(p.sgst_paid, 0) AS sgst_paid,
+        COALESCE(p.cess_paid, 0) AS cess_paid,
+        COALESCE(p.payment_count, 0) AS payment_count
+      FROM gst_rcm_liabilities l
+      LEFT JOIN (
+        SELECT liability_id, SUM(igst) AS igst_paid, SUM(cgst) AS cgst_paid,
+          SUM(sgst) AS sgst_paid, SUM(cess) AS cess_paid, COUNT(*) AS payment_count
+        FROM gst_rcm_payments GROUP BY liability_id
+      ) p ON p.liability_id = l.id
+      WHERE l.return_period = ?
+      ORDER BY l.id DESC
+    ''', [returnPeriod]);
+  }
+}
+
 String? _dateOnly(String value) {
   final date = DateTime.tryParse(value.trim());
   if (date == null) return null;

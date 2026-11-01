@@ -15,7 +15,7 @@ class AppDatabase {
   AppDatabase._();
 
   static final AppDatabase instance = AppDatabase._();
-  static const int _databaseVersion = 22;
+  static const int _databaseVersion = 23;
   String? _databasePath;
   String? _activeBusinessId;
   String? _activeBusinessRole;
@@ -285,6 +285,9 @@ class AppDatabase {
         }
         if (oldVersion < 22) {
           await _createGstr3bItcAuditSchema(db);
+        }
+        if (oldVersion < 23) {
+          await _createGstr3bRcmSchema(db);
         }
         if (oldVersion < 19) {
           await db.execute('ALTER TABLE stock_movements ADD COLUMN sync_id TEXT');
@@ -632,6 +635,44 @@ class AppDatabase {
     ''');
     await db.execute('CREATE INDEX IF NOT EXISTS idx_gst_itc_adjustments_period ON gst_itc_adjustments(return_period, treatment)');
     await _createGstr3bItcAuditSchema(db);
+    await _createGstr3bRcmSchema(db);
+  }
+
+  Future<void> _createGstr3bRcmSchema(DatabaseExecutor db) async {
+    await db.execute('''
+      CREATE TABLE IF NOT EXISTS gst_rcm_liabilities (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        return_period TEXT NOT NULL,
+        document_reference TEXT NOT NULL,
+        supplier_name TEXT,
+        taxable_value REAL NOT NULL CHECK (taxable_value >= 0),
+        igst REAL NOT NULL DEFAULT 0 CHECK (igst >= 0),
+        cgst REAL NOT NULL DEFAULT 0 CHECK (cgst >= 0),
+        sgst REAL NOT NULL DEFAULT 0 CHECK (sgst >= 0),
+        cess REAL NOT NULL DEFAULT 0 CHECK (cess >= 0),
+        notes TEXT,
+        created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+        UNIQUE(return_period, document_reference)
+      )
+    ''');
+    await db.execute('''
+      CREATE TABLE IF NOT EXISTS gst_rcm_payments (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        liability_id INTEGER NOT NULL,
+        payment_date TEXT NOT NULL,
+        cash_ledger_reference TEXT NOT NULL,
+        challan_reference TEXT NOT NULL,
+        igst REAL NOT NULL DEFAULT 0 CHECK (igst >= 0),
+        cgst REAL NOT NULL DEFAULT 0 CHECK (cgst >= 0),
+        sgst REAL NOT NULL DEFAULT 0 CHECK (sgst >= 0),
+        cess REAL NOT NULL DEFAULT 0 CHECK (cess >= 0),
+        notes TEXT,
+        created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+        FOREIGN KEY (liability_id) REFERENCES gst_rcm_liabilities(id) ON DELETE RESTRICT
+      )
+    ''');
+    await db.execute('CREATE INDEX IF NOT EXISTS idx_gst_rcm_liabilities_period ON gst_rcm_liabilities(return_period)');
+    await db.execute('CREATE INDEX IF NOT EXISTS idx_gst_rcm_payments_liability ON gst_rcm_payments(liability_id, payment_date)');
   }
 
   Future<void> _createGstr3bItcAuditSchema(DatabaseExecutor db) async {

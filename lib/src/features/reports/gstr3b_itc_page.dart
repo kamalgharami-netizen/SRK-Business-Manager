@@ -17,6 +17,7 @@ class _Gstr3bItcPageState extends State<Gstr3bItcPage> {
   Gstr3bItcSummary? _summary;
   List<Map<String, Object?>> _reviewItems = const [];
   List<Map<String, Object?>> _auditItems = const [];
+  List<Map<String, Object?>> _rcmItems = const [];
   bool _loading = false;
   String? _error;
 
@@ -58,12 +59,14 @@ class _Gstr3bItcPageState extends State<Gstr3bItcPage> {
         Gstr3bItcRepository.summarizePeriod(period),
         Gstr3bItcRepository.listPeriodReviewItems(period),
         Gstr3bItcRepository.listAdjustmentAuditTrail(period),
+        Gstr3bRcmRepository.listPeriod(period),
       ]);
       if (!mounted) return;
       setState(() {
         _summary = results[0] as Gstr3bItcSummary;
         _reviewItems = results[1] as List<Map<String, Object?>>;
         _auditItems = results[2] as List<Map<String, Object?>>;
+        _rcmItems = results[3] as List<Map<String, Object?>>;
       });
     } catch (error) {
       if (!mounted) return;
@@ -294,6 +297,147 @@ class _Gstr3bItcPageState extends State<Gstr3bItcPage> {
     ),
   );
 
+
+  double _readAmount(String value) => double.tryParse(value.trim()) ?? 0;
+
+  Future<void> _addRcmLiability() async {
+    final reference = TextEditingController();
+    final supplier = TextEditingController();
+    final taxable = TextEditingController(text: '0');
+    final igst = TextEditingController(text: '0');
+    final cgst = TextEditingController(text: '0');
+    final sgst = TextEditingController(text: '0');
+    final cess = TextEditingController(text: '0');
+    final notes = TextEditingController();
+    try {
+      final saved = await showDialog<bool>(
+        context: context,
+        builder: (dialogContext) => AlertDialog(
+          title: const Text('Add RCM Liability'),
+          content: SizedBox(width: 460, child: SingleChildScrollView(child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              TextField(controller: reference, decoration: const InputDecoration(labelText: 'Invoice / Document Reference *')),
+              TextField(controller: supplier, decoration: const InputDecoration(labelText: 'Supplier Name')),
+              TextField(controller: taxable, keyboardType: const TextInputType.numberWithOptions(decimal: true), decoration: const InputDecoration(labelText: 'Taxable Value')),
+              for (final item in [('IGST', igst), ('CGST', cgst), ('SGST', sgst), ('Cess', cess)])
+                TextField(controller: item.$2, keyboardType: const TextInputType.numberWithOptions(decimal: true), decoration: InputDecoration(labelText: item.$1)),
+              TextField(controller: notes, decoration: const InputDecoration(labelText: 'Notes / Basis')),
+              const SizedBox(height: 8),
+              const Text('Enter RCM liability only after checking the applicable reverse-charge provisions and source document. This entry does not calculate legal applicability.'),
+            ],
+          ))),
+          actions: [
+            TextButton(onPressed: () => Navigator.pop(dialogContext, false), child: const Text('Cancel')),
+            FilledButton(onPressed: () => Navigator.pop(dialogContext, true), child: const Text('Save Liability')),
+          ],
+        ),
+      );
+      if (saved != true) return;
+      await Gstr3bRcmRepository.addLiability(
+        returnPeriod: _periodController.text.trim(),
+        documentReference: reference.text,
+        supplierName: supplier.text,
+        taxableValue: _readAmount(taxable.text),
+        tax: Gstr3bTaxAmounts(igst: _readAmount(igst.text), cgst: _readAmount(cgst.text), sgst: _readAmount(sgst.text), cess: _readAmount(cess.text)),
+        notes: notes.text,
+      );
+      await _refresh();
+    } catch (error) {
+      if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('RCM liability save failed: $error')));
+    } finally {
+      reference.dispose(); supplier.dispose(); taxable.dispose(); igst.dispose(); cgst.dispose(); sgst.dispose(); cess.dispose(); notes.dispose();
+    }
+  }
+
+  Future<void> _recordRcmPayment(Map<String, Object?> row) async {
+    final igst = TextEditingController(text: '0');
+    final cgst = TextEditingController(text: '0');
+    final sgst = TextEditingController(text: '0');
+    final cess = TextEditingController(text: '0');
+    final cashRef = TextEditingController();
+    final challan = TextEditingController();
+    final date = TextEditingController(text: DateTime.now().toIso8601String().substring(0, 10));
+    final notes = TextEditingController();
+    try {
+      final saved = await showDialog<bool>(
+        context: context,
+        builder: (dialogContext) => AlertDialog(
+          title: Text('Record Cash Payment • \${row['document_reference']}'),
+          content: SizedBox(width: 460, child: SingleChildScrollView(child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              TextField(controller: date, decoration: const InputDecoration(labelText: 'Payment Date (YYYY-MM-DD)')),
+              TextField(controller: cashRef, decoration: const InputDecoration(labelText: 'Cash Ledger Reference *')),
+              TextField(controller: challan, decoration: const InputDecoration(labelText: 'Challan / CIN Reference *')),
+              for (final item in [('IGST', igst), ('CGST', cgst), ('SGST', sgst), ('Cess', cess)])
+                TextField(controller: item.$2, keyboardType: const TextInputType.numberWithOptions(decimal: true), decoration: InputDecoration(labelText: item.$1)),
+              TextField(controller: notes, decoration: const InputDecoration(labelText: 'Notes')),
+              const SizedBox(height: 8),
+              const Text('Payment is recorded against the cash ledger only. Do not include ITC utilisation here.'),
+            ],
+          ))),
+          actions: [
+            TextButton(onPressed: () => Navigator.pop(dialogContext, false), child: const Text('Cancel')),
+            FilledButton(onPressed: () => Navigator.pop(dialogContext, true), child: const Text('Save Payment')),
+          ],
+        ),
+      );
+      if (saved != true) return;
+      await Gstr3bRcmRepository.recordCashPayment(
+        liabilityId: row['id'] as int,
+        paymentDate: date.text,
+        cashLedgerReference: cashRef.text,
+        challanReference: challan.text,
+        tax: Gstr3bTaxAmounts(igst: _readAmount(igst.text), cgst: _readAmount(cgst.text), sgst: _readAmount(sgst.text), cess: _readAmount(cess.text)),
+        notes: notes.text,
+      );
+      await _refresh();
+    } catch (error) {
+      if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('RCM payment save failed: $error')));
+    } finally {
+      igst.dispose(); cgst.dispose(); sgst.dispose(); cess.dispose(); cashRef.dispose(); challan.dispose(); date.dispose(); notes.dispose();
+    }
+  }
+
+  Widget _rcmCard() => Card(
+    child: Padding(
+      padding: const EdgeInsets.all(12),
+      child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+        Text('RCM Liability & Cash Payment Verification', style: Theme.of(context).textTheme.titleMedium),
+        const Text('Manually record verified RCM liabilities and cash-ledger challan payments. ITC utilisation is not counted as cash payment.'),
+        Align(alignment: Alignment.centerRight, child: FilledButton.icon(
+          onPressed: _loading ? null : _addRcmLiability,
+          icon: const Icon(Icons.add), label: const Text('Add RCM Liability'),
+        )),
+        if (_rcmItems.isEmpty) const ListTile(title: Text('এই Return Period-এ কোনো RCM liability entry নেই।')),
+        for (final row in _rcmItems)
+          Builder(builder: (context) {
+            double amount(String key) => (row[key] as num?)?.toDouble() ?? 0;
+            final due = Gstr3bTaxAmounts(
+              igst: amount('igst') - amount('igst_paid'),
+              cgst: amount('cgst') - amount('cgst_paid'),
+              sgst: amount('sgst') - amount('sgst_paid'),
+              cess: amount('cess') - amount('cess_paid'),
+            );
+            final totalDue = due.igst + due.cgst + due.sgst + due.cess;
+            return ExpansionTile(
+              title: Text('\${row['document_reference']} • \${row['supplier_name'] ?? 'Supplier'}'),
+              subtitle: Text('Liability ₹\${(amount('igst') + amount('cgst') + amount('sgst') + amount('cess')).toStringAsFixed(2)} • Paid ₹\${(amount('igst_paid') + amount('cgst_paid') + amount('sgst_paid') + amount('cess_paid')).toStringAsFixed(2)} • Outstanding ₹\${totalDue.toStringAsFixed(2)}'),
+              children: [
+                ListTile(title: const Text('Outstanding by tax head'), subtitle: Text(_taxText(due))),
+                ListTile(title: Text('Cash challan payments: \${row['payment_count']}')),
+                Align(alignment: Alignment.centerRight, child: TextButton.icon(
+                  onPressed: totalDue <= 0.005 ? null : () => _recordRcmPayment(row),
+                  icon: const Icon(Icons.payments), label: const Text('Record Cash Payment'),
+                )),
+              ],
+            );
+          }),
+      ]),
+    ),
+  );
+
   Widget _auditCard() => Card(
     child: Padding(
       padding: const EdgeInsets.all(12),
@@ -382,6 +526,7 @@ class _Gstr3bItcPageState extends State<Gstr3bItcPage> {
         )),
         if (_summary != null) _summaryCard(_summary!),
         _reviewCard(),
+        _rcmCard(),
         _auditCard(),
       ],
     ),

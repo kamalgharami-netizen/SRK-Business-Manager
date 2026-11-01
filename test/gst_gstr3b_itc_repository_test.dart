@@ -59,6 +59,38 @@ void main() {
     });
   });
 
+  group('RCM liability and cash payment validation', () {
+    test('accepts a valid RCM liability', () {
+      expect(Gstr3bRcmValidator.validateLiability(
+        returnPeriod: '2026-10',
+        documentReference: 'INV-RCM-1',
+        taxableValue: 1000,
+        tax: const Gstr3bTaxAmounts(cgst: 90, sgst: 90),
+      ), isEmpty);
+    });
+
+    test('rejects invalid period, missing reference and zero tax', () {
+      final issues = Gstr3bRcmValidator.validateLiability(
+        returnPeriod: '2026-13',
+        documentReference: '',
+        taxableValue: 100,
+        tax: const Gstr3bTaxAmounts(),
+      );
+      expect(issues, hasLength(3));
+    });
+
+    test('requires cash ledger and challan references', () {
+      final issues = Gstr3bRcmValidator.validatePayment(
+        paymentDate: '2026-10-31',
+        cashLedgerReference: '',
+        challanReference: '',
+        tax: const Gstr3bTaxAmounts(igst: 18),
+      );
+      expect(issues, contains('Cash ledger reference is required.'));
+      expect(issues, contains('Challan reference is required.'));
+    });
+  });
+
   group('GSTR-2B CSV import', () {
     test('parses normalized statement rows and quoted references', () {
       final records = Gstr2bCsvImporter.parse(
