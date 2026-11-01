@@ -16,6 +16,7 @@ import '../payments/payments_page.dart';
 import '../purchases/purchases_page.dart';
 import '../purchases/stock_control_page.dart';
 import '../reports/reports_page.dart';
+import '../reports/gstr3b_itc_page.dart';
 import '../settings/settings_page.dart';
 import '../sync/sync_status_page.dart';
 import '../staff/staff_page.dart';
@@ -224,6 +225,7 @@ class _DashboardPageState extends State<DashboardPage> with WidgetsBindingObserv
     _ModuleInfo('Receipts & Payments', Icons.payments),
     _ModuleInfo('Expenses', Icons.receipt_long),
     _ModuleInfo('GST Reports', Icons.account_balance),
+    _ModuleInfo('GSTR-3B ITC Preparation', Icons.receipt_long),
     _ModuleInfo('Accounting & Ledgers', Icons.menu_book),
     _ModuleInfo('Chart of Accounts & Opening Balances', Icons.account_balance_wallet),
     _ModuleInfo('Business Reports', Icons.analytics),
@@ -357,6 +359,7 @@ class _DashboardPageState extends State<DashboardPage> with WidgetsBindingObserv
                             'Receipts & Payments' => const PaymentsPage(),
                             'Expenses' => const ExpensesPage(),
                             'GST Reports' => const ReportsPage(reportType: 'GST Reports'),
+                            'GSTR-3B ITC Preparation' => const Gstr3bItcPage(),
                             'Accounting & Ledgers' => const ReportsPage(reportType: 'Accounting & Ledgers'),
                             'Chart of Accounts & Opening Balances' => const AccountsPage(),
                             'Business Reports' => const ReportsPage(reportType: 'Business Reports'),

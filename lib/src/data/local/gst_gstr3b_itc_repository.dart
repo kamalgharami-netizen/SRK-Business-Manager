@@ -333,6 +333,25 @@ class Gstr3bItcRepository {
     });
   }
 
+  static Future<List<Map<String, Object?>>> listPeriodReviewItems(String returnPeriod) async {
+    if (!RegExp(r'^\\d{4}-(0[1-9]|1[0-2])$').hasMatch(returnPeriod)) {
+      throw const FormatException('Return period must use YYYY-MM format.');
+    }
+    final db = await AppDatabase.instance.database;
+    return db.rawQuery('''
+      SELECT a.purchase_invoice_id, a.supplier_invoice_number,
+             a.supplier_invoice_date, a.category, a.treatment,
+             a.gstr2b_status, a.taxable_value, a.igst, a.cgst, a.sgst, a.cess,
+             p.name AS supplier_name, p.gstin AS supplier_gstin
+      FROM purchase_itc_assessments a
+      JOIN invoices i ON i.id = a.purchase_invoice_id
+      LEFT JOIN parties p ON p.id = i.party_id
+      WHERE a.return_period = ?
+        AND (a.treatment = 'pendingReview' OR a.gstr2b_status != 'matched')
+      ORDER BY a.supplier_invoice_date, a.supplier_invoice_number
+    ''', [returnPeriod]);
+  }
+
   static Future<Gstr3bItcSummary> summarizePeriod(String returnPeriod) async {
     if (!RegExp(r'^\d{4}-(0[1-9]|1[0-2])$').hasMatch(returnPeriod)) {
       throw const FormatException('Return period must use YYYY-MM format.');
