@@ -72,6 +72,91 @@ class Gstr2bReconciliationMatcher {
       (statement.cess - tax.cess).abs() <= 0.01;
 }
 
+class Gstr2bCsvImporter {
+  Gstr2bCsvImporter._();
+
+  static const requiredHeaders = [
+    'supplier_gstin', 'invoice_number', 'invoice_date',
+    'return_period', 'taxable_value', 'igst', 'cgst', 'sgst', 'cess',
+  ];
+
+  static List<Gstr2bImportRecord> parse(String content) {
+    final rows = _parseCsvRows(content);
+    if (rows.length < 2) throw const FormatException('CSV must contain a header and at least one data row.');
+    final headers = rows.first.map((v) => v.trim().toLowerCase()).toList();
+    final indexes = <String, int>{for (var i = 0; i < headers.length; i++) headers[i]: i};
+    final missing = requiredHeaders.where((h) => !indexes.containsKey(h)).toList();
+    if (missing.isNotEmpty) throw FormatException('CSV is missing required columns: ${missing.join(', ')}.');
+    String value(List<String> row, String name) {
+      final index = indexes[name]!;
+      return index < row.length ? row[index].trim() : '';
+    }
+    double amount(List<String> row, String name) {
+      final raw = value(row, name);
+      if (raw.isEmpty) return 0;
+      final parsed = double.tryParse(raw);
+      if (parsed == null || !parsed.isFinite || parsed < 0) {
+        throw FormatException('Invalid numeric value in CSV column $name.');
+      }
+      return parsed;
+    }
+    final records = <Gstr2bImportRecord>[];
+    for (var i = 1; i < rows.length; i++) {
+      final row = rows[i];
+      if (row.every((v) => v.trim().isEmpty)) continue;
+      records.add(Gstr2bImportRecord(
+        supplierGstin: value(row, 'supplier_gstin'),
+        invoiceNumber: value(row, 'invoice_number'),
+        invoiceDate: value(row, 'invoice_date'),
+        returnPeriod: value(row, 'return_period'),
+        taxableValue: amount(row, 'taxable_value'),
+        igst: amount(row, 'igst'),
+        cgst: amount(row, 'cgst'),
+        sgst: amount(row, 'sgst'),
+        cess: amount(row, 'cess'),
+        sourceReference: indexes.containsKey('source_reference') ? value(row, 'source_reference') : null,
+      ));
+    }
+    if (records.isEmpty) throw const FormatException('CSV contains no GSTR-2B invoice rows.');
+    return List.unmodifiable(records);
+  }
+
+  static List<List<String>> _parseCsvRows(String input) {
+    final rows = <List<String>>[];
+    var row = <String>[];
+    var field = StringBuffer();
+    var quoted = false;
+    for (var i = 0; i < input.length; i++) {
+      final char = input[i];
+      if (char == '"') {
+        if (quoted && i + 1 < input.length && input[i + 1] == '"') {
+          field.write('"');
+          i++;
+        } else {
+          quoted = !quoted;
+        }
+      } else if (char == ',' && !quoted) {
+        row.add(field.toString());
+        field = StringBuffer();
+      } else if ((char == '\n' || char == '\r') && !quoted) {
+        if (char == '\r' && i + 1 < input.length && input[i + 1] == '\n') i++;
+        row.add(field.toString());
+        field = StringBuffer();
+        if (row.any((v) => v.trim().isNotEmpty)) rows.add(row);
+        row = <String>[];
+      } else {
+        field.write(char);
+      }
+    }
+    if (quoted) throw const FormatException('CSV contains an unclosed quoted field.');
+    if (field.length > 0 || row.isNotEmpty) {
+      row.add(field.toString());
+      if (row.any((v) => v.trim().isNotEmpty)) rows.add(row);
+    }
+    return rows;
+  }
+}
+
 class Gstr3bItcRepository {
   Gstr3bItcRepository._();
 

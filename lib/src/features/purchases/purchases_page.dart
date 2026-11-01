@@ -1,3 +1,6 @@
+import 'dart:convert';
+
+import 'package:file_picker/file_picker.dart';
 import 'package:flutter/material.dart';
 
 import '../../data/local/app_database.dart';
@@ -52,6 +55,53 @@ class _PurchasesPageState extends State<PurchasesPage> {
       _rows = rows;
       _loading = false;
     });
+  }
+
+  Future<void> _importGstr2bCsv() async {
+    final selected = await FilePicker.platform.pickFiles(
+      type: FileType.custom,
+      allowedExtensions: ['csv'],
+      withData: true,
+    );
+    if (selected == null) return;
+    final bytes = selected.files.single.bytes;
+    if (bytes == null) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('Could not read the selected CSV file.')),
+        );
+      }
+      return;
+    }
+    try {
+      final records = Gstr2bCsvImporter.parse(utf8.decode(bytes));
+      final imported = await Gstr3bItcRepository.importGstr2bRecords(records);
+      final periods = records.map((record) => record.returnPeriod).toSet().toList()..sort();
+      var matched = 0;
+      var notMatched = 0;
+      var notInStatement = 0;
+      for (final period in periods) {
+        final result = await Gstr3bItcRepository.reconcilePeriod(period);
+        matched += result['matched'] ?? 0;
+        notMatched += result['not_matched'] ?? 0;
+        notInStatement += result['not_in_statement'] ?? 0;
+      }
+      await _load();
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text(
+            'GSTR-2B imported: ${imported.imported}; duplicates: ${imported.duplicates}; '
+            'matched: $matched; mismatched: $notMatched; not found: $notInStatement.',
+          )),
+        );
+      }
+    } catch (error) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('GSTR-2B import failed: $error')),
+        );
+      }
+    }
   }
 
   Future<void> _add() async {
@@ -747,7 +797,16 @@ class _PurchasesPageState extends State<PurchasesPage> {
 
   @override
   Widget build(BuildContext context) => Scaffold(
-    appBar: AppBar(title: const Text('Purchases')),
+    appBar: AppBar(
+      title: const Text('Purchases'),
+      actions: [
+        IconButton(
+          tooltip: 'Import GSTR-2B CSV and reconcile ITC',
+          onPressed: _importGstr2bCsv,
+          icon: const Icon(Icons.fact_check_outlined),
+        ),
+      ],
+    ),
     floatingActionButton: FloatingActionButton.extended(
       onPressed: _add,
       icon: const Icon(Icons.add),
