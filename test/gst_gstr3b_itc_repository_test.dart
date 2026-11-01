@@ -62,8 +62,8 @@ void main() {
   group('GSTR-2B CSV import', () {
     test('parses normalized statement rows and quoted references', () {
       final records = Gstr2bCsvImporter.parse(
-        'supplier_gstin,invoice_number,invoice_date,return_period,taxable_value,igst,cgst,sgst,cess,source_reference\\n'
-        '27AAPFU0939F1ZV,INV-100,2026-10-12,2026-10,100,18,0,0,0,"Sheet 1, Row 2"\\n',
+        'supplier_gstin,invoice_number,invoice_date,return_period,taxable_value,igst,cgst,sgst,cess,source_reference\n'
+        '27AAPFU0939F1ZV,INV-100,2026-10-12,2026-10,100,18,0,0,0,"Sheet 1, Row 2"\n',
       );
       expect(records, hasLength(1));
       expect(records.single.invoiceNumber, 'INV-100');
@@ -72,7 +72,7 @@ void main() {
 
     test('rejects a CSV without mandatory headers', () {
       expect(
-        () => Gstr2bCsvImporter.parse('invoice_number,igst\\nINV-1,18'),
+        () => Gstr2bCsvImporter.parse('invoice_number,igst\nINV-1,18'),
         throwsFormatException,
       );
     });
