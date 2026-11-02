@@ -344,6 +344,7 @@ class _PurchasesPageState extends State<PurchasesPage> {
             final quantity = double.parse(line.quantity.text.trim());
             final rate = double.parse(line.rate.text.trim());
             final gstRate = double.parse(line.gstRate.text.trim());
+            final discount = double.tryParse(line.discount.text.trim()) ?? 0;
             if (!quantity.isFinite || quantity <= 0 ||
                 !rate.isFinite || rate < 0 ||
                 !gstRate.isFinite || gstRate < 0 || gstRate > 100 ||
@@ -352,7 +353,6 @@ class _PurchasesPageState extends State<PurchasesPage> {
               throw StateError('One or more purchase item values are invalid.');
             }
             final isIntraState = placeOfSupply.text.trim().toLowerCase() == businessState.toLowerCase();
-            final discount = double.tryParse(line.discount.text.trim()) ?? 0;
             final tax = GstCalculator.calculate(
               quantity: quantity,
               unitRate: rate,
@@ -681,25 +681,6 @@ class _PurchasesPageState extends State<PurchasesPage> {
                 const SizedBox(width: 12),
                 Expanded(
                   child: TextFormField(
-                    controller: line.discount,
-                    decoration: const InputDecoration(labelText: 'Discount (₹)'),
-                    keyboardType: const TextInputType.numberWithOptions(decimal: true),
-                    validator: (value) {
-                      final discount = double.tryParse(value ?? '');
-                      final quantity = double.tryParse(line.quantity.text) ?? 0;
-                      final rate = double.tryParse(line.rate.text) ?? 0;
-                      if (discount == null || !discount.isFinite || discount < 0 ||
-                          discount > quantity * rate) {
-                        return 'Enter discount within gross value';
-                      }
-                      return null;
-                    },
-                    onChanged: (_) => onChanged(),
-                  ),
-                ),
-                const SizedBox(width: 12),
-                Expanded(
-                  child: TextFormField(
                     controller: line.gstRate,
                     decoration: const InputDecoration(labelText: 'GST (%)'),
                     keyboardType: const TextInputType.numberWithOptions(decimal: true),
@@ -714,6 +695,27 @@ class _PurchasesPageState extends State<PurchasesPage> {
                   ),
                 ),
               ],
+            ),
+            const SizedBox(height: 8),
+            TextFormField(
+              controller: line.discount,
+              decoration: const InputDecoration(
+                labelText: 'Line discount (₹)',
+                helperText: 'Deducted before GST is calculated',
+              ),
+              keyboardType: const TextInputType.numberWithOptions(decimal: true),
+              validator: (value) {
+                final discount = double.tryParse(value ?? '');
+                final quantity = double.tryParse(line.quantity.text) ?? 0;
+                final rate = double.tryParse(line.rate.text) ?? 0;
+                if (discount == null || !discount.isFinite || discount < 0 ||
+                    discount > quantity * rate) {
+                  return 'Discount cannot exceed gross line value';
+                }
+                return null;
+              },
+              onChanged: (_) => onChanged(),
+            ),
             ),
           ],
         ),
