@@ -428,7 +428,16 @@ class _PaymentsPageState extends State<PaymentsPage> {
           } else { advances=[]; invoices=[]; }
           refresh(() { paymentId=null; invoiceId=null; });
         }),
-        DropdownButtonFormField<int>(initialValue: paymentId, decoration: const InputDecoration(labelText: 'Available advance'), items: advances.map((p){final left=(p['amount'] as num).toDouble()-(p['allocated'] as num).toDouble(); return DropdownMenuItem<int>(value:p['id'] as int,child:Text('${p['payment_date']} • ₹${left.toStringAsFixed(2)}'));}).toList(), onChanged:(v)=>refresh(()=>paymentId=v)),
+        DropdownButtonFormField<int>(initialValue: paymentId, decoration: const InputDecoration(labelText: 'Available advance'), items: advances.map((p){final left=(p['amount'] as num).toDouble()-(p['allocated'] as num).toDouble(); return DropdownMenuItem<int>(value:p['id'] as int,child:Text('${p['payment_date']} • ₹${left.toStringAsFixed(2)}'));}).toList(), onChanged:(v) async {
+          paymentId=v; invoiceId=null;
+          if(v!=null) {
+            final selectedPayment=advances.firstWhere((p)=>p['id']==v);
+            final kind=selectedPayment['payment_type']=='receipt'?'sale':'purchase';
+            invoices=await db.query('invoices',where:'party_id=? AND invoice_type=?',whereArgs:[partyId,kind],orderBy:'id DESC');
+            invoices=invoices.where((i)=>(i['grand_total'] as num).toDouble()-((i['amount_paid'] as num?)??0).toDouble()>.005).toList();
+          } else { invoices=[]; }
+          refresh(()=>invoiceId=null);
+        }),
         DropdownButtonFormField<int>(initialValue: invoiceId, decoration: const InputDecoration(labelText: 'Outstanding invoice'), items: invoices.map((i){final due=(i['grand_total'] as num).toDouble()-((i['amount_paid'] as num?)??0).toDouble(); return DropdownMenuItem<int>(value:i['id'] as int,child:Text('${i['invoice_number']} • Due ₹${due.toStringAsFixed(2)}'));}).toList(), onChanged:(v)=>refresh(()=>invoiceId=v)),
         TextFormField(controller:amount,decoration:const InputDecoration(labelText:'Allocation amount (₹)'),keyboardType:const TextInputType.numberWithOptions(decimal:true),validator:_validateAmount),
       ])))),
