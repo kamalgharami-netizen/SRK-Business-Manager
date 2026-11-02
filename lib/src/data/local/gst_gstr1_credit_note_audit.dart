@@ -38,12 +38,12 @@ class Gstr1CreditNoteAuditCsv {
       value is num && value.isFinite ? value.toStringAsFixed(2) : '0.00';
 
   static String _escape(String value) {
-    final safe = RegExp(r'^[\\s]*[=+\\-@]').hasMatch(value) ||
-            value.startsWith('\\t') || value.startsWith('\\r')
+    final safe = RegExp(r'^[\s]*[=+\-@]').hasMatch(value) ||
+            value.startsWith('\t') || value.startsWith('\r')
         ? "'$value"
         : value;
     if (safe.contains(',') || safe.contains('"') ||
-        safe.contains('\\n') || safe.contains('\\r')) {
+        safe.contains('\n') || safe.contains('\r')) {
       return '"${safe.replaceAll('"', '""')}"';
     }
     return safe;
