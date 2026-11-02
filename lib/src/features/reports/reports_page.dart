@@ -9,6 +9,7 @@ import '../../data/local/gst_gstr1_classification.dart';
 import '../../data/local/gst_gstr1_hsn_summary.dart';
 import '../../data/local/gst_gstr1_csv_export.dart';
 import '../../data/local/gst_gstr1_invoice_csv_export.dart';
+import '../../data/local/gst_gstr1_credit_note_audit.dart';
 
 class ReportsPage extends StatefulWidget {
   const ReportsPage({super.key, required this.reportType});
@@ -41,6 +42,7 @@ class _ReportsPageState extends State<ReportsPage> {
   GstReadinessReport? _gstr1ReadinessReport;
   Gstr1ClassificationSummary? _gstr1ClassificationSummary;
   List<Gstr1HsnRateSummary> _gstr1HsnSummary = const [];
+  List<Map<String, Object?>> _gstr1CreditNoteRows = const [];
 
   @override
   void initState() { super.initState(); _load(); }
@@ -395,6 +397,7 @@ class _ReportsPageState extends State<ReportsPage> {
       _gstr1Checking = true;
       _gstr1ReadinessReport = null;
       _gstr1ClassificationSummary = null;
+      _gstr1CreditNoteRows = const [];
     });
     try {
       final db = await AppDatabase.instance.database;
@@ -418,6 +421,28 @@ class _ReportsPageState extends State<ReportsPage> {
         WHERE i.invoice_type = 'sale'
           AND i.invoice_date >= ? AND i.invoice_date < ?
         ORDER BY i.invoice_date, i.invoice_number
+        ''',
+        [_date(_startDate!), _date(_endDate!.add(const Duration(days: 1)))],
+      );
+      final creditNoteRows = await db.rawQuery(
+        '''
+        SELECT r.invoice_number AS note_number,
+          o.invoice_number AS original_invoice_number,
+          r.invoice_date AS note_date,
+          r.subtotal AS taxable_value,
+          r.tax_total AS tax_amount,
+          r.grand_total AS note_value,
+          r.cgst_total AS cgst_amount,
+          r.sgst_total AS sgst_amount,
+          r.igst_total AS igst_amount,
+          CASE WHEN r.parent_invoice_id IS NULL OR o.id IS NULL
+            THEN 'MISSING_ORIGINAL_INVOICE_LINK'
+            ELSE 'MANUAL_GST_REVIEW_REQUIRED' END AS review_status
+        FROM invoices r
+        LEFT JOIN invoices o ON o.id = r.parent_invoice_id
+        WHERE r.invoice_type = 'sales_return'
+          AND r.invoice_date >= ? AND r.invoice_date < ?
+        ORDER BY r.invoice_date, r.invoice_number
         ''',
         [_date(_startDate!), _date(_endDate!.add(const Duration(days: 1)))],
       );
@@ -490,7 +515,7 @@ class _ReportsPageState extends State<ReportsPage> {
       }).toList(growable: false);
       final hsnSummary = Gstr1HsnRateAggregator.aggregate(categorizedHsnRows);
       if (!mounted) return;
-      setState(() { _gstr1ReadinessReport = report; _gstr1ClassificationSummary = classification; _gstr1HsnSummary = hsnSummary; });
+      setState(() { _gstr1ReadinessReport = report; _gstr1ClassificationSummary = classification; _gstr1HsnSummary = hsnSummary; _gstr1CreditNoteRows = creditNoteRows; });
     } catch (error) {
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
@@ -659,6 +684,63 @@ class _ReportsPageState extends State<ReportsPage> {
     }
   }
 
+  Future<void> _exportGstr1CreditNoteAudit() async {
+    if (_gstr1CreditNoteRows.isEmpty) return;
+    try {
+      final db = await AppDatabase.instance.database;
+      final rows = await db.query(
+        'app_settings', columns: ['setting_value'],
+        where: 'setting_key = ?', whereArgs: ['company_gstin'], limit: 1,
+      );
+      final gstin = rows.isEmpty ? '' : (rows.first['setting_value'] as String? ?? '');
+      final content = Gstr1CreditNoteAuditCsv.build(
+        _gstr1CreditNoteRows,
+        supplierGstin: gstin,
+        periodStart: _date(_startDate!),
+        periodEnd: _date(_endDate!),
+      );
+      final stamp = DateTime.now().toIso8601String().substring(0, 10);
+      final savedPath = await FilePicker.platform.saveFile(
+        dialogTitle: 'Credit Note audit CSV সংরক্ষণ করুন',
+        fileName: 'gstr1-credit-note-audit-$stamp.csv',
+        type: FileType.custom, allowedExtensions: ['csv'],
+        bytes: Uint8List.fromList(utf8.encode(content)),
+      );
+      if (!mounted || savedPath == null) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Credit Note audit CSV সংরক্ষিত হয়েছে।')),
+      );
+    } catch (error) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('Credit Note audit CSV রপ্তানি করা যায়নি: $error')),
+      );
+    }
+  }
+
+  Widget _gstr1CreditNoteAuditCard() {
+    if (_gstr1ClassificationSummary == null) return const SizedBox.shrink();
+    return Card(child: Padding(
+      padding: const EdgeInsets.all(12),
+      child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+        Text('Sales Return / Credit Note Audit', style: Theme.of(context).textTheme.titleMedium),
+        Text('নির্বাচিত সময়ে সংরক্ষিত Sales Return: ${_gstr1CreditNoteRows.length}'),
+        OutlinedButton.icon(
+          onPressed: _gstr1CreditNoteRows.isEmpty ? null : _exportGstr1CreditNoteAudit,
+          icon: const Icon(Icons.download),
+          label: const Text('Credit Note Audit CSV রপ্তানি করুন'),
+        ),
+        for (final row in _gstr1CreditNoteRows)
+          ListTile(dense: true, contentPadding: EdgeInsets.zero,
+            title: Text('${row['note_number']} • ${row['review_status']}'),
+            subtitle: Text('মূল চালান: ${row['original_invoice_number'] ?? 'সংযোগ নেই'} • তারিখ: ${row['note_date']} • করযোগ্য মূল্য: ${_money((row['taxable_value'] as num?)?.toDouble() ?? 0)} • GST: ${_money((row['tax_amount'] as num?)?.toDouble() ?? 0)}'),
+            trailing: Text(_money((row['note_value'] as num?)?.toDouble() ?? 0)),
+          ),
+        const Text('এটি Sales Return থেকে তৈরি Credit Note-এর audit report মাত্র; GSTN Table 9B upload বা tax adjustment নয়। Original invoice, reason, statutory time limit, recipient details ও applicable GST treatment যাচাই করতে হবে। Debit Note entry এই module-এ এখনও নেই।'),
+      ]),
+    ));
+  }
+
   Widget _gstr1HsnSummaryCard() {
     if (_gstr1ClassificationSummary == null) return const SizedBox.shrink();
     return Card(child: Padding(padding: const EdgeInsets.all(12), child: Column(
@@ -750,6 +832,7 @@ class _ReportsPageState extends State<ReportsPage> {
           if (title == 'GST Reports') ...[
             _gstr1ReadinessCard(),
             _gstr1ClassificationCard(),
+            _gstr1CreditNoteAuditCard(),
             _gstr1HsnSummaryCard(),
             _metric('Sales taxable + tax total', _money(_number('sales')), Icons.point_of_sale),
             _metric('Output GST on sales', _money(_number('salesTax')), Icons.south),
