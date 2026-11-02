@@ -55,18 +55,18 @@ class GstrRcmReconciliationCsvExport {
       'Disclaimer',
       'Management reconciliation only. Verify challans, cash ledger and statutory RCM applicability before filing.'
     ]);
-    return '\uFEFF${output.map((row) => row.map(_escape).join(',')).join('\\r\\n')}\\r\\n';
+    return '\uFEFF${output.map((row) => row.map(_escape).join(',')).join('\r\n')}\\r\\n';
   }
 
   static String _text(Object? value) => value?.toString() ?? '';
   static String _amount(double value) => value.toStringAsFixed(2);
   static String _escape(String value) {
-    final safe = RegExp(r'^[\\s]*[=+\\-@]').hasMatch(value) ||
-            value.startsWith('\\t') || value.startsWith('\\r')
+    final safe = RegExp(r'^[\s]*[=+\-@]').hasMatch(value) ||
+            value.startsWith('\t') || value.startsWith('\r')
         ? "'$value"
         : value;
     if (safe.contains(',') || safe.contains('"') ||
-        safe.contains('\\n') || safe.contains('\\r')) {
+        safe.contains('\n') || safe.contains('\r')) {
       return '"${safe.replaceAll('"', '""')}"';
     }
     return safe;
