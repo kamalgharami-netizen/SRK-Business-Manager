@@ -171,13 +171,62 @@ class _ReportsPageState extends State<ReportsPage> {
       GROUP BY COALESCE(NULLIF(ii.hsn_sac, ''), 'Not specified'), ii.gst_rate
       ORDER BY hsn_sac, ii.gst_rate
     """, args);
+    final debitNoteGstRows = await db.rawQuery(
+      '''
+      SELECT COALESCE(NULLIF(di.hsn_sac, ''), 'Not specified') AS hsn_sac,
+        di.gst_rate,
+        SUM(di.taxable_value) AS output_taxable,
+        SUM(di.tax_amount) AS output_tax
+      FROM debit_note_items di
+      INNER JOIN debit_notes d ON d.id = di.debit_note_id
+      WHERE d.status = 'posted'$debitNoteDateClause
+      GROUP BY COALESCE(NULLIF(di.hsn_sac, ''), 'Not specified'), di.gst_rate
+      ''',
+      debitNoteDateArgs,
+    );
+    for (final debitRow in debitNoteGstRows) {
+      final index = gstBreakdownRows.indexWhere((row) =>
+          row['hsn_sac'] == debitRow['hsn_sac'] &&
+          (row['gst_rate'] as num).toDouble() ==
+              (debitRow['gst_rate'] as num).toDouble());
+      if (index < 0) {
+        gstBreakdownRows.add({
+          'hsn_sac': debitRow['hsn_sac'],
+          'gst_rate': debitRow['gst_rate'],
+          'output_taxable': debitRow['output_taxable'],
+          'output_tax': debitRow['output_tax'],
+          'input_taxable': 0.0,
+          'input_tax': 0.0,
+        });
+      } else {
+        final row = gstBreakdownRows[index];
+        row['output_taxable'] =
+            (row['output_taxable'] as num).toDouble() +
+            (debitRow['output_taxable'] as num).toDouble();
+        row['output_tax'] =
+            (row['output_tax'] as num).toDouble() +
+            (debitRow['output_tax'] as num).toDouble();
+      }
+    }
     final missingHsnRows = await db.rawQuery("""
       SELECT COUNT(*) AS total FROM invoice_items ii
       INNER JOIN invoices i ON i.id = ii.invoice_id
       WHERE i.invoice_type IN ('sale', 'purchase')
         AND (ii.hsn_sac IS NULL OR TRIM(ii.hsn_sac) = '')$dateClause
     """, args);
-    final gstMissingHsnCount = (missingHsnRows.first['total'] as num).toInt();
+    final debitNoteMissingHsnRows = await db.rawQuery(
+      '''
+      SELECT COUNT(*) AS total
+      FROM debit_note_items di
+      INNER JOIN debit_notes d ON d.id = di.debit_note_id
+      WHERE d.status = 'posted'
+        AND (di.hsn_sac IS NULL OR TRIM(di.hsn_sac) = '')$debitNoteDateClause
+      ''',
+      debitNoteDateArgs,
+    );
+    final gstMissingHsnCount =
+        (missingHsnRows.first['total'] as num).toInt() +
+        (debitNoteMissingHsnRows.first['total'] as num).toInt();
 
     final expenseDateWhere = <String>[];
     final expenseDateArgs = <Object?>[];
