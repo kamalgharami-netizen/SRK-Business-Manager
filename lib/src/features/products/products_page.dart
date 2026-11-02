@@ -13,6 +13,7 @@ class ProductsPage extends StatefulWidget {
 class _ProductsPageState extends State<ProductsPage> {
   List<Map<String, Object?>> _products = [];
   bool _loading = true;
+  bool _lowStockOnly = false;
 
   @override
   void initState() {
@@ -53,6 +54,7 @@ class _ProductsPageState extends State<ProductsPage> {
     final salePrice = TextEditingController(text: product == null ? '' : product['sale_price'].toString());
     final stock = TextEditingController(text: product == null ? '0' : product['current_stock'].toString());
     final gstRate = TextEditingController(text: product == null ? '0' : product['gst_rate'].toString());
+    final lowStockAlert = TextEditingController(text: product == null ? '0' : (product['low_stock_alert'] ?? 0).toString());
 
     final saved = await showDialog<bool>(
       context: context,
@@ -81,6 +83,12 @@ class _ProductsPageState extends State<ProductsPage> {
                   TextFormField(controller: purchasePrice, decoration: const InputDecoration(labelText: 'Purchase price'), keyboardType: const TextInputType.numberWithOptions(decimal: true), validator: _nonNegativeNumber),
                   TextFormField(controller: salePrice, decoration: const InputDecoration(labelText: 'Sale price'), keyboardType: const TextInputType.numberWithOptions(decimal: true), validator: _nonNegativeNumber),
                   TextFormField(controller: stock, decoration: const InputDecoration(labelText: 'Opening / current stock'), keyboardType: const TextInputType.numberWithOptions(decimal: true), validator: _nonNegativeNumber),
+                  TextFormField(
+                    controller: lowStockAlert,
+                    decoration: const InputDecoration(labelText: 'Low-stock alert quantity (0 = disabled)'),
+                    keyboardType: const TextInputType.numberWithOptions(decimal: true),
+                    validator: _nonNegativeNumber,
+                  ),
                   TextFormField(
                     controller: gstRate,
                     decoration: const InputDecoration(labelText: 'GST rate (%)'),
@@ -121,6 +129,7 @@ class _ProductsPageState extends State<ProductsPage> {
         'current_stock': quantity,
         'opening_stock': product == null ? quantity : (product['opening_stock'] as num).toDouble(),
         'gst_rate': double.parse(gstRate.text.trim()),
+        'low_stock_alert': double.parse(lowStockAlert.text.trim()),
         'updated_at': DateTime.now().toIso8601String(),
       };
       final syncId = product == null
@@ -160,6 +169,7 @@ class _ProductsPageState extends State<ProductsPage> {
     salePrice.dispose();
     stock.dispose();
     gstRate.dispose();
+    lowStockAlert.dispose();
   }
 
   String? _nonNegativeNumber(String? value) {
@@ -200,8 +210,24 @@ class _ProductsPageState extends State<ProductsPage> {
 
   @override
   Widget build(BuildContext context) {
+    final visibleProducts = _lowStockOnly
+        ? _products.where((product) {
+            final threshold = (product['low_stock_alert'] as num? ?? 0).toDouble();
+            final current = (product['current_stock'] as num).toDouble();
+            return threshold > 0 && current <= threshold;
+          }).toList()
+        : _products;
     return Scaffold(
-      appBar: AppBar(title: const Text('Inventory & Stock')),
+      appBar: AppBar(
+        title: const Text('Inventory & Stock'),
+        actions: [
+          IconButton(
+            tooltip: _lowStockOnly ? 'Show all products' : 'Show low-stock products',
+            onPressed: () => setState(() => _lowStockOnly = !_lowStockOnly),
+            icon: Icon(_lowStockOnly ? Icons.inventory_2 : Icons.warning_amber_rounded),
+          ),
+        ],
+      ),
       floatingActionButton: FloatingActionButton.extended(
         onPressed: _showProductForm,
         icon: const Icon(Icons.add_box_outlined),
@@ -211,18 +237,22 @@ class _ProductsPageState extends State<ProductsPage> {
           ? const Center(child: CircularProgressIndicator())
           : _products.isEmpty
               ? const Center(child: Text('No products added yet. Tap Add product to begin.'))
-              : ListView.separated(
+              : visibleProducts.isEmpty
+                  ? Center(child: Text(_lowStockOnly ? 'No products are at or below their low-stock alert level.' : 'No products to display.'))
+                  : ListView.separated(
                   padding: const EdgeInsets.fromLTRB(16, 16, 16, 88),
-                  itemCount: _products.length,
+                  itemCount: visibleProducts.length,
                   separatorBuilder: (_, index) => const Divider(height: 1),
                   itemBuilder: (context, index) {
-                    final product = _products[index];
+                    final product = visibleProducts[index];
                     final quantity = (product['current_stock'] as num).toString();
                     final price = (product['sale_price'] as num).toStringAsFixed(2);
+                    final threshold = (product['low_stock_alert'] as num? ?? 0).toDouble();
+                    final isLow = threshold > 0 && (product['current_stock'] as num).toDouble() <= threshold;
                     return ListTile(
-                      leading: const CircleAvatar(child: Icon(Icons.inventory_2_outlined)),
+                      leading: CircleAvatar(child: Icon(isLow ? Icons.warning_amber_rounded : Icons.inventory_2_outlined, color: isLow ? Theme.of(context).colorScheme.error : null)), 
                       title: Text(product['name'] as String),
-                      subtitle: Text('Stock: $quantity ${product['unit']} • Sale: ₹$price • HSN/SAC: ${product['hsn_sac'] ?? '—'}'),
+                      subtitle: Text('Stock: $quantity ${product['unit']} • Sale: ₹$price • Low-stock at: ${threshold > 0 ? threshold : 'Off'} • HSN/SAC: ${product['hsn_sac'] ?? '—'}'),
                       onTap: () => _showProductForm(product: product),
                       trailing: IconButton(
                         tooltip: 'Delete product',
