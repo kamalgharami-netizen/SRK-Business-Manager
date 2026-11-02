@@ -10,6 +10,7 @@ import '../../data/local/gst_gstr1_hsn_summary.dart';
 import '../../data/local/gst_gstr1_csv_export.dart';
 import '../../data/local/gst_gstr1_invoice_csv_export.dart';
 import '../../data/local/gst_gstr1_credit_note_audit.dart';
+import '../../data/local/purchase_return_itc_audit_csv.dart';
 
 class ReportsPage extends StatefulWidget {
   const ReportsPage({super.key, required this.reportType});
@@ -43,6 +44,8 @@ class _ReportsPageState extends State<ReportsPage> {
   Gstr1ClassificationSummary? _gstr1ClassificationSummary;
   List<Gstr1HsnRateSummary> _gstr1HsnSummary = const [];
   List<Map<String, Object?>> _gstr1CreditNoteRows = const [];
+      _gstr1PurchaseReturnRows = const [];
+  List<Map<String, Object?>> _gstr1PurchaseReturnRows = const [];
 
   @override
   void initState() { super.initState(); _load(); }
@@ -446,6 +449,28 @@ class _ReportsPageState extends State<ReportsPage> {
         ''',
         [_date(_startDate!), _date(_endDate!.add(const Duration(days: 1)))],
       );
+      final purchaseReturnRows = await db.rawQuery(
+        '''
+        SELECT r.invoice_number AS return_number,
+          o.invoice_number AS original_invoice_number,
+          r.invoice_date AS return_date,
+          r.subtotal AS taxable_value,
+          r.tax_total AS tax_amount,
+          r.grand_total AS return_value,
+          r.cgst_total AS cgst_amount,
+          r.sgst_total AS sgst_amount,
+          r.igst_total AS igst_amount,
+          CASE WHEN r.parent_invoice_id IS NULL OR o.id IS NULL
+            THEN 'MISSING_ORIGINAL_PURCHASE_LINK'
+            ELSE 'MANUAL_ITC_REVERSAL_REVIEW_REQUIRED' END AS review_status
+        FROM invoices r
+        LEFT JOIN invoices o ON o.id = r.parent_invoice_id
+        WHERE r.invoice_type = 'purchase_return'
+          AND r.invoice_date >= ? AND r.invoice_date < ?
+        ORDER BY r.invoice_date, r.invoice_number
+        ''',
+        [_date(_startDate!), _date(_endDate!.add(const Duration(days: 1)))],
+      );
       final financialYearStartYear =
           _startDate!.month >= 4 ? _startDate!.year : _startDate!.year - 1;
       final financialYearInvoiceRows = await db.rawQuery(
@@ -515,7 +540,7 @@ class _ReportsPageState extends State<ReportsPage> {
       }).toList(growable: false);
       final hsnSummary = Gstr1HsnRateAggregator.aggregate(categorizedHsnRows);
       if (!mounted) return;
-      setState(() { _gstr1ReadinessReport = report; _gstr1ClassificationSummary = classification; _gstr1HsnSummary = hsnSummary; _gstr1CreditNoteRows = creditNoteRows; });
+      setState(() { _gstr1ReadinessReport = report; _gstr1ClassificationSummary = classification; _gstr1HsnSummary = hsnSummary; _gstr1CreditNoteRows = creditNoteRows; _gstr1PurchaseReturnRows = purchaseReturnRows; });
     } catch (error) {
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
@@ -718,6 +743,50 @@ class _ReportsPageState extends State<ReportsPage> {
     }
   }
 
+  Future<void> _exportPurchaseReturnItcAudit() async {
+    if (_gstr1PurchaseReturnRows.isEmpty) return;
+    try {
+      final db = await AppDatabase.instance.database;
+      final rows = await db.query('app_settings', columns: ['setting_value'],
+        where: 'setting_key = ?', whereArgs: ['company_gstin'], limit: 1);
+      final gstin = rows.isEmpty ? '' : (rows.first['setting_value'] as String? ?? '');
+      final content = PurchaseReturnItcAuditCsv.build(_gstr1PurchaseReturnRows,
+        recipientGstin: gstin, periodStart: _date(_startDate!), periodEnd: _date(_endDate!));
+      final stamp = DateTime.now().toIso8601String().substring(0, 10);
+      final savedPath = await FilePicker.platform.saveFile(
+        dialogTitle: 'Purchase Return ITC audit CSV সংরক্ষণ করুন',
+        fileName: 'purchase-return-itc-audit-$stamp.csv',
+        type: FileType.custom, allowedExtensions: ['csv'],
+        bytes: Uint8List.fromList(utf8.encode(content)));
+      if (!mounted || savedPath == null) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Purchase Return ITC audit CSV সংরক্ষিত হয়েছে।')));
+    } catch (error) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('Purchase Return ITC audit CSV রপ্তানি করা যায়নি: $error')));
+    }
+  }
+
+  Widget _purchaseReturnItcAuditCard() {
+    if (_gstr1ClassificationSummary == null) return const SizedBox.shrink();
+    return Card(child: Padding(padding: const EdgeInsets.all(12),
+      child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+        Text('Purchase Return / ITC Reversal Audit', style: Theme.of(context).textTheme.titleMedium),
+        Text('নির্বাচিত সময়ে সংরক্ষিত Purchase Return: \${_gstr1PurchaseReturnRows.length}'),
+        OutlinedButton.icon(
+          onPressed: _gstr1PurchaseReturnRows.isEmpty ? null : _exportPurchaseReturnItcAudit,
+          icon: const Icon(Icons.download),
+          label: const Text('Purchase Return ITC Audit CSV রপ্তানি করুন')),
+        for (final row in _gstr1PurchaseReturnRows)
+          ListTile(dense: true, contentPadding: EdgeInsets.zero,
+            title: Text("\${row['return_number']} • \${row['review_status']}"),
+            subtitle: Text("মূল Purchase Invoice: \${row['original_invoice_number'] ?? 'সংযোগ নেই'} • তারিখ: \${row['return_date']} • করযোগ্য মূল্য: \${_money((row['taxable_value'] as num?)?.toDouble() ?? 0)} • GST: \${_money((row['tax_amount'] as num?)?.toDouble() ?? 0)}"),
+            trailing: Text(_money((row['return_value'] as num?)?.toDouble() ?? 0))),
+        const Text('এটি Purchase Return ও সম্ভাব্য ITC reversal-এর audit report মাত্র। মূল Purchase Invoice, ITC claim status, supplier credit note, return reason এবং প্রযোজ্য GST বিধি যাচাই ছাড়া ITC স্বয়ংক্রিয়ভাবে reverse করা হবে না.'),
+      ])));
+  }
+
   Widget _gstr1CreditNoteAuditCard() {
     if (_gstr1ClassificationSummary == null) return const SizedBox.shrink();
     return Card(child: Padding(
@@ -833,6 +902,7 @@ class _ReportsPageState extends State<ReportsPage> {
             _gstr1ReadinessCard(),
             _gstr1ClassificationCard(),
             _gstr1CreditNoteAuditCard(),
+            _purchaseReturnItcAuditCard(),
             _gstr1HsnSummaryCard(),
             _metric('Sales taxable + tax total', _money(_number('sales')), Icons.point_of_sale),
             _metric('Output GST on sales', _money(_number('salesTax')), Icons.south),
