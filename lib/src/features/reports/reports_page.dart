@@ -459,9 +459,15 @@ class _ReportsPageState extends State<ReportsPage> {
           r.cgst_total AS cgst_amount,
           r.sgst_total AS sgst_amount,
           r.igst_total AS igst_amount,
-          CASE WHEN r.parent_invoice_id IS NULL OR o.id IS NULL
-            THEN 'MISSING_ORIGINAL_PURCHASE_LINK'
-            ELSE 'MANUAL_ITC_REVERSAL_REVIEW_REQUIRED' END AS review_status
+          CASE
+            WHEN r.parent_invoice_id IS NULL OR o.id IS NULL
+              THEN 'MISSING_ORIGINAL_PURCHASE_LINK'
+            WHEN r.party_id IS NULL OR o.party_id IS NULL OR r.party_id != o.party_id
+              THEN 'PURCHASE_PARTY_LINK_REVIEW_REQUIRED'
+            WHEN date(r.invoice_date) < date(o.invoice_date)
+              THEN 'RETURN_DATE_PRECEDES_PURCHASE_REVIEW'
+            ELSE 'MANUAL_ITC_REVERSAL_REVIEW_REQUIRED'
+          END AS review_status
         FROM invoices r
         LEFT JOIN invoices o ON o.id = r.parent_invoice_id AND o.invoice_type = 'purchase'
         WHERE r.invoice_type = 'purchase_return'
