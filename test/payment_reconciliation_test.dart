@@ -39,6 +39,26 @@ void main() {
       expect(paid, 225);
     });
 
+    test('rounds the reconciled paid amount to two decimal places', () {
+      final paid = PaymentReconciliation.calculatePaidAmount(
+        invoicePaidSnapshot: 0,
+        existingLinkedPayments: const [],
+        incomingPayment: 12.345,
+      );
+      expect(paid, 12.35);
+    });
+
+    test('rejects an overflowed total of linked payments', () {
+      expect(
+        () => PaymentReconciliation.calculatePaidAmount(
+          invoicePaidSnapshot: 0,
+          existingLinkedPayments: [1e308],
+          incomingPayment: 1e308,
+        ),
+        throwsArgumentError,
+      );
+    });
+
     test('rejects invalid invoice snapshots and payment amounts', () {
       expect(
         () => PaymentReconciliation.calculatePaidAmount(
