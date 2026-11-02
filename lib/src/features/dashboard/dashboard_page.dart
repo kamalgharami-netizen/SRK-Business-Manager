@@ -22,6 +22,7 @@ import '../sync/sync_status_page.dart';
 import '../staff/staff_page.dart';
 import '../staff/team_access_page.dart';
 import '../parties/parties_page.dart';
+import '../parties/party_ledger_page.dart';
 import '../products/products_page.dart';
 
 class DashboardPage extends StatefulWidget {
@@ -222,6 +223,7 @@ class _DashboardPageState extends State<DashboardPage> with WidgetsBindingObserv
     _ModuleInfo('Profit & Loss', Icons.analytics),
     _ModuleInfo('Balance Sheet', Icons.account_balance),
     _ModuleInfo('Customers & Suppliers', Icons.people_alt),
+    _ModuleInfo('Party Ledger', Icons.menu_book),
     _ModuleInfo('Receipts & Payments', Icons.payments),
     _ModuleInfo('Expenses', Icons.receipt_long),
     _ModuleInfo('GST Reports', Icons.account_balance),
@@ -251,6 +253,7 @@ class _DashboardPageState extends State<DashboardPage> with WidgetsBindingObserv
       'Backup & Sync' => SyncStatusPage(cloudConfigured: widget.cloudConfigured),
       'Settings' => const SettingsPage(),
       'Customers & Suppliers' => const PartiesPage(),
+      'Party Ledger' => const PartyLedgerPage(),
       'Inventory & Stock' => const ProductsPage(),
       'Stock Valuation' => const ReportsPage(reportType: 'Stock Valuation'),
       'Trial Balance' => const ReportsPage(reportType: 'Trial Balance'),
