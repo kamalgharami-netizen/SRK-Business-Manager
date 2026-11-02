@@ -55,7 +55,7 @@ class GstrRcmReconciliationCsvExport {
       'Disclaimer',
       'Management reconciliation only. Verify challans, cash ledger and statutory RCM applicability before filing.'
     ]);
-    return '\uFEFF' + output.map((row) => row.map(_escape).join(',')).join('\r\n') + '\r\n';
+    return '\uFEFF${output.map((row) => row.map(_escape).join(',')).join('\r\n')}\r\n';
   }
 
   static String _text(Object? value) => value?.toString() ?? '';
