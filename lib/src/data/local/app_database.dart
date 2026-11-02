@@ -17,7 +17,7 @@ class AppDatabase {
   AppDatabase._();
 
   static final AppDatabase instance = AppDatabase._();
-  static const int _databaseVersion = 24;
+  static const int _databaseVersion = 25;
   String? _databasePath;
   String? _activeBusinessId;
   String? _activeBusinessRole;
@@ -293,6 +293,10 @@ class AppDatabase {
         }
         if (oldVersion < 24) {
           await _seedDefaultAccounts(db);
+        }
+        if (oldVersion < 25) {
+          await _createGstr3bRcmSchema(db);
+          await _createGstr3bRcmAuditSchema(db);
         }
         if (oldVersion < 19) {
           await db.execute('ALTER TABLE stock_movements ADD COLUMN sync_id TEXT');
@@ -641,6 +645,7 @@ class AppDatabase {
     await db.execute('CREATE INDEX IF NOT EXISTS idx_gst_itc_adjustments_period ON gst_itc_adjustments(return_period, treatment)');
     await _createGstr3bItcAuditSchema(db);
     await _createGstr3bRcmSchema(db);
+    await _createGstr3bRcmAuditSchema(db);
   }
 
   Future<void> _createGstr3bRcmSchema(DatabaseExecutor db) async {
@@ -750,6 +755,130 @@ class AppDatabase {
     await db.execute('''
       CREATE INDEX IF NOT EXISTS idx_gst_itc_adjustment_audit_period
       ON gst_itc_adjustment_audit(return_period, changed_at)
+    ''');
+  }
+
+  Future<void> _createGstr3bRcmAuditSchema(DatabaseExecutor db) async {
+    await db.execute('''
+      CREATE TABLE IF NOT EXISTS gst_rcm_audit (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        entity_type TEXT NOT NULL CHECK (entity_type IN ('liability','payment')),
+        record_id INTEGER NOT NULL,
+        action TEXT NOT NULL CHECK (action IN ('insert','update','delete')),
+        liability_id INTEGER,
+        return_period TEXT NOT NULL,
+        document_reference TEXT NOT NULL,
+        payment_date TEXT,
+        cash_ledger_reference TEXT,
+        challan_reference TEXT,
+        taxable_value REAL,
+        igst REAL NOT NULL DEFAULT 0,
+        cgst REAL NOT NULL DEFAULT 0,
+        sgst REAL NOT NULL DEFAULT 0,
+        cess REAL NOT NULL DEFAULT 0,
+        notes TEXT,
+        changed_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+      )
+    ''');
+    await db.execute('''
+      CREATE TRIGGER IF NOT EXISTS trg_gst_rcm_liability_audit_insert
+      AFTER INSERT ON gst_rcm_liabilities
+      BEGIN
+        INSERT INTO gst_rcm_audit
+          (entity_type, record_id, action, return_period, document_reference,
+           taxable_value, igst, cgst, sgst, cess, notes)
+        VALUES
+          ('liability', NEW.id, 'insert', NEW.return_period, NEW.document_reference,
+           NEW.taxable_value, NEW.igst, NEW.cgst, NEW.sgst, NEW.cess, NEW.notes);
+      END
+    ''');
+    await db.execute('''
+      CREATE TRIGGER IF NOT EXISTS trg_gst_rcm_liability_audit_update
+      AFTER UPDATE ON gst_rcm_liabilities
+      BEGIN
+        INSERT INTO gst_rcm_audit
+          (entity_type, record_id, action, return_period, document_reference,
+           taxable_value, igst, cgst, sgst, cess, notes)
+        VALUES
+          ('liability', NEW.id, 'update', NEW.return_period, NEW.document_reference,
+           NEW.taxable_value, NEW.igst, NEW.cgst, NEW.sgst, NEW.cess, NEW.notes);
+      END
+    ''');
+    await db.execute('''
+      CREATE TRIGGER IF NOT EXISTS trg_gst_rcm_liability_audit_delete
+      AFTER DELETE ON gst_rcm_liabilities
+      BEGIN
+        INSERT INTO gst_rcm_audit
+          (entity_type, record_id, action, return_period, document_reference,
+           taxable_value, igst, cgst, sgst, cess, notes)
+        VALUES
+          ('liability', OLD.id, 'delete', OLD.return_period, OLD.document_reference,
+           OLD.taxable_value, OLD.igst, OLD.cgst, OLD.sgst, OLD.cess, OLD.notes);
+      END
+    ''');
+    await db.execute('''
+      CREATE TRIGGER IF NOT EXISTS trg_gst_rcm_payment_audit_insert
+      AFTER INSERT ON gst_rcm_payments
+      BEGIN
+        INSERT INTO gst_rcm_audit
+          (entity_type, record_id, action, liability_id, return_period,
+           document_reference, payment_date, cash_ledger_reference,
+           challan_reference, igst, cgst, sgst, cess, notes)
+        SELECT 'payment', NEW.id, 'insert', l.id, l.return_period,
+          l.document_reference, NEW.payment_date, NEW.cash_ledger_reference,
+          NEW.challan_reference, NEW.igst, NEW.cgst, NEW.sgst, NEW.cess, NEW.notes
+        FROM gst_rcm_liabilities l WHERE l.id = NEW.liability_id;
+      END
+    ''');
+    await db.execute('''
+      CREATE TRIGGER IF NOT EXISTS trg_gst_rcm_payment_audit_update
+      AFTER UPDATE ON gst_rcm_payments
+      BEGIN
+        INSERT INTO gst_rcm_audit
+          (entity_type, record_id, action, liability_id, return_period,
+           document_reference, payment_date, cash_ledger_reference,
+           challan_reference, igst, cgst, sgst, cess, notes)
+        SELECT 'payment', NEW.id, 'update', l.id, l.return_period,
+          l.document_reference, NEW.payment_date, NEW.cash_ledger_reference,
+          NEW.challan_reference, NEW.igst, NEW.cgst, NEW.sgst, NEW.cess, NEW.notes
+        FROM gst_rcm_liabilities l WHERE l.id = NEW.liability_id;
+      END
+    ''');
+    await db.execute('''
+      CREATE TRIGGER IF NOT EXISTS trg_gst_rcm_payment_audit_delete
+      AFTER DELETE ON gst_rcm_payments
+      BEGIN
+        INSERT INTO gst_rcm_audit
+          (entity_type, record_id, action, liability_id, return_period,
+           document_reference, payment_date, cash_ledger_reference,
+           challan_reference, igst, cgst, sgst, cess, notes)
+        SELECT 'payment', OLD.id, 'delete', l.id, l.return_period,
+          l.document_reference, OLD.payment_date, OLD.cash_ledger_reference,
+          OLD.challan_reference, OLD.igst, OLD.cgst, OLD.sgst, OLD.cess, OLD.notes
+        FROM gst_rcm_liabilities l WHERE l.id = OLD.liability_id;
+      END
+    ''');
+    await db.execute('''
+      CREATE TRIGGER IF NOT EXISTS trg_gst_rcm_audit_no_update
+      BEFORE UPDATE ON gst_rcm_audit
+      BEGIN
+        SELECT RAISE(ABORT, 'RCM audit history is immutable');
+      END
+    ''');
+    await db.execute('''
+      CREATE TRIGGER IF NOT EXISTS trg_gst_rcm_audit_no_delete
+      BEFORE DELETE ON gst_rcm_audit
+      BEGIN
+        SELECT RAISE(ABORT, 'RCM audit history is immutable');
+      END
+    ''');
+    await db.execute('''
+      CREATE INDEX IF NOT EXISTS idx_gst_rcm_audit_period
+      ON gst_rcm_audit(return_period, changed_at)
+    ''');
+    await db.execute('''
+      CREATE INDEX IF NOT EXISTS idx_gst_rcm_audit_entity
+      ON gst_rcm_audit(entity_type, record_id, changed_at)
     ''');
   }
 
