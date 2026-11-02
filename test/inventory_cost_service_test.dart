@@ -89,6 +89,44 @@ void main() {
     });
   });
 
+  group('Purchase return inventory and ledger reconciliation', () {
+    test('matches FIFO cost to taxable value when GST is recoverable', () {
+      expect(
+        () => InventoryCostService.validatePurchaseReturnInventoryValue(
+          fifoCostRemoved: 180,
+          taxableSubtotal: 180,
+          taxAmount: 32.4,
+          itcIneligible: false,
+        ),
+        returnsNormally,
+      );
+    });
+
+    test('includes GST in inventory value only when ITC is ineligible', () {
+      expect(
+        () => InventoryCostService.validatePurchaseReturnInventoryValue(
+          fifoCostRemoved: 212.4,
+          taxableSubtotal: 180,
+          taxAmount: 32.4,
+          itcIneligible: true,
+        ),
+        returnsNormally,
+      );
+    });
+
+    test('rejects mismatch between FIFO stock value and ledger reversal', () {
+      expect(
+        () => InventoryCostService.validatePurchaseReturnInventoryValue(
+          fifoCostRemoved: 180,
+          taxableSubtotal: 180,
+          taxAmount: 32.4,
+          itcIneligible: true,
+        ),
+        throwsA(isA<StateError>()),
+      );
+    });
+  });
+
   group('Purchase return FIFO source protection', () {
     Future<Database> openDatabaseForReturn() async {
       sqfliteFfiInit();
