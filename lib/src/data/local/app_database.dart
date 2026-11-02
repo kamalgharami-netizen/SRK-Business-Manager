@@ -17,7 +17,7 @@ class AppDatabase {
   AppDatabase._();
 
   static final AppDatabase instance = AppDatabase._();
-  static const int _databaseVersion = 25;
+  static const int _databaseVersion = 26;
   String? _databasePath;
   String? _activeBusinessId;
   String? _activeBusinessRole;
@@ -297,6 +297,9 @@ class AppDatabase {
         if (oldVersion < 25) {
           await _createGstr3bRcmSchema(db);
           await _createGstr3bRcmAuditSchema(db);
+        }
+        if (oldVersion < 26) {
+          await _seedDefaultAccounts(db);
         }
         if (oldVersion < 19) {
           await db.execute('ALTER TABLE stock_movements ADD COLUMN sync_id TEXT');
@@ -1002,10 +1005,12 @@ class AppDatabase {
       {'account_code': '1000', 'account_name': 'Cash in Hand', 'account_type': 'asset', 'normal_balance': 'debit'},
       {'account_code': '1010', 'account_name': 'Bank Accounts', 'account_type': 'asset', 'normal_balance': 'debit'},
       {'account_code': '1100', 'account_name': 'Accounts Receivable', 'account_type': 'asset', 'normal_balance': 'debit'},
+      {'account_code': '1400', 'account_name': 'Supplier Advances', 'account_type': 'asset', 'normal_balance': 'debit'},
       {'account_code': '1200', 'account_name': 'Inventory', 'account_type': 'asset', 'normal_balance': 'debit'},
       {'account_code': '1300', 'account_name': 'Input GST', 'account_type': 'asset', 'normal_balance': 'debit'},
       {'account_code': '1310', 'account_name': 'GST Pending ITC Review', 'account_type': 'asset', 'normal_balance': 'debit'},
       {'account_code': '2000', 'account_name': 'Accounts Payable', 'account_type': 'liability', 'normal_balance': 'credit'},
+      {'account_code': '2200', 'account_name': 'Customer Advances', 'account_type': 'liability', 'normal_balance': 'credit'},
       {'account_code': '2100', 'account_name': 'Output GST', 'account_type': 'liability', 'normal_balance': 'credit'},
       {'account_code': '3000', 'account_name': 'Owner Capital', 'account_type': 'equity', 'normal_balance': 'credit'},
       {'account_code': '3100', 'account_name': 'Retained Earnings', 'account_type': 'equity', 'normal_balance': 'credit'},
@@ -1398,6 +1403,7 @@ class AppDatabase {
           mode: payload['mode'] as String? ?? 'cash',
           amount: amountValue.toDouble(),
           reference: payload['reference'] as String?,
+          invoiceLinked: invoiceSyncId != null && invoiceSyncId.isNotEmpty,
         );
         return;
       }

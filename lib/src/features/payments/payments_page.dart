@@ -285,6 +285,7 @@ class _PaymentsPageState extends State<PaymentsPage> {
             mode: mode,
             amount: value,
             reference: reference.text,
+            invoiceLinked: invoiceId != null,
           );
 
           final paymentRows = await txn.query(

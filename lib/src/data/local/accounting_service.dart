@@ -108,15 +108,15 @@ class AccountingService {
     await _post(txn, sourceType: 'stock_adjustment', sourceId: movementId, date: date, memo: 'Stock adjustment: $reason', lines: lines);
   }
 
-  static Future<void> postPayment(Transaction txn, {required int paymentId, required String date, required String paymentType, required String mode, required double amount, required String? reference}) async {
+  static Future<void> postPayment(Transaction txn, {required int paymentId, required String date, required String paymentType, required String mode, required double amount, required String? reference, bool invoiceLinked = true}) async {
     final cashCode = mode.toLowerCase() == 'cash' ? '1000' : '1010';
     final isReceipt = paymentType == 'receipt';
     final lines = <Map<String, Object?>>[
       if (isReceipt) ...[
         {'code': cashCode, 'debit': amount, 'credit': 0.0, 'description': 'Money received'},
-        {'code': '1100', 'debit': 0.0, 'credit': amount, 'description': 'Customer balance reduced'},
+        {'code': invoiceLinked ? '1100' : '2200', 'debit': 0.0, 'credit': amount, 'description': invoiceLinked ? 'Customer invoice balance reduced' : 'Customer advance received'},
       ] else ...[
-        {'code': '2000', 'debit': amount, 'credit': 0.0, 'description': 'Supplier balance reduced'},
+        {'code': invoiceLinked ? '2000' : '1400', 'debit': amount, 'credit': 0.0, 'description': invoiceLinked ? 'Supplier invoice balance reduced' : 'Supplier advance paid'},
         {'code': cashCode, 'debit': 0.0, 'credit': amount, 'description': 'Money paid'},
       ],
     ];
