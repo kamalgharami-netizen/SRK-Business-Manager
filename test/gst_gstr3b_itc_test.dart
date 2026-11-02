@@ -154,6 +154,8 @@ void main() {
       expect(summary.negativeNetItcLiability.igst, 15);
       expect(summary.negativeNetItcLiability.cgst, 4);
       expect(summary.negativeNetItcLiability.sgst, 0);
+      expect(summary.requiresNegativeNetItcReview, isTrue);
+      expect(summary.canPrepareDraft, isFalse);
     });
 
     test('blocks draft readiness when individually valid amounts overflow an ITC total', () {
