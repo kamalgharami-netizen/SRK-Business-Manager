@@ -355,23 +355,119 @@ class _DashboardPageState extends State<DashboardPage> with WidgetsBindingObserv
         child: ListTile(dense: true, leading: Icon(icon, color: Colors.white, size: 19),
           title: Text(title, style: const TextStyle(color: Colors.white, fontSize: 13)), onTap: onTap)));
 
-  Widget _sidebar() => Container(width: 248, color: const Color(0xFF102A56),
-    child: Column(children: [
-      const Padding(padding: EdgeInsets.fromLTRB(20, 24, 16, 22), child: Row(children: [
-        Icon(Icons.storefront, color: Colors.white, size: 30), SizedBox(width: 10),
-        Expanded(child: Text('SRK Business\\nManager', style: TextStyle(color: Colors.white, fontSize: 17, fontWeight: FontWeight.bold))),
-      ])),
-      const Divider(color: Colors.white24, height: 1),
-      Expanded(child: ListView(padding: const EdgeInsets.symmetric(vertical: 10), children: [
-        _sideItem('Dashboard', Icons.dashboard, selected: true, onTap: () {}),
-        for (final m in modules) _sideItem(m.title, m.icon, onTap: () => _openModule(m)),
-      ])),
-      const Divider(color: Colors.white24, height: 1),
-      Padding(padding: const EdgeInsets.all(16), child: Row(children: [
-        Icon(widget.cloudConfigured ? Icons.cloud_done : Icons.cloud_off, color: Colors.white70, size: 18),
-        const SizedBox(width: 8), Expanded(child: Text(widget.cloudConfigured ? 'Cloud configured' : 'Offline / local mode', style: const TextStyle(color: Colors.white70, fontSize: 12))),
-      ])),
-    ]));
+  Widget _sidebar() {
+    Widget section(String title, List<String> moduleTitles) {
+      final entries = modules.where((m) => moduleTitles.contains(m.title));
+      return Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Padding(
+            padding: const EdgeInsets.fromLTRB(20, 18, 12, 6),
+            child: Text(
+              title.toUpperCase(),
+              style: const TextStyle(
+                color: Colors.white54,
+                fontSize: 10,
+                letterSpacing: 1.1,
+                fontWeight: FontWeight.w800,
+              ),
+            ),
+          ),
+          for (final module in entries)
+            _sideItem(module.title, module.icon, onTap: () => _openModule(module)),
+        ],
+      );
+    }
+
+    return Container(
+      width: 252,
+      color: const Color(0xFF102A56),
+      child: Column(
+        children: [
+          const Padding(
+            padding: EdgeInsets.fromLTRB(20, 24, 16, 22),
+            child: Row(
+              children: [
+                Icon(Icons.storefront, color: Colors.white, size: 30),
+                SizedBox(width: 10),
+                Expanded(
+                  child: Text(
+                    'SRK Business\\nManager',
+                    style: TextStyle(
+                      color: Colors.white,
+                      fontSize: 17,
+                      fontWeight: FontWeight.bold,
+                    ),
+                  ),
+                ),
+              ],
+            ),
+          ),
+          const Divider(color: Colors.white24, height: 1),
+          Expanded(
+            child: ListView(
+              padding: const EdgeInsets.only(bottom: 12),
+              children: [
+                _sideItem('Dashboard', Icons.dashboard, selected: true, onTap: () {}),
+                section('Sales & Purchases', [
+                  'Sales & Invoices',
+                  'Sales Returns',
+                  'Sales Debit Notes',
+                  'Purchases',
+                  'Purchase Returns & Stock Control',
+                  'Receipts & Payments',
+                  'Expenses',
+                ]),
+                section('Inventory', [
+                  'Inventory & Stock',
+                  'Stock Valuation',
+                ]),
+                section('Parties', [
+                  'Customers & Suppliers',
+                  'Party Ledger',
+                ]),
+                section('Accounts & GST', [
+                  'Accounting & Ledgers',
+                  'Chart of Accounts & Opening Balances',
+                  'Trial Balance',
+                  'Profit & Loss',
+                  'Balance Sheet',
+                  'GST Reports',
+                  'GSTR-3B ITC Preparation',
+                ]),
+                section('Business & Admin', [
+                  'Business Reports',
+                  'Staff & Permissions',
+                  'Backup & Sync',
+                  'Settings',
+                ]),
+              ],
+            ),
+          ),
+          const Divider(color: Colors.white24, height: 1),
+          Padding(
+            padding: const EdgeInsets.all(16),
+            child: Row(
+              children: [
+                Icon(
+                  widget.cloudConfigured ? Icons.cloud_done : Icons.cloud_off,
+                  color: Colors.white70,
+                  size: 18,
+                ),
+                const SizedBox(width: 8),
+                Expanded(
+                  child: Text(
+                    widget.cloudConfigured ? 'Cloud configured' : 'Offline / local mode',
+                    style: const TextStyle(color: Colors.white70, fontSize: 12),
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ],
+      ),
+    );
+  }
 
   @override
   Widget build(BuildContext context) => LayoutBuilder(builder: (context, c) {
