@@ -114,13 +114,51 @@ class AccountingService {
     );
   }
 
-  static Future<void> postPurchaseReturn(Transaction txn, {required int returnId, required String returnNumber, required String date, required double subtotal, required double tax, required double total}) async {
+  static Future<void> postPurchaseReturn(
+    Transaction txn, {
+    required int returnId,
+    required String returnNumber,
+    required String date,
+    required double subtotal,
+    required double tax,
+    required double total,
+    required String itcTreatment,
+  }) async {
+    if (!subtotal.isFinite || subtotal < 0 ||
+        !tax.isFinite || tax < 0 ||
+        !total.isFinite || total < 0 ||
+        (total - subtotal - tax).abs() > 0.005) {
+      throw StateError('Purchase return totals are invalid or do not balance.');
+    }
+    if (!const {'eligible', 'ineligible', 'pendingReview'}.contains(itcTreatment)) {
+      throw StateError('Original purchase ITC treatment is missing or invalid.');
+    }
+    final inventoryCredit = subtotal + (itcTreatment == 'ineligible' ? tax : 0);
     final lines = <Map<String, Object?>>[
-      if (total > 0) {'code': '2000', 'debit': total, 'credit': 0.0, 'description': 'Supplier payable reduced'},
-      if (subtotal > 0) {'code': '1200', 'debit': 0.0, 'credit': subtotal, 'description': 'Inventory returned to supplier'},
-      if (tax > 0) {'code': '1300', 'debit': 0.0, 'credit': tax, 'description': 'Input GST reversed'},
+      if (total > 0)
+        {'code': '2000', 'debit': total, 'credit': 0.0, 'description': 'Supplier payable reduced'},
+      if (inventoryCredit > 0)
+        {
+          'code': '1200',
+          'debit': 0.0,
+          'credit': inventoryCredit,
+          'description': itcTreatment == 'ineligible'
+              ? 'Inventory returned to supplier including non-recoverable GST'
+              : 'Inventory returned to supplier',
+        },
+      if (tax > 0 && itcTreatment == 'eligible')
+        {'code': '1300', 'debit': 0.0, 'credit': tax, 'description': 'Eligible input GST reversed'},
+      if (tax > 0 && itcTreatment == 'pendingReview')
+        {'code': '1310', 'debit': 0.0, 'credit': tax, 'description': 'Pending input GST reversed'},
     ];
-    await _post(txn, sourceType: 'purchase_return', sourceId: returnId, date: date, memo: 'Purchase return $returnNumber', lines: lines);
+    await _post(
+      txn,
+      sourceType: 'purchase_return',
+      sourceId: returnId,
+      date: date,
+      memo: 'Purchase return $returnNumber',
+      lines: lines,
+    );
   }
 
   static Future<void> postStockAdjustment(Transaction txn, {required int movementId, required String date, required String reason, required double quantityChange, required double inventoryCost}) async {
