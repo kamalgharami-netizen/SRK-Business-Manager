@@ -1731,6 +1731,7 @@ class AppDatabase {
                 unitRate: (item['rate'] as num).toDouble(),
                 taxAmount: (item['tax_amount'] as num).toDouble(),
                 quantity: (item['quantity'] as num).toDouble(),
+                discountAmount: (item['discount'] as num?)?.toDouble() ?? 0,
                 itcIneligible: syncedPurchaseItcTreatment == 'ineligible',
               ),
               receivedAt: payload['invoice_date'] as String? ?? DateTime.now().toIso8601String(),
