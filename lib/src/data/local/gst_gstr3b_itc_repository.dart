@@ -690,6 +690,54 @@ class Gstr3bRcmRepository {
       return result;
     }).toList(growable: false);
   }
+
+  /// Returns append-only database-triggered history for RCM liabilities and cash payments.
+  static Future<List<Map<String, Object?>>> listAuditHistory({
+    String? returnPeriod,
+    int limit = 100,
+  }) async {
+    if (returnPeriod != null &&
+        !RegExp(r'^\d{4}-(0[1-9]|1[0-2])
+  final normalized = value.trim();
+  if (normalized.length < 10 ||
+      normalized[4] != '-' ||
+      normalized[7] != '-') {
+    return null;
+  }
+  final year = int.tryParse(normalized.substring(0, 4));
+  final month = int.tryParse(normalized.substring(5, 7));
+  final day = int.tryParse(normalized.substring(8, 10));
+  if (year == null || month == null || day == null) return null;
+  final calendarDate = DateTime.utc(year, month, day);
+  if (calendarDate.year != year ||
+      calendarDate.month != month ||
+      calendarDate.day != day) {
+    return null;
+  }
+  if (normalized.length > 10) {
+    final separator = normalized[10];
+    if (separator != 'T' && separator != 't' && separator != ' ') {
+      return null;
+    }
+    if (DateTime.tryParse(normalized) == null) return null;
+  }
+  return normalized.substring(0, 10);
+}
+).hasMatch(returnPeriod)) {
+      throw const FormatException('Return period must use YYYY-MM format.');
+    }
+    if (limit < 1 || limit > 1000) {
+      throw RangeError.range(limit, 1, 1000, 'limit');
+    }
+    final db = await AppDatabase.instance.database;
+    return db.query(
+      'gst_rcm_audit',
+      where: returnPeriod == null ? null : 'return_period = ?',
+      whereArgs: returnPeriod == null ? null : [returnPeriod],
+      orderBy: 'id DESC',
+      limit: limit,
+    );
+  }
 }
 
 String? _dateOnly(String value) {

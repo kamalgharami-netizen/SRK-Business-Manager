@@ -18,6 +18,7 @@ class _Gstr3bItcPageState extends State<Gstr3bItcPage> {
   List<Map<String, Object?>> _reviewItems = const [];
   List<Map<String, Object?>> _auditItems = const [];
   List<Map<String, Object?>> _rcmItems = const [];
+  List<Map<String, Object?>> _rcmAuditItems = const [];
   bool _loading = false;
   String? _error;
 
@@ -60,6 +61,7 @@ class _Gstr3bItcPageState extends State<Gstr3bItcPage> {
         Gstr3bItcRepository.listPeriodReviewItems(period),
         Gstr3bItcRepository.listAdjustmentAuditTrail(period),
         Gstr3bRcmRepository.listPeriod(period),
+        Gstr3bRcmRepository.listAuditHistory(returnPeriod: period),
       ]);
       if (!mounted) return;
       setState(() {
@@ -67,6 +69,7 @@ class _Gstr3bItcPageState extends State<Gstr3bItcPage> {
         _reviewItems = results[1] as List<Map<String, Object?>>;
         _auditItems = results[2] as List<Map<String, Object?>>;
         _rcmItems = results[3] as List<Map<String, Object?>>;
+        _rcmAuditItems = results[4] as List<Map<String, Object?>>;
       });
     } catch (error) {
       if (!mounted) return;
@@ -487,6 +490,56 @@ class _Gstr3bItcPageState extends State<Gstr3bItcPage> {
     ),
   );
 
+  Widget _rcmAuditCard() => Card(
+    child: Padding(
+      padding: const EdgeInsets.all(12),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          Text('RCM Liability & Cash Payment Audit History',
+              style: Theme.of(context).textTheme.titleMedium),
+          const Text(
+            'Database-triggered history of RCM liability and cash-payment creation, edits and deletion.',
+          ),
+          if (_rcmAuditItems.isEmpty)
+            const ListTile(
+              contentPadding: EdgeInsets.zero,
+              title: Text('এই Return Period-এ কোনো RCM audit event নেই।'),
+            )
+          else
+            for (final row in _rcmAuditItems)
+              ListTile(
+                contentPadding: EdgeInsets.zero,
+                leading: Icon(
+                  row['action'] == 'insert'
+                      ? Icons.add_circle_outline
+                      : row['action'] == 'update'
+                          ? Icons.edit_outlined
+                          : Icons.delete_outline,
+                ),
+                title: Text(
+                  '${row['action'].toString().toUpperCase()} • '
+                  '${row['entity_type'] == 'payment' ? 'CASH PAYMENT' : 'LIABILITY'} • '
+                  '${row['document_reference']}',
+                ),
+                subtitle: Text(
+                  '${row['changed_at']} • Record #${row['record_id']}'
+                  '${row['payment_date'] == null ? '' : ' • Payment: ${row['payment_date']}'}'
+                  '\nIGST ${_money((row['igst'] as num).toDouble())} • '
+                  'CGST ${_money((row['cgst'] as num).toDouble())} • '
+                  'SGST ${_money((row['sgst'] as num).toDouble())} • '
+                  'Cess ${_money((row['cess'] as num).toDouble())}'
+                  '${(row['taxable_value'] as num?) == null ? '' : ' • Taxable: ${_money((row['taxable_value'] as num).toDouble())}'}'
+                  '\nCash: ${row['cash_ledger_reference'] ?? '—'} • '
+                  'Challan: ${row['challan_reference'] ?? '—'}'
+                  '${(row['notes'] as String?)?.trim().isNotEmpty == true ? '\n${row['notes']}' : ''}',
+                ),
+              ),
+        ],
+      ),
+    ),
+  );
+
   @override
   Widget build(BuildContext context) => Scaffold(
     appBar: AppBar(
@@ -539,6 +592,7 @@ class _Gstr3bItcPageState extends State<Gstr3bItcPage> {
         if (_summary != null) _summaryCard(_summary!),
         _reviewCard(),
         _rcmCard(),
+        _rcmAuditCard(),
         _auditCard(),
       ],
     ),
