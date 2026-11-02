@@ -127,6 +127,33 @@ class _ReportsPageState extends State<ReportsPage> {
       """,
       args,
     );
+    final debitNoteDateWhere = <String>[];
+    final debitNoteDateArgs = <Object?>[];
+    if (_startDate != null) {
+      debitNoteDateWhere.add('note_date >= ?');
+      debitNoteDateArgs.add(_date(_startDate!));
+    }
+    if (_endDate != null) {
+      debitNoteDateWhere.add('note_date < ?');
+      debitNoteDateArgs.add(_date(_endDate!.add(const Duration(days: 1))));
+    }
+    final debitNoteDateClause = debitNoteDateWhere.isEmpty
+        ? ''
+        : ' AND ${debitNoteDateWhere.join(' AND ')}';
+    final salesDebitNoteSummary = await db.rawQuery(
+      '''
+      SELECT COALESCE(SUM(grand_total), 0) AS total,
+        COALESCE(SUM(taxable_value), 0) AS taxable,
+        COALESCE(SUM(tax_total), 0) AS tax,
+        COALESCE(SUM(cgst_total), 0) AS cgst,
+        COALESCE(SUM(sgst_total), 0) AS sgst,
+        COALESCE(SUM(igst_total), 0) AS igst,
+        COUNT(*) AS count
+      FROM debit_notes
+      WHERE status = 'posted'$debitNoteDateClause
+      ''',
+      debitNoteDateArgs,
+    );
     final gstBreakdownRows = await db.rawQuery("""
       SELECT COALESCE(NULLIF(ii.hsn_sac, ''), 'Not specified') AS hsn_sac,
         ii.gst_rate,
@@ -214,6 +241,7 @@ class _ReportsPageState extends State<ReportsPage> {
       SELECT p.id, p.name, p.party_type,
         COALESCE((SELECT SUM(i.grand_total - i.amount_paid) FROM invoices i WHERE i.party_id=p.id AND i.invoice_type='sale'),0)
           - COALESCE((SELECT SUM(i.grand_total) FROM invoices i WHERE i.party_id=p.id AND i.invoice_type='sales_return'),0)
+          + COALESCE((SELECT SUM(d.grand_total) FROM debit_notes d WHERE d.party_id=p.id AND d.status='posted'),0)
           - COALESCE((SELECT SUM(pm.amount) FROM payments pm WHERE pm.party_id=p.id AND pm.payment_type='receipt' AND pm.invoice_id IS NULL),0)
           + CASE WHEN p.balance_type='receivable' THEN COALESCE(p.opening_balance,0) ELSE 0 END AS receivable,
         COALESCE((SELECT SUM(i.grand_total - i.amount_paid) FROM invoices i WHERE i.party_id=p.id AND i.invoice_type='purchase'),0)
@@ -364,9 +392,15 @@ class _ReportsPageState extends State<ReportsPage> {
     if (!mounted) return;
     setState(() {
       _summary = {
-        'sales': sales.first['total'], 'salesTax': sales.first['tax'],
-        'salesCgst': sales.first['cgst'], 'salesSgst': sales.first['sgst'], 'salesIgst': sales.first['igst'],
-        'salesCount': sales.first['count'], 'purchases': purchases.first['total'],
+        'sales': (sales.first['total'] as num).toDouble() + (salesDebitNoteSummary.first['total'] as num).toDouble(),
+        'salesTax': (sales.first['tax'] as num).toDouble() + (salesDebitNoteSummary.first['tax'] as num).toDouble(),
+        'salesCgst': (sales.first['cgst'] as num).toDouble() + (salesDebitNoteSummary.first['cgst'] as num).toDouble(),
+        'salesSgst': (sales.first['sgst'] as num).toDouble() + (salesDebitNoteSummary.first['sgst'] as num).toDouble(),
+        'salesIgst': (sales.first['igst'] as num).toDouble() + (salesDebitNoteSummary.first['igst'] as num).toDouble(),
+        'salesCount': sales.first['count'],
+        'salesDebitNoteCount': salesDebitNoteSummary.first['count'],
+        'salesDebitNoteTotal': salesDebitNoteSummary.first['total'],
+        'purchases': purchases.first['total'],
         'purchaseTax': purchases.first['tax'], 'purchaseCgst': purchases.first['cgst'], 'purchaseSgst': purchases.first['sgst'], 'purchaseIgst': purchases.first['igst'], 'purchaseCount': purchases.first['count'],
         'expenses': expense.first['total'], 'expenseCount': expense.first['count'],
         'receipts': payments.first['receipts'], 'payments': payments.first['payments'],
@@ -1138,7 +1172,7 @@ class _ReportsPageState extends State<ReportsPage> {
             _metric('Payments made', _money(_number('payments')), Icons.call_made),
             _metric('Gross difference (sales - purchases - expenses)', _money(_number('sales') - _number('purchases') - _number('expenses')), Icons.analytics),
             const SizedBox(height: 8),
-            Text('Sales: ${_summary['salesCount'] ?? 0} • Purchases: ${_summary['purchaseCount'] ?? 0} • Expenses: ${_summary['expenseCount'] ?? 0}'),
+            Text('Sales invoices: ${_summary['salesCount'] ?? 0} • Sales debit notes: ${_summary['salesDebitNoteCount'] ?? 0} • Purchases: ${_summary['purchaseCount'] ?? 0} • Expenses: ${_summary['expenseCount'] ?? 0}'),
             const Text('This summary uses recorded totals; it is not a complete profit-and-loss statement or statutory financial report.'),
           ],
         ]),
