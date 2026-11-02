@@ -259,11 +259,11 @@ class _Gstr3bItcPageState extends State<Gstr3bItcPage> {
           _amountRow('Table 4(C) — Net ITC', summary.netItc),
           if (!summary.negativeNetItcLiability.isZero) ...[
             _amountRow(
-              'Negative Net ITC — Liability to be considered',
+              'Negative Table 4(C) — Amount requiring liability review',
               summary.negativeNetItcLiability,
             ),
             const Text(
-              'Negative Table 4(C) amount must be considered as liability. Verify tax-head-wise figures and statutory payment treatment before filing.',
+              'Negative net ITC has been flagged. Verify the tax-head-wise calculation and determine the applicable statutory treatment before preparing or filing the return; this screen does not automatically post a tax liability.',
             ),
           ],
           Text('Table 4(D) — Other ITC Disclosure', style: Theme.of(context).textTheme.titleMedium),
