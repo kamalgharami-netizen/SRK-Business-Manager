@@ -17,7 +17,7 @@ class AppDatabase {
   AppDatabase._();
 
   static final AppDatabase instance = AppDatabase._();
-  static const int _databaseVersion = 27;
+  static const int _databaseVersion = 28;
   String? _databasePath;
   String? _activeBusinessId;
   String? _activeBusinessRole;
@@ -300,6 +300,9 @@ class AppDatabase {
         }
         if (oldVersion < 27) {
           await _createPaymentAllocationsSchema(db);
+        }
+        if (oldVersion < 28) {
+          await _createDebitNoteSchema(db);
         }
         if (oldVersion < 26) {
           await _seedDefaultAccounts(db);
@@ -589,6 +592,56 @@ class AppDatabase {
     await _createAccountingSchema(db);
     await _seedDefaultAccounts(db);
     await _createInventoryCostSchema(db);
+    await _createDebitNoteSchema(db);
+  }
+
+  Future<void> _createDebitNoteSchema(DatabaseExecutor db) async {
+    await db.execute('''
+      CREATE TABLE IF NOT EXISTS debit_notes (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        sync_id TEXT UNIQUE,
+        debit_note_number TEXT NOT NULL UNIQUE,
+        original_invoice_id INTEGER NOT NULL,
+        party_id INTEGER,
+        note_date TEXT NOT NULL,
+        reason TEXT NOT NULL,
+        place_of_supply TEXT NOT NULL,
+        tax_type TEXT NOT NULL CHECK (tax_type IN ('intra_state','inter_state')),
+        taxable_value REAL NOT NULL CHECK (taxable_value >= 0),
+        cgst_total REAL NOT NULL DEFAULT 0 CHECK (cgst_total >= 0),
+        sgst_total REAL NOT NULL DEFAULT 0 CHECK (sgst_total >= 0),
+        igst_total REAL NOT NULL DEFAULT 0 CHECK (igst_total >= 0),
+        cess_total REAL NOT NULL DEFAULT 0 CHECK (cess_total >= 0),
+        tax_total REAL NOT NULL CHECK (tax_total >= 0),
+        grand_total REAL NOT NULL CHECK (grand_total >= 0),
+        status TEXT NOT NULL DEFAULT 'posted' CHECK (status IN ('posted','void')),
+        created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+        FOREIGN KEY (original_invoice_id) REFERENCES invoices(id) ON DELETE RESTRICT,
+        FOREIGN KEY (party_id) REFERENCES parties(id) ON DELETE SET NULL
+      )
+    ''');
+    await db.execute('''
+      CREATE TABLE IF NOT EXISTS debit_note_items (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        debit_note_id INTEGER NOT NULL,
+        description TEXT NOT NULL,
+        hsn_sac TEXT,
+        quantity REAL NOT NULL CHECK (quantity > 0),
+        unit TEXT NOT NULL DEFAULT 'pcs',
+        rate REAL NOT NULL CHECK (rate >= 0),
+        taxable_value REAL NOT NULL CHECK (taxable_value >= 0),
+        gst_rate REAL NOT NULL CHECK (gst_rate >= 0 AND gst_rate <= 100),
+        cgst_amount REAL NOT NULL DEFAULT 0 CHECK (cgst_amount >= 0),
+        sgst_amount REAL NOT NULL DEFAULT 0 CHECK (sgst_amount >= 0),
+        igst_amount REAL NOT NULL DEFAULT 0 CHECK (igst_amount >= 0),
+        cess_amount REAL NOT NULL DEFAULT 0 CHECK (cess_amount >= 0),
+        tax_amount REAL NOT NULL CHECK (tax_amount >= 0),
+        line_total REAL NOT NULL CHECK (line_total >= 0),
+        FOREIGN KEY (debit_note_id) REFERENCES debit_notes(id) ON DELETE CASCADE
+      )
+    ''');
+    await db.execute('CREATE INDEX IF NOT EXISTS idx_debit_notes_original_invoice ON debit_notes(original_invoice_id, note_date)');
+    await db.execute('CREATE INDEX IF NOT EXISTS idx_debit_notes_party_date ON debit_notes(party_id, note_date)');
   }
 
   Future<void> _createGstr3bItcSchema(DatabaseExecutor db) async {
