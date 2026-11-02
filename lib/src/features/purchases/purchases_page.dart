@@ -166,9 +166,20 @@ class _PurchasesPageState extends State<PurchasesPage> {
             final quantity = double.tryParse(line.quantity.text) ?? 0;
             final rate = double.tryParse(line.rate.text) ?? 0;
             final gstRate = double.tryParse(line.gstRate.text) ?? 0;
-            final base = quantity * rate;
-            subtotal += base;
-            taxTotal += base * gstRate / 100;
+            final discount = double.tryParse(line.discount.text) ?? 0;
+            final gross = quantity * rate;
+            if (quantity > 0 && rate >= 0 && gstRate >= 0 && gstRate <= 100 &&
+                discount >= 0 && discount <= gross && discount.isFinite) {
+              final tax = GstCalculator.calculate(
+                quantity: quantity,
+                unitRate: rate,
+                gstRate: gstRate,
+                intraState: placeOfSupply.text.trim().toLowerCase() == businessState.toLowerCase(),
+                discount: discount,
+              );
+              subtotal += tax.taxableValue;
+              taxTotal += tax.taxAmount;
+            }
           }
 
           final isIntraState = placeOfSupply.text.trim().toLowerCase() == businessState.toLowerCase();
@@ -335,11 +346,20 @@ class _PurchasesPageState extends State<PurchasesPage> {
             final gstRate = double.parse(line.gstRate.text.trim());
             if (!quantity.isFinite || quantity <= 0 ||
                 !rate.isFinite || rate < 0 ||
-                !gstRate.isFinite || gstRate < 0 || gstRate > 100) {
+                !gstRate.isFinite || gstRate < 0 || gstRate > 100 ||
+                !discount.isFinite || discount < 0 ||
+                discount > quantity * rate) {
               throw StateError('One or more purchase item values are invalid.');
             }
             final isIntraState = placeOfSupply.text.trim().toLowerCase() == businessState.toLowerCase();
-            final tax = GstCalculator.calculate(quantity: quantity, unitRate: rate, gstRate: gstRate, intraState: isIntraState);
+            final discount = double.tryParse(line.discount.text.trim()) ?? 0;
+            final tax = GstCalculator.calculate(
+              quantity: quantity,
+              unitRate: rate,
+              gstRate: gstRate,
+              intraState: isIntraState,
+              discount: discount,
+            );
             final base = tax.taxableValue;
             if (!base.isFinite || !tax.taxAmount.isFinite) throw StateError('Purchase amount is too large.');
             subtotal += base;
@@ -354,7 +374,7 @@ class _PurchasesPageState extends State<PurchasesPage> {
               'quantity': quantity,
               'unit': product['unit'] as String? ?? 'pcs',
               'rate': rate,
-              'discount': 0,
+              'discount': GstCalculator.roundMoney(discount),
               'gst_rate': gstRate,
               'tax_amount': tax.taxAmount,
               'taxable_value': tax.taxableValue,
@@ -573,6 +593,10 @@ class _PurchasesPageState extends State<PurchasesPage> {
       line.dispose();
     }
     notes.dispose();
+    for (final line in lines) {
+      line.dispose();
+    }
+    notes.dispose();
     placeOfSupply.dispose();
     supplierInvoiceNumber.dispose();
     supplierInvoiceDate.dispose();
@@ -648,6 +672,25 @@ class _PurchasesPageState extends State<PurchasesPage> {
                       final number = double.tryParse(value ?? '');
                       if (number == null || !number.isFinite || number < 0) {
                         return 'Enter a valid rate';
+                      }
+                      return null;
+                    },
+                    onChanged: (_) => onChanged(),
+                  ),
+                ),
+                const SizedBox(width: 12),
+                Expanded(
+                  child: TextFormField(
+                    controller: line.discount,
+                    decoration: const InputDecoration(labelText: 'Discount (₹)'),
+                    keyboardType: const TextInputType.numberWithOptions(decimal: true),
+                    validator: (value) {
+                      final discount = double.tryParse(value ?? '');
+                      final quantity = double.tryParse(line.quantity.text) ?? 0;
+                      final rate = double.tryParse(line.rate.text) ?? 0;
+                      if (discount == null || !discount.isFinite || discount < 0 ||
+                          discount > quantity * rate) {
+                        return 'Enter discount within gross value';
                       }
                       return null;
                     },
@@ -870,10 +913,12 @@ class _PurchaseLine {
   final TextEditingController quantity = TextEditingController(text: '1');
   final TextEditingController rate = TextEditingController(text: '0');
   final TextEditingController gstRate = TextEditingController(text: '0');
+  final TextEditingController discount = TextEditingController(text: '0');
 
   void dispose() {
     quantity.dispose();
     rate.dispose();
     gstRate.dispose();
+    discount.dispose();
   }
 }
