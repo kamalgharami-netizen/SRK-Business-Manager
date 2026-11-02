@@ -134,6 +134,31 @@ class AccountingService {
     await _post(txn, sourceType: isReceipt ? 'receipt' : 'payment', sourceId: paymentId, date: date, memo: reference?.trim().isNotEmpty == true ? reference!.trim() : (isReceipt ? 'Customer receipt' : 'Supplier payment'), lines: lines);
   }
 
+  static Future<void> postAdvanceAllocation(Transaction txn, {
+    required int allocationId,
+    required String date,
+    required String paymentType,
+    required double amount,
+  }) async {
+    if (paymentType != 'receipt' && paymentType != 'payment') {
+      throw ArgumentError.value(paymentType, 'paymentType');
+    }
+    if (!amount.isFinite || amount <= 0) {
+      throw ArgumentError.value(amount, 'amount');
+    }
+    final lines = paymentType == 'receipt'
+        ? <Map<String, Object?>>[
+            {'code': '2200', 'debit': amount, 'credit': 0.0, 'description': 'Customer advance applied to invoice'},
+            {'code': '1100', 'debit': 0.0, 'credit': amount, 'description': 'Customer receivable settled by advance'},
+          ]
+        : <Map<String, Object?>>[
+            {'code': '2000', 'debit': amount, 'credit': 0.0, 'description': 'Supplier payable settled by advance'},
+            {'code': '1400', 'debit': 0.0, 'credit': amount, 'description': 'Supplier advance applied to invoice'},
+          ];
+    await _post(txn, sourceType: 'advance_allocation', sourceId: allocationId,
+      date: date, memo: 'Advance allocated to invoice', lines: lines);
+  }
+
   static Future<void> postExpense(Transaction txn, {required int expenseId, required String date, required String category, required String description, required String mode, required double amount}) async {
     final cashCode = mode.toLowerCase() == 'cash' ? '1000' : '1010';
     await _post(txn, sourceType: 'expense', sourceId: expenseId, date: date, memo: '$category: $description', lines: [

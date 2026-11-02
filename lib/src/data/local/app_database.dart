@@ -17,7 +17,7 @@ class AppDatabase {
   AppDatabase._();
 
   static final AppDatabase instance = AppDatabase._();
-  static const int _databaseVersion = 26;
+  static const int _databaseVersion = 27;
   String? _databasePath;
   String? _activeBusinessId;
   String? _activeBusinessRole;
@@ -885,6 +885,24 @@ class AppDatabase {
     ''');
   }
 
+  Future<void> _createPaymentAllocationsSchema(DatabaseExecutor db) async {
+    await db.execute('''
+      CREATE TABLE IF NOT EXISTS payment_allocations (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        sync_id TEXT NOT NULL UNIQUE,
+        payment_id INTEGER NOT NULL,
+        invoice_id INTEGER NOT NULL,
+        amount REAL NOT NULL CHECK (amount > 0),
+        allocation_date TEXT NOT NULL,
+        created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+        FOREIGN KEY (payment_id) REFERENCES payments(id) ON DELETE RESTRICT,
+        FOREIGN KEY (invoice_id) REFERENCES invoices(id) ON DELETE RESTRICT
+      )
+    ''');
+    await db.execute('CREATE INDEX IF NOT EXISTS idx_payment_allocations_payment ON payment_allocations(payment_id)');
+    await db.execute('CREATE INDEX IF NOT EXISTS idx_payment_allocations_invoice ON payment_allocations(invoice_id)');
+  }
+
   Future<void> _createAccountingSchema(Database db) async {
     await db.execute('''
       CREATE TABLE accounts (
@@ -1282,6 +1300,51 @@ class AppDatabase {
         }
         // Quantity is synced as a separate product snapshot. Do not apply the
         // movement delta here, or repeated full pulls would double-count stock.
+        return;
+      }
+
+      if (tableName == 'payment_allocations') {
+        final paymentSyncId = payload['payment_sync_id'] as String?;
+        final invoiceSyncId = payload['invoice_sync_id'] as String?;
+        final amountValue = payload['amount'];
+        if (paymentSyncId == null || paymentSyncId.isEmpty ||
+            invoiceSyncId == null || invoiceSyncId.isEmpty ||
+            amountValue is! num || !amountValue.toDouble().isFinite || amountValue <= 0) {
+          throw const FormatException('Cloud advance allocation is invalid.');
+        }
+        final paymentRows = await txn.query('payments', where: 'sync_id = ?', whereArgs: [paymentSyncId], limit: 1);
+        final invoiceRows = await txn.query('invoices', where: 'sync_id = ?', whereArgs: [invoiceSyncId], limit: 1);
+        if (paymentRows.isEmpty || invoiceRows.isEmpty) {
+          throw StateError('Allocation payment or invoice is not available on this device yet.');
+        }
+        final paymentId = paymentRows.single['id'] as int;
+        final invoiceId = invoiceRows.single['id'] as int;
+        final existing = await txn.query('payment_allocations', columns: ['id'], where: 'sync_id = ?', whereArgs: [recordId], limit: 1);
+        if (existing.isNotEmpty) return;
+        final payment = paymentRows.single;
+        final invoice = invoiceRows.single;
+        final expectedInvoiceType = payment['payment_type'] == 'receipt' ? 'sale' : 'purchase';
+        if (invoice['invoice_type'] != expectedInvoiceType ||
+            payment['party_id'] == null || payment['party_id'] != invoice['party_id']) {
+          throw const FormatException('Cloud allocation party or transaction type does not match.');
+        }
+        final allocationAmount = amountValue.toDouble();
+        final sums = await txn.rawQuery('SELECT COALESCE(SUM(amount),0) AS total FROM payment_allocations WHERE payment_id = ?', [paymentId]);
+        final allocated = (sums.single['total'] as num).toDouble();
+        final advance = (payment['amount'] as num).toDouble();
+        final total = (invoice['grand_total'] as num).toDouble();
+        final paid = ((invoice['amount_paid'] as num?) ?? 0).toDouble();
+        if (allocationAmount > advance - allocated + 0.005 || allocationAmount > total - paid + 0.005) {
+          throw StateError('Cloud allocation exceeds the available advance or invoice due.');
+        }
+        final allocationDate = payload['allocation_date'] as String;
+        final allocationId = await txn.insert('payment_allocations', {
+          'sync_id': recordId, 'payment_id': paymentId, 'invoice_id': invoiceId,
+          'amount': allocationAmount, 'allocation_date': allocationDate,
+        });
+        final updatedPaid = (paid + allocationAmount).clamp(0, total).toDouble();
+        await txn.update('invoices', {'amount_paid': updatedPaid, 'status': updatedPaid >= total - 0.005 ? 'paid' : 'partial'}, where: 'id = ?', whereArgs: [invoiceId]);
+        await AccountingService.postAdvanceAllocation(txn, allocationId: allocationId, date: allocationDate, paymentType: payment['payment_type'] as String, amount: allocationAmount);
         return;
       }
 
