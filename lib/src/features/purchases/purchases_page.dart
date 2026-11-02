@@ -413,6 +413,7 @@ class _PurchasesPageState extends State<PurchasesPage> {
               unitRate: (item['rate'] as num).toDouble(),
               taxAmount: (item['tax_amount'] as num).toDouble(),
               quantity: (item['quantity'] as num).toDouble(),
+              discountAmount: (item['discount'] as num?)?.toDouble() ?? 0,
               itcIneligible: effectiveItcTreatment == Gstr3bItcTreatment.ineligible,
             );
             await InventoryCostService.receivePurchase(
