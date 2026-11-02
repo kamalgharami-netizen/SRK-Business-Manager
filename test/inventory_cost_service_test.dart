@@ -28,6 +28,45 @@ void main() {
       );
     });
 
+    test('deducts purchase discount from eligible inventory cost', () {
+      expect(
+        InventoryCostService.purchaseInventoryUnitCost(
+          unitRate: 100,
+          taxAmount: 18,
+          quantity: 2,
+          discountAmount: 20,
+          itcIneligible: false,
+        ),
+        90,
+      );
+    });
+
+    test('deducts discount before capitalising ineligible GST', () {
+      expect(
+        InventoryCostService.purchaseInventoryUnitCost(
+          unitRate: 100,
+          taxAmount: 32.4,
+          quantity: 2,
+          discountAmount: 20,
+          itcIneligible: true,
+        ),
+        106.2,
+      );
+    });
+
+    test('rejects a discount greater than gross purchase value', () {
+      expect(
+        () => InventoryCostService.purchaseInventoryUnitCost(
+          unitRate: 100,
+          taxAmount: 18,
+          quantity: 2,
+          discountAmount: 201,
+          itcIneligible: false,
+        ),
+        throwsA(isA<StateError>()),
+      );
+    });
+
     test('rejects invalid purchase cost inputs', () {
       expect(
         () => InventoryCostService.purchaseInventoryUnitCost(
