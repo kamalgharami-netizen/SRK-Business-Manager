@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import '../../data/local/app_database.dart';
-import '../../data/local/accounting_service.dart';\nimport '../../data/local/advance_allocation_service.dart';
+import '../../data/local/accounting_service.dart';
+import '../../data/local/advance_allocation_service.dart';
 import '../../data/sync/business_sync_service.dart';
 
 class PaymentsPage extends StatefulWidget {
@@ -401,6 +402,46 @@ class _PaymentsPageState extends State<PaymentsPage> {
     amount.dispose();
     reference.dispose();
     notes.dispose();
+  }
+
+  Future<void> _allocateAdvance() async {
+    final db = await AppDatabase.instance.database;
+    final parties = await db.query('parties', where: "party_type IN ('customer','supplier','both')", orderBy: 'name COLLATE NOCASE');
+    if (!mounted) return;
+    int? partyId, paymentId, invoiceId;
+    var advances = <Map<String, Object?>>[];
+    var invoices = <Map<String, Object?>>[];
+    final amount = TextEditingController();
+    final formKey = GlobalKey<FormState>();
+    final saved = await showDialog<bool>(context: context, builder: (dialogContext) => StatefulBuilder(builder: (dialogContext, refresh) => AlertDialog(
+      title: const Text('Allocate Advance'),
+      content: SizedBox(width: 460, child: Form(key: formKey, child: SingleChildScrollView(child: Column(mainAxisSize: MainAxisSize.min, children: [
+        DropdownButtonFormField<int>(initialValue: partyId, decoration: const InputDecoration(labelText: 'Customer / Supplier'), items: parties.map((p) => DropdownMenuItem<int>(value: p['id'] as int, child: Text(p['name'] as String))).toList(), onChanged: (v) async {
+          partyId=v; paymentId=null; invoiceId=null;
+          if (v != null) {
+            advances=await db.rawQuery('SELECT p.*, COALESCE((SELECT SUM(a.amount) FROM payment_allocations a WHERE a.payment_id=p.id),0) AS allocated FROM payments p WHERE p.party_id=? AND p.invoice_id IS NULL ORDER BY p.id DESC',[v]);
+            advances=advances.where((p)=>(p['amount'] as num).toDouble()-(p['allocated'] as num).toDouble()>.005).toList();
+            final pr=await db.query('parties',columns:['party_type'],where:'id=?',whereArgs:[v],limit:1);
+            final kind=pr.single['party_type']=='supplier'?'purchase':'sale';
+            invoices=await db.query('invoices',where:'party_id=? AND invoice_type=?',whereArgs:[v,kind],orderBy:'id DESC');
+            invoices=invoices.where((i)=>(i['grand_total'] as num).toDouble()-((i['amount_paid'] as num?)??0).toDouble()>.005).toList();
+          } else { advances=[]; invoices=[]; }
+          refresh(() { paymentId=null; invoiceId=null; });
+        }),
+        DropdownButtonFormField<int>(initialValue: paymentId, decoration: const InputDecoration(labelText: 'Available advance'), items: advances.map((p){final left=(p['amount'] as num).toDouble()-(p['allocated'] as num).toDouble(); return DropdownMenuItem<int>(value:p['id'] as int,child:Text('${p['payment_date']} • ₹${left.toStringAsFixed(2)}'));}).toList(), onChanged:(v)=>refresh(()=>paymentId=v)),
+        DropdownButtonFormField<int>(initialValue: invoiceId, decoration: const InputDecoration(labelText: 'Outstanding invoice'), items: invoices.map((i){final due=(i['grand_total'] as num).toDouble()-((i['amount_paid'] as num?)??0).toDouble(); return DropdownMenuItem<int>(value:i['id'] as int,child:Text('${i['invoice_number']} • Due ₹${due.toStringAsFixed(2)}'));}).toList(), onChanged:(v)=>refresh(()=>invoiceId=v)),
+        TextFormField(controller:amount,decoration:const InputDecoration(labelText:'Allocation amount (₹)'),keyboardType:const TextInputType.numberWithOptions(decimal:true),validator:_validateAmount),
+      ])))),
+      actions:[TextButton(onPressed:()=>Navigator.pop(dialogContext,false),child:const Text('Cancel')),FilledButton(onPressed:()=>partyId!=null&&paymentId!=null&&invoiceId!=null&&(formKey.currentState?.validate()??false)?Navigator.pop(dialogContext,true):null,child:const Text('Allocate'))],
+    )));
+    if(saved==true && paymentId!=null && invoiceId!=null) {
+      try {
+        await db.transaction((txn)=>AdvanceAllocationService.allocate(txn:txn,paymentId:paymentId!,invoiceId:invoiceId!,amount:double.parse(amount.text.trim()),allocationDate:DateTime.now().toIso8601String()));
+        await _syncIfConfigured(); await _load();
+        if(mounted) ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content:Text('Advance allocated successfully.')));
+      } catch(e) { if(mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content:Text('Allocation failed: $e'))); }
+    }
+    amount.dispose();
   }
 
   @override

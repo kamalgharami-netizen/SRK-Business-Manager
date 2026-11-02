@@ -906,22 +906,6 @@ class AppDatabase {
     await db.execute('CREATE INDEX IF NOT EXISTS idx_payment_allocations_invoice ON payment_allocations(invoice_id)');
   }
 
-  Future<void> _createPaymentAllocationsSchema(DatabaseExecutor db) async {
-    await db.execute('''CREATE TABLE IF NOT EXISTS payment_allocations (
-      id INTEGER PRIMARY KEY AUTOINCREMENT,
-      sync_id TEXT NOT NULL UNIQUE,
-      payment_id INTEGER NOT NULL,
-      invoice_id INTEGER NOT NULL,
-      amount REAL NOT NULL CHECK (amount > 0),
-      allocation_date TEXT NOT NULL,
-      created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
-      FOREIGN KEY (payment_id) REFERENCES payments(id) ON DELETE RESTRICT,
-      FOREIGN KEY (invoice_id) REFERENCES invoices(id) ON DELETE RESTRICT
-    )''');
-    await db.execute('CREATE INDEX IF NOT EXISTS idx_payment_allocations_payment ON payment_allocations(payment_id)');
-    await db.execute('CREATE INDEX IF NOT EXISTS idx_payment_allocations_invoice ON payment_allocations(invoice_id)');
-  }
-
   Future<void> _createAccountingSchema(Database db) async {
     await db.execute('''
       CREATE TABLE accounts (
