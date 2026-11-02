@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 
 import '../../data/local/app_database.dart';
 import '../../data/local/debit_note_service.dart';
+import 'debit_note_pdf_service.dart';
 
 class DebitNotesPage extends StatefulWidget {
   const DebitNotesPage({super.key});
@@ -44,6 +45,41 @@ class _DebitNotesPageState extends State<DebitNotesPage> {
       _notes = notes;
       _loading = false;
     });
+  }
+
+  Future<void> _printNote(Map<String, Object?> note) async {
+    try {
+      final db = await AppDatabase.instance.database;
+      final rows = await db.rawQuery('''
+        SELECT d.*, i.invoice_number AS original_number,
+               p.name AS party_name, p.gstin AS party_gstin,
+               p.state AS party_state
+        FROM debit_notes d
+        LEFT JOIN invoices i ON i.id = d.original_invoice_id
+        LEFT JOIN parties p ON p.id = d.party_id
+        WHERE d.id = ?
+        LIMIT 1
+      ''', [note['id']]);
+      if (rows.isEmpty) throw StateError('Debit Note record not found.');
+      final items = await db.query(
+        'debit_note_items',
+        where: 'debit_note_id = ?',
+        whereArgs: [note['id']],
+        orderBy: 'id ASC',
+      );
+      final settingsRows = await db.query('app_settings');
+      final business = <String, String>{
+        for (final row in settingsRows)
+          row['setting_key'] as String: row['setting_value'] as String,
+      };
+      await DebitNotePdfService.printDebitNote(
+        note: rows.first,
+        items: items,
+        business: business,
+      );
+    } catch (error) {
+      _message('Debit Note PDF could not be created: $error');
+    }
   }
 
   void _message(String value) {
@@ -244,7 +280,18 @@ class _DebitNotesPageState extends State<DebitNotesPage> {
                     title: Text(note['debit_note_number']?.toString() ?? ''),
                     subtitle: Text('Against ${note['original_number'] ?? '-'} • ${note['party_name'] ?? 'Walk-in'}\n${note['reason'] ?? ''}'),
                     isThreeLine: true,
-                    trailing: Text('₹${((note['grand_total'] as num?)?.toDouble() ?? 0).toStringAsFixed(2)}'),
+                    trailing: Row(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        Text('₹${((note['grand_total'] as num?)?.toDouble() ?? 0).toStringAsFixed(2)}'),
+                        IconButton(
+                          tooltip: 'PDF / Print',
+                          icon: const Icon(Icons.picture_as_pdf),
+                          onPressed: () => _printNote(note),
+                        ),
+                      ],
+                    ),
+                    onTap: () => _printNote(note),
                   )),
             ],
           ),
