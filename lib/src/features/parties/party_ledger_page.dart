@@ -14,6 +14,8 @@ class _PartyLedgerPageState extends State<PartyLedgerPage> {
   bool _loading = true;
   double _receivable = 0;
   double _payable = 0;
+  double _customerAdvance = 0;
+  double _supplierAdvance = 0;
 
   @override
   void initState() {
@@ -48,6 +50,8 @@ class _PartyLedgerPageState extends State<PartyLedgerPage> {
         ? ((party['opening_balance'] as num?) ?? 0).toDouble() : 0.0;
     var payable = party['balance_type'] == 'payable'
         ? ((party['opening_balance'] as num?) ?? 0).toDouble() : 0.0;
+    var customerAdvance = 0.0;
+    var supplierAdvance = 0.0;
 
     final invoices = await db.query('invoices',
       where: 'party_id = ? AND invoice_type IN (\'sale\',\'sales_return\',\'purchase\',\'purchase_return\')',
@@ -80,7 +84,9 @@ class _PartyLedgerPageState extends State<PartyLedgerPage> {
         'reference': (payment['reference'] as String?)?.trim().isNotEmpty == true
             ? payment['reference'] : 'Payment #${payment['id']}',
         'description': type == 'receipt' ? 'Receipt' : 'Payment',
-        'kind': type,
+        'kind': payment['invoice_id'] == null
+            ? (type == 'receipt' ? 'customer_advance' : 'supplier_advance')
+            : type,
         'amount': ((payment['amount'] as num?) ?? 0).toDouble(),
         'sort': (payment['id'] as int) + 1000000000,
       });
@@ -99,6 +105,8 @@ class _PartyLedgerPageState extends State<PartyLedgerPage> {
         'payable_change': 0.0,
         'receivable': receivable,
         'payable': payable,
+        'customer_advance': customerAdvance,
+        'supplier_advance': supplierAdvance,
       }
     ];
     for (final event in events) {
@@ -114,6 +122,10 @@ class _PartyLedgerPageState extends State<PartyLedgerPage> {
         case 'purchase_return':
         case 'payment':
           payable -= amount;
+        case 'customer_advance':
+          customerAdvance += amount;
+        case 'supplier_advance':
+          supplierAdvance += amount;
       }
       rows.add({
         ...event,
@@ -127,8 +139,12 @@ class _PartyLedgerPageState extends State<PartyLedgerPage> {
           'purchase_return' || 'payment' => -amount,
           _ => 0.0,
         },
+        'customer_advance_change': event['kind'] == 'customer_advance' ? amount : 0.0,
+        'supplier_advance_change': event['kind'] == 'supplier_advance' ? amount : 0.0,
         'receivable': receivable,
         'payable': payable,
+        'customer_advance': customerAdvance,
+        'supplier_advance': supplierAdvance,
       });
     }
     if (!mounted) return;
@@ -136,6 +152,8 @@ class _PartyLedgerPageState extends State<PartyLedgerPage> {
       _entries = rows;
       _receivable = receivable;
       _payable = payable;
+      _customerAdvance = customerAdvance;
+      _supplierAdvance = supplierAdvance;
       _loading = false;
     });
   }
@@ -178,6 +196,8 @@ class _PartyLedgerPageState extends State<PartyLedgerPage> {
                       Wrap(spacing: 12, runSpacing: 12, children: [
                         _balanceCard('Receivable balance', _receivable, Icons.call_received),
                         _balanceCard('Payable balance', _payable, Icons.call_made),
+                        _balanceCard('Customer advances', _customerAdvance, Icons.account_balance_wallet),
+                        _balanceCard('Supplier advances', _supplierAdvance, Icons.payments),
                       ]),
                       const SizedBox(height: 16),
                       if (_loading) const LinearProgressIndicator(),
