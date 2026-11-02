@@ -64,11 +64,11 @@ class GstrRcmReconciliationCsvExport {
   static String _escape(String value) {
     final safe = RegExp(r'^[\s]*[=+\-@]').hasMatch(value) ||
             value.startsWith('\t') || value.startsWith('\r')
-        ? "'" + value
+        ? "'$value
         : value;
     if (safe.contains(',') || safe.contains('"') ||
         safe.contains('\n') || safe.contains('\r')) {
-      return '"' + safe.replaceAll('"', '""') + '"';
+      return '"${safe.replaceAll('"', '""')}"';
     }
     return safe;
   }
