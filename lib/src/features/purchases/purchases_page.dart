@@ -161,6 +161,7 @@ class _PurchasesPageState extends State<PurchasesPage> {
       builder: (dialogContext) => StatefulBuilder(
         builder: (dialogContext, refreshDialog) {
           double subtotal = 0;
+          double discountTotal = 0;
           double taxTotal = 0;
           for (final line in lines) {
             final quantity = double.tryParse(line.quantity.text) ?? 0;
@@ -363,6 +364,7 @@ class _PurchasesPageState extends State<PurchasesPage> {
             final base = tax.taxableValue;
             if (!base.isFinite || !tax.taxAmount.isFinite) throw StateError('Purchase amount is too large.');
             subtotal += base;
+            discountTotal += discount;
             taxTotal += tax.taxAmount;
             cgstTotal += tax.cgstAmount;
             sgstTotal += tax.sgstAmount;
@@ -386,6 +388,7 @@ class _PurchasesPageState extends State<PurchasesPage> {
           }
 
           subtotal = GstCalculator.roundMoney(subtotal);
+          discountTotal = GstCalculator.roundMoney(discountTotal);
           taxTotal = GstCalculator.roundMoney(taxTotal);
           cgstTotal = GstCalculator.roundMoney(cgstTotal);
           sgstTotal = GstCalculator.roundMoney(sgstTotal);
@@ -399,6 +402,7 @@ class _PurchasesPageState extends State<PurchasesPage> {
             'party_id': supplierId,
             'invoice_date': now.toIso8601String(),
             'subtotal': subtotal,
+            'discount_total': discountTotal,
             'tax_total': taxTotal,
             'place_of_supply': placeOfSupply.text.trim(),
             'tax_type': placeOfSupply.text.trim().toLowerCase() == businessState.toLowerCase() ? 'intra_state' : 'inter_state',
@@ -808,7 +812,7 @@ class _PurchasesPageState extends State<PurchasesPage> {
                     contentPadding: EdgeInsets.zero,
                     title: Text(item['description']?.toString() ?? ''),
                     subtitle: Text(
-                      '${item['quantity']} ${item['unit']} × ₹${item['rate']}  |  GST ${item['gst_rate']}%',
+                      '${item['quantity']} ${item['unit']} × ₹${item['rate']}  |  Discount ₹${item['discount'] ?? 0}  |  GST ${item['gst_rate']}%',
                     ),
                     trailing: Text(
                       '₹${((item['line_total'] as num?)?.toDouble() ?? 0).toStringAsFixed(2)}',
