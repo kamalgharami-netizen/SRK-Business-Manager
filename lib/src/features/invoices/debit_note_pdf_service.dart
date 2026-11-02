@@ -35,18 +35,18 @@ class DebitNotePdfService {
             pw.Expanded(child: pw.Column(
               crossAxisAlignment: pw.CrossAxisAlignment.start,
               children: [
-                pw.Text(companyName, style: pw.TextStyle(fontSize: 20, fontWeight: pw.FontWeight.bold)),
+                pw.Text(companyName, style: const pw.TextStyle(fontSize: 20, fontWeight: pw.FontWeight.bold)),
                 if ((business['company_address'] ?? '').isNotEmpty) pw.Text(business['company_address']!),
                 if ((business['company_phone'] ?? '').isNotEmpty) pw.Text('Phone: ${business['company_phone']}'),
                 if ((business['company_gstin'] ?? '').isNotEmpty) pw.Text('GSTIN: ${business['company_gstin']}'),
               ],
             )),
-            pw.Text('SALES DEBIT NOTE', style: pw.TextStyle(fontSize: 17, fontWeight: pw.FontWeight.bold)),
+            pw.Text('SALES DEBIT NOTE', style: const pw.TextStyle(fontSize: 17, fontWeight: pw.FontWeight.bold)),
           ],
         ),
         pw.SizedBox(height: 14),
         pw.Divider(),
-        pw.Text('Debit Note No: $number', style: pw.TextStyle(fontWeight: pw.FontWeight.bold)),
+        pw.Text('Debit Note No: $number', style: const pw.TextStyle(fontWeight: pw.FontWeight.bold)),
         pw.Text('Date: $date'),
         pw.Text('Original Sales Invoice: ${note['original_number'] ?? '-'}'),
         pw.Text('Customer: ${note['party_name'] ?? 'Walk-in customer'}'),
@@ -72,7 +72,7 @@ class DebitNotePdfService {
               children: ['Description / HSN', 'Qty', 'Unit', 'Rate', 'Taxable', 'Line total']
                   .map((label) => pw.Padding(
                     padding: const pw.EdgeInsets.all(5),
-                    child: pw.Text(label, style: pw.TextStyle(fontSize: 8, fontWeight: pw.FontWeight.bold)),
+                    child: pw.Text(label, style: const pw.TextStyle(fontSize: 8, fontWeight: pw.FontWeight.bold)),
                   )).toList(),
             ),
             ...items.map((item) => pw.TableRow(children: [
