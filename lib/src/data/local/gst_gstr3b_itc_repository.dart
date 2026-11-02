@@ -656,8 +656,8 @@ class Gstr3bRcmRepository {
         'payment_count': 0,
         'payment_references': <String>[],
       });
-      for (final head in ['igst', 'cgst', 'sgst', 'cess']) {
-        final key = '\${head}_paid';
+      for (final head in const ['igst', 'cgst', 'sgst', 'cess']) {
+        final key = '${head}_paid';
         final next = (summary[key] as double) +
             (payment[head] as num).toDouble();
         if (!next.isFinite) {
@@ -670,8 +670,8 @@ class Gstr3bRcmRepository {
       }
       summary['payment_count'] = (summary['payment_count'] as int) + 1;
       (summary['payment_references'] as List<String>).add(
-        '\${payment['payment_date']} • \${payment['cash_ledger_reference']} • '
-        '\${payment['challan_reference']}',
+        '${payment['payment_date']} • ${payment['cash_ledger_reference']} • '
+        '${payment['challan_reference']}',
       );
     }
 
