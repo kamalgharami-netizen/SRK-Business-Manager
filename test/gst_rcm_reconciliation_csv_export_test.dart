@@ -21,7 +21,7 @@ void main() {
           'payment_references': '2026-11-01 • CASH-1 • CIN-1',
         },
       ], returnPeriod: '2026-11');
-      expect(csv, startsWith('\\uFEFF'));
+      expect(csv, startsWith('\uFEFF'));
       expect(csv, contains('RCM-001,Supplier A,1000.00,18.00,10.00,8.00'));
       expect(csv, contains('9.00,9.00,0.00,9.00,0.00,9.00'));
       expect(csv, contains('MANUAL_CHALLAN_VERIFICATION_REQUIRED'));
