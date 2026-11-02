@@ -51,6 +51,10 @@ void main() {
       expect(report.errorCount, 0);
       expect(report.canPrepareDraft, isTrue);
       expect(report.issues.any((issue) => issue.code == 'manual_scope_review'), isTrue);
+      expect(
+        report.issues.singleWhere((issue) => issue.code == 'manual_scope_review').message,
+        contains('sales returns and credit/debit notes'),
+      );
     });
 
     test('accepts explicit taxable value when supplied by another data source', () {
