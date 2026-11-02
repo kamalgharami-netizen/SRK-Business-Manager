@@ -628,24 +628,67 @@ class Gstr3bRcmRepository {
       throw const FormatException('Return period must use YYYY-MM format.');
     }
     final db = await AppDatabase.instance.database;
-    return db.rawQuery('''
-      SELECT l.*,
-        COALESCE(p.igst_paid, 0) AS igst_paid,
-        COALESCE(p.cgst_paid, 0) AS cgst_paid,
-        COALESCE(p.sgst_paid, 0) AS sgst_paid,
-        COALESCE(p.cess_paid, 0) AS cess_paid,
-        COALESCE(p.payment_count, 0) AS payment_count,
-        COALESCE(p.payment_references, '') AS payment_references
-      FROM gst_rcm_liabilities l
-      LEFT JOIN (
-        SELECT liability_id, SUM(igst) AS igst_paid, SUM(cgst) AS cgst_paid,
-          SUM(sgst) AS sgst_paid, SUM(cess) AS cess_paid, COUNT(*) AS payment_count,
-          GROUP_CONCAT(payment_date || ' • ' || cash_ledger_reference || ' • ' || challan_reference, char(10)) AS payment_references
-        FROM gst_rcm_payments GROUP BY liability_id
-      ) p ON p.liability_id = l.id
+    final liabilities = await db.query(
+      'gst_rcm_liabilities',
+      where: 'return_period = ?',
+      whereArgs: [returnPeriod],
+      orderBy: 'id DESC',
+    );
+    if (liabilities.isEmpty) return const [];
+
+    // Avoid SQLite SUM() on REAL values: an aggregate can overflow even
+    // when every individual payment row is finite.
+    final payments = await db.rawQuery('''
+      SELECT p.*
+      FROM gst_rcm_payments p
+      INNER JOIN gst_rcm_liabilities l ON l.id = p.liability_id
       WHERE l.return_period = ?
-      ORDER BY l.id DESC
+      ORDER BY p.liability_id, p.payment_date, p.id
     ''', [returnPeriod]);
+    final summaries = <int, Map<String, Object?>>{};
+    for (final payment in payments) {
+      final liabilityId = payment['liability_id'] as int;
+      final summary = summaries.putIfAbsent(liabilityId, () => {
+        'igst_paid': 0.0,
+        'cgst_paid': 0.0,
+        'sgst_paid': 0.0,
+        'cess_paid': 0.0,
+        'payment_count': 0,
+        'payment_references': <String>[],
+      });
+      for (final head in ['igst', 'cgst', 'sgst', 'cess']) {
+        final key = '\${head}_paid';
+        final next = (summary[key] as double) +
+            (payment[head] as num).toDouble();
+        if (!next.isFinite) {
+          throw StateError(
+            'RCM payment totals exceed the supported numeric range; '
+            'review the existing payment records.',
+          );
+        }
+        summary[key] = next;
+      }
+      summary['payment_count'] = (summary['payment_count'] as int) + 1;
+      (summary['payment_references'] as List<String>).add(
+        '\${payment['payment_date']} • \${payment['cash_ledger_reference']} • '
+        '\${payment['challan_reference']}',
+      );
+    }
+
+    return liabilities.map((liability) {
+      final result = Map<String, Object?>.from(liability);
+      final summary = summaries[liability['id'] as int];
+      result.addAll({
+        'igst_paid': summary?['igst_paid'] ?? 0.0,
+        'cgst_paid': summary?['cgst_paid'] ?? 0.0,
+        'sgst_paid': summary?['sgst_paid'] ?? 0.0,
+        'cess_paid': summary?['cess_paid'] ?? 0.0,
+        'payment_count': summary?['payment_count'] ?? 0,
+        'payment_references':
+            (summary?['payment_references'] as List<String>?)?.join('\n') ?? '',
+      });
+      return result;
+    }).toList(growable: false);
   }
 }
 
