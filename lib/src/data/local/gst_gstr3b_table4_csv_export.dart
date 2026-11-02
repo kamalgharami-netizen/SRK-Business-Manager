@@ -48,7 +48,7 @@ class Gstr3bTable4CsvExport {
   static String _escape(String value) {
     final safe = RegExp(r'^[\s]*[=+\-@]').hasMatch(value) ||
             value.startsWith('\t') || value.startsWith('\r')
-        ? "'$value
+        ? "'$value"
         : value;
     if (safe.contains(',') || safe.contains('"') ||
         safe.contains('\n') || safe.contains('\r')) {
