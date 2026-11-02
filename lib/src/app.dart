@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import 'config/app_config.dart';
 import 'features/auth/cloud_auth_gate.dart';
 import 'features/dashboard/dashboard_page.dart';
+import 'theme/app_theme.dart';
 
 class SrkBusinessManagerApp extends StatelessWidget {
   const SrkBusinessManagerApp({super.key, required this.config});
