@@ -40,13 +40,26 @@ class InventoryCostService {
     required double taxAmount,
     required double quantity,
     required bool itcIneligible,
+    double discountAmount = 0,
   }) {
     if (!unitRate.isFinite || unitRate < 0 ||
         !taxAmount.isFinite || taxAmount < 0 ||
-        !quantity.isFinite || quantity <= 0) {
-      throw StateError('Purchase rate, tax and quantity must be finite valid numbers.');
+        !quantity.isFinite || quantity <= 0 ||
+        !discountAmount.isFinite || discountAmount < 0) {
+      throw StateError(
+        'Purchase rate, tax, discount and quantity must be finite valid numbers.',
+      );
     }
-    final cost = itcIneligible ? unitRate + taxAmount / quantity : unitRate;
+    final grossValue = unitRate * quantity;
+    if (!grossValue.isFinite || discountAmount > grossValue + 0.005) {
+      throw StateError('Purchase discount cannot exceed the gross item value.');
+    }
+    final netTaxableValue = (grossValue - discountAmount).clamp(
+      0.0,
+      double.infinity,
+    ).toDouble();
+    final netUnitCost = netTaxableValue / quantity;
+    final cost = itcIneligible ? netUnitCost + taxAmount / quantity : netUnitCost;
     if (!cost.isFinite || cost < 0) {
       throw StateError('Calculated purchase inventory unit cost is invalid.');
     }
