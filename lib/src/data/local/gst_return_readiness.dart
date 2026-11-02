@@ -251,7 +251,7 @@ class GstReturnReadiness {
     issues.add(const GstReadinessIssue(
       severity: GstReadinessSeverity.warning,
       code: 'manual_scope_review',
-      message: 'This preflight does not cover every GSTR-1 table, amendments, advances, exports, e-commerce supplies, or GSTN schema validation. Review these separately before filing.',
+      message: 'This preflight does not cover every GSTR-1 table, sales returns and credit/debit notes, amendments, advances, exports and zero-rated supplies, nil/exempt/non-GST supplies, e-commerce supplies, or GSTN schema validation. Review these separately before filing.',
     ));
     return GstReadinessReport(List.unmodifiable(issues));
   }
