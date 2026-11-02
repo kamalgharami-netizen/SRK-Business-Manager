@@ -1,7 +1,12 @@
+import 'dart:convert';
+import 'dart:typed_data';
+
+import 'package:file_picker/file_picker.dart';
 import 'package:flutter/material.dart';
 
 import '../../data/local/gst_gstr3b_itc.dart';
 import '../../data/local/gst_gstr3b_itc_repository.dart';
+import '../../data/local/gst_rcm_audit_csv_export.dart';
 
 class Gstr3bItcPage extends StatefulWidget {
   const Gstr3bItcPage({super.key});
@@ -490,6 +495,39 @@ class _Gstr3bItcPageState extends State<Gstr3bItcPage> {
     ),
   );
 
+
+  Future<void> _exportRcmAuditCsv() async {
+    if (_rcmAuditItems.isEmpty) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('রপ্তানির জন্য RCM audit history পাওয়া যায়নি।')),
+      );
+      return;
+    }
+    try {
+      final content = GstrRcmAuditCsvExport.build(
+        _rcmAuditItems,
+        returnPeriod: _periodController.text.trim(),
+      );
+      final stamp = DateTime.now().toIso8601String().substring(0, 10);
+      final savedPath = await FilePicker.platform.saveFile(
+        dialogTitle: 'RCM Audit History CSV সংরক্ষণ করুন',
+        fileName: 'rcm-audit-history-${_periodController.text.trim()}-$stamp.csv',
+        type: FileType.custom,
+        allowedExtensions: ['csv'],
+        bytes: Uint8List.fromList(utf8.encode(content)),
+      );
+      if (!mounted || savedPath == null) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('RCM Audit History CSV সংরক্ষণের প্রক্রিয়া সম্পন্ন হয়েছে।')),
+      );
+    } catch (error) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('RCM Audit History CSV রপ্তানি করা যায়নি: $error')),
+      );
+    }
+  }
+
   Widget _rcmAuditCard() => Card(
     child: Padding(
       padding: const EdgeInsets.all(12),
@@ -500,6 +538,15 @@ class _Gstr3bItcPageState extends State<Gstr3bItcPage> {
               style: Theme.of(context).textTheme.titleMedium),
           const Text(
             'Database-triggered history of RCM liability and cash-payment creation, edits and deletion.',
+          ),
+          const SizedBox(height: 8),
+          Align(
+            alignment: Alignment.centerLeft,
+            child: OutlinedButton.icon(
+              onPressed: _rcmAuditItems.isEmpty ? null : _exportRcmAuditCsv,
+              icon: const Icon(Icons.download),
+              label: const Text('Export Audit History CSV'),
+            ),
           ),
           if (_rcmAuditItems.isEmpty)
             const ListTile(
