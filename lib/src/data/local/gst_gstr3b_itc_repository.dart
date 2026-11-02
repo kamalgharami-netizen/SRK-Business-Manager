@@ -571,17 +571,43 @@ class Gstr3bRcmRepository {
         where: 'id = ?', whereArgs: [liabilityId], limit: 1);
       if (rows.isEmpty) throw StateError('RCM liability was not found.');
       final liability = rows.first;
-      final paidRows = await txn.rawQuery('''
-        SELECT COALESCE(SUM(igst), 0) AS igst,
-               COALESCE(SUM(cgst), 0) AS cgst,
-               COALESCE(SUM(sgst), 0) AS sgst,
-               COALESCE(SUM(cess), 0) AS cess
-        FROM gst_rcm_payments WHERE liability_id = ?
-      ''', [liabilityId]);
-      final paid = paidRows.first;
-      bool exceeds(String key, double amount) =>
-          amount > ((liability[key] as num).toDouble() -
-              (paid[key] as num).toDouble()) + 0.005;
+      // Sum individual payment rows in Dart so SQLite cannot silently
+      // return an infinite floating-point aggregate for very large values.
+      final paymentRows = await txn.query(
+        'gst_rcm_payments',
+        columns: ['igst', 'cgst', 'sgst', 'cess'],
+        where: 'liability_id = ?',
+        whereArgs: [liabilityId],
+      );
+      final paid = <String, double>{
+        'igst': 0,
+        'cgst': 0,
+        'sgst': 0,
+        'cess': 0,
+      };
+      for (final payment in paymentRows) {
+        for (final key in paid.keys) {
+          final next = paid[key]! + (payment[key] as num).toDouble();
+          if (!next.isFinite) {
+            throw StateError(
+              'Recorded RCM payments exceed the supported numeric range; '
+              'review the existing payment records.',
+            );
+          }
+          paid[key] = next;
+        }
+      }
+      bool exceeds(String key, double amount) {
+        final outstanding =
+            (liability[key] as num).toDouble() - paid[key]!;
+        if (!outstanding.isFinite || outstanding < -0.005) {
+          throw StateError(
+            'Recorded RCM payments exceed the liability; review the '
+            'existing payment records before adding another payment.',
+          );
+        }
+        return amount > outstanding + 0.005;
+      }
       if (exceeds('igst', tax.igst) || exceeds('cgst', tax.cgst) ||
           exceeds('sgst', tax.sgst) || exceeds('cess', tax.cess)) {
         throw StateError('Payment exceeds the outstanding RCM liability for one or more tax heads.');
