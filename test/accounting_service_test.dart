@@ -34,7 +34,7 @@ Future<Database> _openAccountingDatabase() async {
       credit REAL NOT NULL DEFAULT 0
     )
   ''');
-  for (final code in ['1000', '1010', '1100', '1200', '1300', '1310', '2000', '2100', '4000', '5000', '5200']) {
+  for (final code in ['1000', '1010', '1100', '1200', '1300', '1310', '1400', '2000', '2100', '2200', '4000', '5000', '5200']) {
     await db.insert('accounts', {'account_code': code, 'is_active': 1});
   }
   return db;
@@ -352,6 +352,78 @@ void main() {
       expect(lines, hasLength(2));
       expect(lines[0]['debit'], 250);
       expect(lines[1]['credit'], 250);
+    });
+
+    test('posts an unallocated customer receipt to customer advances', () async {
+      final db = await _openAccountingDatabase();
+      addTearDown(db.close);
+
+      await db.transaction((txn) => AccountingService.postPayment(
+            txn,
+            paymentId: 43,
+            date: '2026-11-02',
+            paymentType: 'receipt',
+            mode: 'cash',
+            amount: 500,
+            reference: 'ADV-43',
+            invoiceLinked: false,
+          ));
+
+      final lines = await db.rawQuery('''
+        SELECT accounts.account_code, journal_lines.debit, journal_lines.credit
+        FROM journal_lines JOIN accounts ON accounts.id = journal_lines.account_id
+        ORDER BY journal_lines.id
+      ''');
+      expect(lines.map((row) => row['account_code']), ['1000', '2200']);
+      expect(lines[0]['debit'], 500);
+      expect(lines[1]['credit'], 500);
+    });
+
+    test('posts an unallocated supplier payment to supplier advances', () async {
+      final db = await _openAccountingDatabase();
+      addTearDown(db.close);
+
+      await db.transaction((txn) => AccountingService.postPayment(
+            txn,
+            paymentId: 44,
+            date: '2026-11-02',
+            paymentType: 'payment',
+            mode: 'upi',
+            amount: 275,
+            reference: 'ADV-44',
+            invoiceLinked: false,
+          ));
+
+      final lines = await db.rawQuery('''
+        SELECT accounts.account_code, journal_lines.debit, journal_lines.credit
+        FROM journal_lines JOIN accounts ON accounts.id = journal_lines.account_id
+        ORDER BY journal_lines.id
+      ''');
+      expect(lines.map((row) => row['account_code']), ['1400', '1010']);
+      expect(lines[0]['debit'], 275);
+      expect(lines[1]['credit'], 275);
+    });
+
+    test('rejects unsupported payment types, modes, and non-positive amounts', () async {
+      final db = await _openAccountingDatabase();
+      addTearDown(db.close);
+
+      Future<void> post({String type = 'receipt', String mode = 'cash', double amount = 10}) =>
+          db.transaction((txn) => AccountingService.postPayment(
+                txn,
+                paymentId: 45,
+                date: '2026-11-02',
+                paymentType: type,
+                mode: mode,
+                amount: amount,
+                reference: null,
+              ));
+
+      await expectLater(post(type: 'refund'), throwsArgumentError);
+      await expectLater(post(mode: 'crypto'), throwsArgumentError);
+      await expectLater(post(amount: double.infinity), throwsArgumentError);
+      await expectLater(post(amount: 0), throwsArgumentError);
+      expect(await db.query('journal_entries'), isEmpty);
     });
 
     test('posts a balanced supplier payment journal', () async {

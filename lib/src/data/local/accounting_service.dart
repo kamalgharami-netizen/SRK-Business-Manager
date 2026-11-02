@@ -109,7 +109,18 @@ class AccountingService {
   }
 
   static Future<void> postPayment(Transaction txn, {required int paymentId, required String date, required String paymentType, required String mode, required double amount, required String? reference, bool invoiceLinked = true}) async {
-    final cashCode = mode.toLowerCase() == 'cash' ? '1000' : '1010';
+    if (paymentType != 'receipt' && paymentType != 'payment') {
+      throw ArgumentError.value(paymentType, 'paymentType');
+    }
+    if (!amount.isFinite || amount <= 0) {
+      throw ArgumentError.value(amount, 'amount');
+    }
+    const supportedModes = {'cash', 'upi', 'bank', 'card', 'cheque'};
+    final normalizedMode = mode.trim().toLowerCase();
+    if (!supportedModes.contains(normalizedMode)) {
+      throw ArgumentError.value(mode, 'mode');
+    }
+    final cashCode = normalizedMode == 'cash' ? '1000' : '1010';
     final isReceipt = paymentType == 'receipt';
     final lines = <Map<String, Object?>>[
       if (isReceipt) ...[
