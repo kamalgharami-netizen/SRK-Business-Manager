@@ -773,15 +773,15 @@ class _ReportsPageState extends State<ReportsPage> {
     return Card(child: Padding(padding: const EdgeInsets.all(12),
       child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
         Text('Purchase Return / ITC Reversal Audit', style: Theme.of(context).textTheme.titleMedium),
-        Text('নির্বাচিত সময়ে সংরক্ষিত Purchase Return: \${_gstr1PurchaseReturnRows.length}'),
+        Text('নির্বাচিত সময়ে সংরক্ষিত Purchase Return: ${_gstr1PurchaseReturnRows.length}'),
         OutlinedButton.icon(
           onPressed: _gstr1PurchaseReturnRows.isEmpty ? null : _exportPurchaseReturnItcAudit,
           icon: const Icon(Icons.download),
           label: const Text('Purchase Return ITC Audit CSV রপ্তানি করুন')),
         for (final row in _gstr1PurchaseReturnRows)
           ListTile(dense: true, contentPadding: EdgeInsets.zero,
-            title: Text("\${row['return_number']} • \${row['review_status']}"),
-            subtitle: Text("মূল Purchase Invoice: \${row['original_invoice_number'] ?? 'সংযোগ নেই'} • তারিখ: \${row['return_date']} • করযোগ্য মূল্য: \${_money((row['taxable_value'] as num?)?.toDouble() ?? 0)} • GST: \${_money((row['tax_amount'] as num?)?.toDouble() ?? 0)}"),
+            title: Text("${row['return_number']} • ${row['review_status']}"),
+            subtitle: Text("মূল Purchase Invoice: ${row['original_invoice_number'] ?? 'সংযোগ নেই'} • তারিখ: ${row['return_date']} • করযোগ্য মূল্য: ${_money((row['taxable_value'] as num?)?.toDouble() ?? 0)} • GST: ${_money((row['tax_amount'] as num?)?.toDouble() ?? 0)}"),
             trailing: Text(_money((row['return_value'] as num?)?.toDouble() ?? 0))),
         const Text('এটি Purchase Return ও সম্ভাব্য ITC reversal-এর audit report মাত্র। মূল Purchase Invoice, ITC claim status, supplier credit note, return reason এবং প্রযোজ্য GST বিধি যাচাই ছাড়া ITC স্বয়ংক্রিয়ভাবে reverse করা হবে না.'),
       ])));
