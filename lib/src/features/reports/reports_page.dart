@@ -44,7 +44,6 @@ class _ReportsPageState extends State<ReportsPage> {
   Gstr1ClassificationSummary? _gstr1ClassificationSummary;
   List<Gstr1HsnRateSummary> _gstr1HsnSummary = const [];
   List<Map<String, Object?>> _gstr1CreditNoteRows = const [];
-      _gstr1PurchaseReturnRows = const [];
   List<Map<String, Object?>> _gstr1PurchaseReturnRows = const [];
 
   @override
