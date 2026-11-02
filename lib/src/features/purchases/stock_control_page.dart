@@ -269,6 +269,7 @@ class _StockControlPageState extends State<StockControlPage> {
           double cgstTotal = 0;
           double sgstTotal = 0;
           double igstTotal = 0;
+          double fifoInventoryCostRemoved = 0;
 
           for (final line in selectedLines) {
             final item = line.item;
@@ -395,13 +396,15 @@ class _StockControlPageState extends State<StockControlPage> {
               ..['original_invoice_item_sync_id'] = originalItemSyncId;
             syncedReturnItems.add(syncedItem);
             final qty = (item['quantity'] as num).toDouble();
-            await InventoryCostService.removePurchaseReturnAtSource(
+            final removedCost =
+                await InventoryCostService.removePurchaseReturnAtSource(
               txn,
               productId: productId,
               purchaseInvoiceId: invoiceId!,
               purchaseInvoiceItemId: item['original_invoice_item_id'] as int,
               quantity: qty,
             );
+            fifoInventoryCostRemoved += removedCost;
             await txn.rawUpdate(
               'UPDATE products SET current_stock = current_stock - ?, updated_at = ? WHERE id = ?',
               [qty, now.toIso8601String(), productId],
@@ -434,6 +437,12 @@ class _StockControlPageState extends State<StockControlPage> {
                   assessedTreatment == 'ineligible'
               ? assessedTreatment
               : 'pendingReview';
+          InventoryCostService.validatePurchaseReturnInventoryValue(
+            fifoCostRemoved: fifoInventoryCostRemoved,
+            taxableSubtotal: subtotal,
+            taxAmount: taxTotal,
+            itcIneligible: itcTreatment == 'ineligible',
+          );
           await AccountingService.postPurchaseReturn(
             txn,
             returnId: returnId,
