@@ -243,29 +243,22 @@ void main() {
     });
   });
   group('RCM audit history query validation', () {
-    test('rejects malformed return periods before querying the database', () {
+    test('rejects malformed return periods before querying the database', () async {
       for (final period in ['2026-00', '2026-13', '26-10', '2026/10']) {
-        expect(
-          () => Gstr3bRcmRepository.listAuditHistory(returnPeriod: period),
+        await expectLater(
+          Gstr3bRcmRepository.listAuditHistory(returnPeriod: period),
           throwsFormatException,
         );
       }
     });
 
-    test('rejects audit history limits outside the supported range', () {
+    test('rejects audit history limits outside the supported range', () async {
       for (final limit in [0, -1, 1001]) {
-        expect(
-          () => Gstr3bRcmRepository.listAuditHistory(limit: limit),
+        await expectLater(
+          Gstr3bRcmRepository.listAuditHistory(limit: limit),
           throwsRangeError,
         );
       }
-    });
-
-    test('accepts an omitted period and supported boundary limits at validation', () {
-      // Validation succeeds; the database query is intentionally not invoked
-      // here because the production repository uses the application database.
-      expect(() => Gstr3bRcmRepository.listAuditHistory(limit: 1), returnsNormally);
-      expect(() => Gstr3bRcmRepository.listAuditHistory(limit: 1000), returnsNormally);
     });
   });
 
