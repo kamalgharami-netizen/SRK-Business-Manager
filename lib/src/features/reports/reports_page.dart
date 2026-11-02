@@ -464,7 +464,7 @@ class _ReportsPageState extends State<ReportsPage> {
             THEN 'MISSING_ORIGINAL_PURCHASE_LINK'
             ELSE 'MANUAL_ITC_REVERSAL_REVIEW_REQUIRED' END AS review_status
         FROM invoices r
-        LEFT JOIN invoices o ON o.id = r.parent_invoice_id
+        LEFT JOIN invoices o ON o.id = r.parent_invoice_id AND o.invoice_type = 'purchase'
         WHERE r.invoice_type = 'purchase_return'
           AND r.invoice_date >= ? AND r.invoice_date < ?
         ORDER BY r.invoice_date, r.invoice_number
