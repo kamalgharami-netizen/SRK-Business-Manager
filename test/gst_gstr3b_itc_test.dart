@@ -157,7 +157,7 @@ void main() {
     });
 
     test('blocks draft readiness when individually valid amounts overflow an ITC total', () {
-      final largeAmount = double.maxFinite;
+      const largeAmount = double.maxFinite;
       final summary = Gstr3bItcCalculator.summarize([
         Gstr3bItcEntry(
           documentReference: 'LARGE-01',
