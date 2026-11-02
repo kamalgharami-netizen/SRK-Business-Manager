@@ -301,10 +301,10 @@ class _DashboardPageState extends State<DashboardPage> with WidgetsBindingObserv
         const SizedBox(height: 12),
         if (_roleLoading) const LinearProgressIndicator()
         else if (_roleError != null) MaterialBanner(
-          content: Text('Business role could not be verified. Cloud-business edits are blocked until access is verified. Check that Supabase migration 0008 is applied. Details: \$_roleError'),
+          content: Text('Business role could not be verified. Cloud-business edits are blocked until access is verified. Check that Supabase migration 0008 is applied. Details: $_roleError'),
           actions: [TextButton(onPressed: _loadBusinessRole, child: const Text('Retry'))])
         else Align(alignment: Alignment.centerLeft, child: Chip(
-          avatar: const Icon(Icons.verified_user, size: 18), label: Text('Access role: \${_businessRole ?? 'unknown'}'))),
+          avatar: const Icon(Icons.verified_user, size: 18), label: Text("Access role: ${_businessRole ?? 'unknown'}"))),
       ],
       const SizedBox(height: 22), _summaryCards(), const SizedBox(height: 8),
       const Text('* Receivables and payables are estimated from invoice balances, returns and party opening balances.', style: TextStyle(fontSize: 11)),
