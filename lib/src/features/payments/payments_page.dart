@@ -1,6 +1,6 @@
 import 'package:flutter/material.dart';
 import '../../data/local/app_database.dart';
-import '../../data/local/accounting_service.dart';
+import '../../data/local/accounting_service.dart';\nimport '../../data/local/advance_allocation_service.dart';
 import '../../data/sync/business_sync_service.dart';
 
 class PaymentsPage extends StatefulWidget {
@@ -405,7 +405,7 @@ class _PaymentsPageState extends State<PaymentsPage> {
 
   @override
   Widget build(BuildContext context) => Scaffold(
-    appBar: AppBar(title: const Text('Receipts & Payments')),
+    appBar: AppBar(title: const Text('Receipts & Payments'), actions: [IconButton(tooltip: 'Allocate advance', onPressed: _allocateAdvance, icon: const Icon(Icons.account_balance_wallet_outlined))]),
     floatingActionButton: Padding(
       padding: const EdgeInsets.only(bottom: 8),
       child: Column(
