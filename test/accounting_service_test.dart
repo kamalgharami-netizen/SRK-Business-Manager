@@ -270,7 +270,7 @@ void main() {
       expect(await db.query('journal_lines'), hasLength(3));
     });
 
-    test('posts a balanced purchase return and reverses input GST', () async {
+    test('reverses eligible purchase return against input GST and inventory', () async {
       final db = await _openAccountingDatabase();
       addTearDown(db.close);
 
@@ -282,14 +282,90 @@ void main() {
             subtotal: 100,
             tax: 18,
             total: 118,
+            itcTreatment: 'eligible',
           ));
 
-      final lines = await db.query('journal_lines');
-      final debit = lines.fold<double>(0, (sum, row) => sum + (row['debit'] as num).toDouble());
-      final credit = lines.fold<double>(0, (sum, row) => sum + (row['credit'] as num).toDouble());
-      expect(lines, hasLength(3));
-      expect(debit, 118);
-      expect(credit, 118);
+      final rows = await db.rawQuery('''
+        SELECT accounts.account_code, journal_lines.debit, journal_lines.credit
+        FROM journal_lines JOIN accounts ON accounts.id = journal_lines.account_id
+        ORDER BY journal_lines.id
+      ''');
+      expect(rows.map((row) => row['account_code']), ['2000', '1200', '1300']);
+      expect(rows[0]['debit'], 118);
+      expect(rows[1]['credit'], 100);
+      expect(rows[2]['credit'], 18);
+    });
+
+    test('reverses ineligible purchase GST as part of inventory cost', () async {
+      final db = await _openAccountingDatabase();
+      addTearDown(db.close);
+
+      await db.transaction((txn) => AccountingService.postPurchaseReturn(
+            txn,
+            returnId: 22,
+            returnNumber: 'PR-022',
+            date: '2026-10-31',
+            subtotal: 100,
+            tax: 18,
+            total: 118,
+            itcTreatment: 'ineligible',
+          ));
+
+      final rows = await db.rawQuery('''
+        SELECT accounts.account_code, journal_lines.debit, journal_lines.credit
+        FROM journal_lines JOIN accounts ON accounts.id = journal_lines.account_id
+        ORDER BY journal_lines.id
+      ''');
+      expect(rows.map((row) => row['account_code']), ['2000', '1200']);
+      expect(rows[0]['debit'], 118);
+      expect(rows[1]['credit'], 118);
+    });
+
+    test('reverses pending-review GST from the pending input GST account', () async {
+      final db = await _openAccountingDatabase();
+      addTearDown(db.close);
+
+      await db.transaction((txn) => AccountingService.postPurchaseReturn(
+            txn,
+            returnId: 23,
+            returnNumber: 'PR-023',
+            date: '2026-10-31',
+            subtotal: 100,
+            tax: 18,
+            total: 118,
+            itcTreatment: 'pendingReview',
+          ));
+
+      final rows = await db.rawQuery('''
+        SELECT accounts.account_code, journal_lines.debit, journal_lines.credit
+        FROM journal_lines JOIN accounts ON accounts.id = journal_lines.account_id
+        ORDER BY journal_lines.id
+      ''');
+      expect(rows.map((row) => row['account_code']), ['2000', '1200', '1310']);
+      expect(rows[0]['debit'], 118);
+      expect(rows[1]['credit'], 100);
+      expect(rows[2]['credit'], 18);
+    });
+
+    test('rejects invalid purchase return totals before posting', () async {
+      final db = await _openAccountingDatabase();
+      addTearDown(db.close);
+
+      await expectLater(
+        db.transaction((txn) => AccountingService.postPurchaseReturn(
+              txn,
+              returnId: 24,
+              returnNumber: 'PR-024',
+              date: '2026-10-31',
+              subtotal: 100,
+              tax: 18,
+              total: 110,
+              itcTreatment: 'eligible',
+            )),
+        throwsA(isA<StateError>()),
+      );
+      expect(await db.query('journal_entries'), isEmpty);
+      expect(await db.query('journal_lines'), isEmpty);
     });
 
     test('rejects a journal line with an infinite amount', () async {
