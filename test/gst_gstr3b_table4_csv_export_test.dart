@@ -65,7 +65,7 @@ void main() {
         returnPeriod: '2026-11',
         summary: summary,
       );
-      expect(csv, contains("'Document =FORMULA,1 contains a negative or non-finite tax amount."));
+      expect(csv, contains('"Document =FORMULA,1 contains a negative or non-finite tax amount."'));
       expect(csv, contains('Negative'));
     });
   });
