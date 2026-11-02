@@ -34,7 +34,7 @@ class GstrRcmAuditCsvExport {
           _text(row['notes']),
         ],
     ];
-    return '\uFEFF\${lines.map((line) => line.map(_escape).join(',')).join('\r\n')}\r\n';
+    return '\uFEFF${lines.map((line) => line.map(_escape).join(',')).join('\r\n')}\r\n';
   }
 
   static String _text(Object? value) => value?.toString() ?? '';
@@ -46,7 +46,7 @@ class GstrRcmAuditCsvExport {
     final safeValue = _protectSpreadsheetFormula(value);
     if (safeValue.contains(',') || safeValue.contains('"') ||
         safeValue.contains('\n') || safeValue.contains('\r')) {
-      return '"\${safeValue.replaceAll('"', '""')}"';
+      return '"${safeValue.replaceAll('"', '""')}"';
     }
     return safeValue;
   }
