@@ -7,6 +7,7 @@ import 'package:flutter/material.dart';
 import '../../data/local/gst_gstr3b_itc.dart';
 import '../../data/local/gst_gstr3b_itc_repository.dart';
 import '../../data/local/gst_rcm_audit_csv_export.dart';
+import '../../data/local/gst_gstr3b_table4_csv_export.dart';
 
 class Gstr3bItcPage extends StatefulWidget {
   const Gstr3bItcPage({super.key});
@@ -237,6 +238,32 @@ class _Gstr3bItcPageState extends State<Gstr3bItcPage> {
     subtitle: Text(_taxText(value)),
   );
 
+  Future<void> _exportTable4Csv(Gstr3bItcSummary summary) async {
+    try {
+      final content = Gstr3bTable4CsvExport.build(
+        returnPeriod: _periodController.text.trim(),
+        summary: summary,
+      );
+      final stamp = DateTime.now().toIso8601String().substring(0, 10);
+      final savedPath = await FilePicker.platform.saveFile(
+        dialogTitle: 'GSTR-3B Table 4 working paper CSV সংরক্ষণ করুন',
+        fileName: 'gstr3b-table4-${_periodController.text.trim()}-$stamp.csv',
+        type: FileType.custom,
+        allowedExtensions: ['csv'],
+        bytes: Uint8List.fromList(utf8.encode(content)),
+      );
+      if (!mounted || savedPath == null) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('GSTR-3B Table 4 working paper CSV export সম্পন্ন হয়েছে।')),
+      );
+    } catch (error) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('GSTR-3B CSV export করা যায়নি: $error')),
+      );
+    }
+  }
+
   Widget _summaryCard(Gstr3bItcSummary summary) => Card(
     child: Padding(
       padding: const EdgeInsets.all(12),
@@ -283,6 +310,12 @@ class _Gstr3bItcPageState extends State<Gstr3bItcPage> {
             Text(issue, style: const TextStyle(color: Colors.red)),
           const SizedBox(height: 6),
           const Text('এটি অভ্যন্তরীণ প্রস্তুতি ও হিসাব-সহায়ক স্ক্রিন; GSTN-এর সরকারি Return JSON বা সরাসরি Filing নয়। RCM tax payment এবং statutory eligibility আলাদাভাবে যাচাই করুন।'),
+          const SizedBox(height: 8),
+          OutlinedButton.icon(
+            onPressed: () => _exportTable4Csv(summary),
+            icon: const Icon(Icons.download),
+            label: const Text('Export GSTR-3B Table 4 Working Paper CSV'),
+          ),
         ],
       ),
     ),
