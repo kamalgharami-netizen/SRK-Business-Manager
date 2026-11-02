@@ -72,7 +72,6 @@ class _DebitNotesPageState extends State<DebitNotesPage> {
     final hsn = TextEditingController();
     final formKey = GlobalKey<FormState>();
     int? selectedInvoiceId = _invoices.first['id'] as int;
-    const saving = false;
 
     final accepted = await showDialog<bool>(
       context: context,
@@ -146,9 +145,9 @@ class _DebitNotesPageState extends State<DebitNotesPage> {
               ),
             ),
             actions: [
-              TextButton(onPressed: saving ? null : () => Navigator.pop(dialogContext, false), child: const Text('Cancel')),
+              TextButton(onPressed: () => Navigator.pop(dialogContext, false), child: const Text('Cancel')),
               FilledButton(
-                onPressed: saving ? null : () {
+                onPressed: () {
                   if (formKey.currentState?.validate() ?? false) Navigator.pop(dialogContext, true);
                 },
                 child: const Text('Save Debit Note'),
