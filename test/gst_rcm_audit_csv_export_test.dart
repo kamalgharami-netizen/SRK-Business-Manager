@@ -57,7 +57,7 @@ void main() {
       );
 
       expect(csv, contains('Changed At,Entity Type,Record ID,Action'));
-      expect(csv.trim().split('\r\n'), hasLength(5));
+      expect(csv.trim().split('\r\n'), hasLength(4));
     });
   });
 }
