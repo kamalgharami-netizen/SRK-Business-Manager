@@ -1569,6 +1569,7 @@ class AppDatabase {
         if (existing.isNotEmpty && (isPurchaseInvoice || isPurchaseReturn || isSaleInvoice || isSalesReturn)) return;
         final isNewInvoice = existing.isEmpty;
         int? parentInvoiceId;
+        var purchaseReturnItcTreatment = 'pendingReview';
         if (isPurchaseReturn || isSalesReturn) {
           final parentSyncId = payload['parent_invoice_sync_id'] as String?;
           if (parentSyncId == null || parentSyncId.isEmpty) {
@@ -1586,6 +1587,19 @@ class AppDatabase {
           }
           parentInvoiceId = parentRows.first['id'] as int;
           values['parent_invoice_id'] = parentInvoiceId;
+          if (isPurchaseReturn) {
+            final assessmentRows = await txn.query(
+              'purchase_itc_assessments',
+              columns: ['treatment'],
+              where: 'purchase_invoice_id = ?',
+              whereArgs: [parentInvoiceId],
+              limit: 1,
+            );
+            if (assessmentRows.isNotEmpty) {
+              purchaseReturnItcTreatment =
+                  assessmentRows.first['treatment'] as String;
+            }
+          }
         }
         int localInvoiceId;
         if (existing.isEmpty) {
@@ -1753,6 +1767,7 @@ class AppDatabase {
             subtotal: (payload['subtotal'] as num).toDouble(),
             tax: (payload['tax_total'] as num).toDouble(),
             total: (payload['grand_total'] as num).toDouble(),
+            itcTreatment: purchaseReturnItcTreatment,
           );
         }
         return;
