@@ -418,6 +418,22 @@ class _StockControlPageState extends State<StockControlPage> {
             await AppDatabase.instance.enqueueProductSyncById(txn, productId);
             await AppDatabase.instance.enqueueStockMovementSync(txn, movementId);
           }
+          final itcAssessmentRows = await txn.query(
+            'purchase_itc_assessments',
+            columns: ['treatment'],
+            where: 'purchase_invoice_id = ?',
+            whereArgs: [invoiceId],
+            limit: 1,
+          );
+          final assessedTreatment = itcAssessmentRows.isEmpty
+              ? 'pendingReview'
+              : itcAssessmentRows.first['treatment'] as String;
+          // Only an explicit eligible/ineligible assessment may change the
+          // input-GST ledger. Other assessment states remain pending review.
+          final itcTreatment = assessedTreatment == 'eligible' ||
+                  assessedTreatment == 'ineligible'
+              ? assessedTreatment
+              : 'pendingReview';
           await AccountingService.postPurchaseReturn(
             txn,
             returnId: returnId,
@@ -426,6 +442,7 @@ class _StockControlPageState extends State<StockControlPage> {
             subtotal: subtotal,
             tax: taxTotal,
             total: subtotal + taxTotal,
+            itcTreatment: itcTreatment,
           );
           final returnRows = await txn.query('invoices', where: 'id = ?', whereArgs: [returnId], limit: 1);
           final supplierId = original['party_id'] as int?;
