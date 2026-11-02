@@ -35,6 +35,39 @@ class AccountingService {
     await _post(txn, sourceType: 'sales_return', sourceId: returnId, date: date, memo: 'Sales return $returnNumber', lines: lines);
   }
 
+  static Future<void> postSalesDebitNote(
+    Transaction txn, {
+    required int debitNoteId,
+    required String debitNoteNumber,
+    required String date,
+    required double taxableValue,
+    required double tax,
+    required double total,
+  }) async {
+    if (!taxableValue.isFinite || taxableValue < 0 ||
+        !tax.isFinite || tax < 0 ||
+        !total.isFinite || total < 0 ||
+        (total - taxableValue - tax).abs() > 0.005) {
+      throw StateError('Sales debit note totals are invalid or do not balance.');
+    }
+    final lines = <Map<String, Object?>>[
+      if (total > 0)
+        {'code': '1100', 'debit': total, 'credit': 0.0, 'description': 'Customer receivable increased by debit note'},
+      if (taxableValue > 0)
+        {'code': '4000', 'debit': 0.0, 'credit': taxableValue, 'description': 'Additional sales revenue'},
+      if (tax > 0)
+        {'code': '2100', 'debit': 0.0, 'credit': tax, 'description': 'Additional output GST payable'},
+    ];
+    await _post(
+      txn,
+      sourceType: 'sales_debit_note',
+      sourceId: debitNoteId,
+      date: date,
+      memo: 'Sales debit note $debitNoteNumber',
+      lines: lines,
+    );
+  }
+
   static Future<void> postPurchaseInvoice(
     Transaction txn, {
     required int invoiceId,
