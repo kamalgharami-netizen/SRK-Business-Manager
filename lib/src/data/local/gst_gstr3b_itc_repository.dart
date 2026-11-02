@@ -86,6 +86,9 @@ class Gstr2bCsvImporter {
     final rows = _parseCsvRows(content);
     if (rows.length < 2) throw const FormatException('CSV must contain a header and at least one data row.');
     final headers = rows.first.map((v) => v.trim().toLowerCase()).toList();
+    if (headers.toSet().length != headers.length) {
+      throw const FormatException('CSV contains duplicate column headers.');
+    }
     final indexes = <String, int>{for (var i = 0; i < headers.length; i++) headers[i]: i};
     final missing = requiredHeaders.where((h) => !indexes.containsKey(h)).toList();
     if (missing.isNotEmpty) throw FormatException('CSV is missing required columns: ${missing.join(', ')}.');
@@ -106,6 +109,9 @@ class Gstr2bCsvImporter {
     for (var i = 1; i < rows.length; i++) {
       final row = rows[i];
       if (row.every((v) => v.trim().isEmpty)) continue;
+      if (row.length != headers.length) {
+        throw FormatException('CSV row ${i + 1} has ${row.length} columns; expected ${headers.length}.');
+      }
       records.add(Gstr2bImportRecord(
         supplierGstin: value(row, 'supplier_gstin'),
         invoiceNumber: value(row, 'invoice_number'),
