@@ -12,7 +12,8 @@ void main() {
     await tester.pumpWidget(const SrkBusinessManagerApp(config: config));
 
     expect(find.text('SRK Business Manager'), findsOneWidget);
-    expect(find.text('Business overview'), findsOneWidget);
-    expect(find.text('Sales & Invoices'), findsOneWidget);
+    expect(find.text('Business Dashboard'), findsOneWidget);
+    expect(find.text('All business modules'), findsOneWidget);
+    expect(find.text('Sales & Invoices'), findsWidgets);
   });
 }
