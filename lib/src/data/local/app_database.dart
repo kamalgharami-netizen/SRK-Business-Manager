@@ -85,7 +85,7 @@ class AppDatabase {
       case 'accountant':
         return const {
           'parties', 'products', 'expenses', 'invoices', 'payments',
-          'stock_movements',
+          'payment_allocations', 'stock_movements',
         }.contains(entityType);
       case 'sales':
         return const {'parties', 'products', 'invoices', 'payments', 'payment_allocations'}
@@ -585,6 +585,7 @@ class AppDatabase {
     await db.execute('CREATE INDEX idx_stock_movements_product ON stock_movements(product_id)');
     await db.execute('CREATE INDEX idx_stock_movements_sync_id ON stock_movements(sync_id)');
     await _createGstr3bItcSchema(db);
+    await _createPaymentAllocationsSchema(db);
     await _createAccountingSchema(db);
     await _seedDefaultAccounts(db);
     await _createInventoryCostSchema(db);
@@ -1348,37 +1349,6 @@ class AppDatabase {
         final updatedPaid = (paid + allocationAmount).clamp(0, total).toDouble();
         await txn.update('invoices', {'amount_paid': updatedPaid, 'status': updatedPaid >= total - 0.005 ? 'paid' : 'partial'}, where: 'id = ?', whereArgs: [invoiceId]);
         await AccountingService.postAdvanceAllocation(txn, allocationId: allocationId, date: allocationDate, paymentType: payment['payment_type'] as String, amount: allocationAmount);
-        return;
-      }
-
-      if (tableName == 'payment_allocations') {
-        final paymentSyncId = payload['payment_sync_id'] as String?;
-        final invoiceSyncId = payload['invoice_sync_id'] as String?;
-        final amountValue = payload['amount'];
-        if (paymentSyncId == null || paymentSyncId.isEmpty || invoiceSyncId == null || invoiceSyncId.isEmpty || amountValue is! num || !amountValue.toDouble().isFinite || amountValue <= 0) {
-          throw const FormatException('Cloud advance allocation is invalid.');
-        }
-        final payments = await txn.query('payments', where: 'sync_id = ?', whereArgs: [paymentSyncId], limit: 1);
-        final invoices = await txn.query('invoices', where: 'sync_id = ?', whereArgs: [invoiceSyncId], limit: 1);
-        if (payments.isEmpty || invoices.isEmpty) throw StateError('Allocation payment or invoice is not available on this device yet.');
-        final payment = payments.single;
-        final invoice = invoices.single;
-        final expectedType = payment['payment_type'] == 'receipt' ? 'sale' : 'purchase';
-        if (invoice['invoice_type'] != expectedType || payment['party_id'] == null || payment['party_id'] != invoice['party_id']) throw const FormatException('Cloud allocation party or transaction type does not match.');
-        final exists = await txn.query('payment_allocations', columns: ['id'], where: 'sync_id = ?', whereArgs: [recordId], limit: 1);
-        if (exists.isNotEmpty) return;
-        final sums = await txn.rawQuery('SELECT COALESCE(SUM(amount),0) AS total FROM payment_allocations WHERE payment_id = ?', [payment['id']]);
-        final allocated = (sums.single['total'] as num).toDouble();
-        final advance = (payment['amount'] as num).toDouble();
-        final total = (invoice['grand_total'] as num).toDouble();
-        final paid = ((invoice['amount_paid'] as num?) ?? 0).toDouble();
-        final value = amountValue.toDouble();
-        if (value > advance - allocated + 0.005 || value > total - paid + 0.005) throw StateError('Cloud allocation exceeds available advance or invoice due.');
-        final date = payload['allocation_date'] as String;
-        final allocationId = await txn.insert('payment_allocations', {'sync_id': recordId, 'payment_id': payment['id'], 'invoice_id': invoice['id'], 'amount': value, 'allocation_date': date});
-        final updatedPaid = (paid + value).clamp(0, total).toDouble();
-        await txn.update('invoices', {'amount_paid': updatedPaid, 'status': updatedPaid >= total - 0.005 ? 'paid' : 'partial'}, where: 'id = ?', whereArgs: [invoice['id']]);
-        await AccountingService.postAdvanceAllocation(txn, allocationId: allocationId, date: date, paymentType: payment['payment_type'] as String, amount: value);
         return;
       }
 
