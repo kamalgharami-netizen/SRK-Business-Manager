@@ -8,6 +8,7 @@ import '../../data/local/gst_gstr3b_itc.dart';
 import '../../data/local/gst_gstr3b_itc_repository.dart';
 import '../../data/local/gst_rcm_audit_csv_export.dart';
 import '../../data/local/gst_gstr3b_table4_csv_export.dart';
+import '../../data/local/gst_rcm_reconciliation_csv_export.dart';
 
 class Gstr3bItcPage extends StatefulWidget {
   const Gstr3bItcPage({super.key});
@@ -450,12 +451,49 @@ class _Gstr3bItcPageState extends State<Gstr3bItcPage> {
     }
   }
 
+  Future<void> _exportRcmReconciliationCsv() async {
+    if (_rcmItems.isEmpty) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('রপ্তানির জন্য RCM liability পাওয়া যায়নি।')),
+      );
+      return;
+    }
+    try {
+      final content = GstrRcmReconciliationCsvExport.build(
+        _rcmItems,
+        returnPeriod: _periodController.text.trim(),
+      );
+      final stamp = DateTime.now().toIso8601String().substring(0, 10);
+      final savedPath = await FilePicker.platform.saveFile(
+        dialogTitle: 'RCM Reconciliation CSV সংরক্ষণ করুন',
+        fileName: 'rcm-reconciliation-${_periodController.text.trim()}-$stamp.csv',
+        type: FileType.custom,
+        allowedExtensions: ['csv'],
+        bytes: Uint8List.fromList(utf8.encode(content)),
+      );
+      if (!mounted || savedPath == null) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('RCM Reconciliation CSV export সম্পন্ন হয়েছে।')),
+      );
+    } catch (error) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('RCM reconciliation export করা যায়নি: $error')),
+      );
+    }
+  }
+
   Widget _rcmCard() => Card(
     child: Padding(
       padding: const EdgeInsets.all(12),
       child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
         Text('RCM Liability & Cash Payment Verification', style: Theme.of(context).textTheme.titleMedium),
         const Text('Manually record verified RCM liabilities and cash-ledger challan payments. ITC utilisation is not counted as cash payment.'),
+        Align(alignment: Alignment.centerLeft, child: OutlinedButton.icon(
+          onPressed: _rcmItems.isEmpty ? null : _exportRcmReconciliationCsv,
+          icon: const Icon(Icons.download),
+          label: const Text('Export RCM Reconciliation CSV'),
+        )),
         Align(alignment: Alignment.centerRight, child: FilledButton.icon(
           onPressed: _loading ? null : _addRcmLiability,
           icon: const Icon(Icons.add), label: const Text('Add RCM Liability'),
