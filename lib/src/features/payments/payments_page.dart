@@ -102,12 +102,27 @@ class _PaymentsPageState extends State<PaymentsPage> {
                         value: party['id'] as int,
                         child: Text(party['name'] as String),
                       )).toList(),
-                      onChanged: (value) => refresh(() => partyId = value),
+                      onChanged: (value) => refresh(() {
+                        partyId = value;
+                        if (invoiceId != null) {
+                          final selectedInvoice = invoices.where((invoice) => invoice['id'] == invoiceId).firstOrNull;
+                          final invoicePartyId = selectedInvoice?['party_id'] as int?;
+                          if (selectedInvoice == null || (value != null && invoicePartyId != value)) {
+                            invoiceId = null;
+                          }
+                        }
+                      }),
                     ),
                     DropdownButtonFormField<int>(
                       initialValue: invoiceId,
                       decoration: const InputDecoration(labelText: 'Link invoice (optional)'),
-                      items: invoices.map((invoice) {
+                      items: invoices.where((invoice) {
+                        final invoicePartyId = invoice['party_id'] as int?;
+                        final total = ((invoice['grand_total'] as num?) ?? 0).toDouble();
+                        final paid = ((invoice['amount_paid'] as num?) ?? 0).toDouble();
+                        return (partyId == null || invoicePartyId == partyId) &&
+                            total.isFinite && paid.isFinite && total - paid > 0.005;
+                      }).map((invoice) {
                         final total = ((invoice['grand_total'] as num?) ?? 0).toDouble();
                         final paid = ((invoice['amount_paid'] as num?) ?? 0).toDouble();
                         final due = (total - paid).clamp(0, double.infinity);
