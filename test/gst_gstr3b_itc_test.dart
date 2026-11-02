@@ -159,13 +159,13 @@ void main() {
     test('blocks draft readiness when individually valid amounts overflow an ITC total', () {
       const largeAmount = double.maxFinite;
       final summary = Gstr3bItcCalculator.summarize([
-        Gstr3bItcEntry(
+        const Gstr3bItcEntry(
           documentReference: 'LARGE-01',
           category: Gstr3bItcCategory.other,
           treatment: Gstr3bItcTreatment.eligible,
           tax: Gstr3bTaxAmounts(igst: largeAmount),
         ),
-        Gstr3bItcEntry(
+        const Gstr3bItcEntry(
           documentReference: 'LARGE-02',
           category: Gstr3bItcCategory.other,
           treatment: Gstr3bItcTreatment.eligible,
