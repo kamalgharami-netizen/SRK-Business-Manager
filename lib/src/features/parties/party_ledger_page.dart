@@ -157,7 +157,7 @@ class _PartyLedgerPageState extends State<PartyLedgerPage> {
                     padding: const EdgeInsets.all(16),
                     children: [
                       DropdownButtonFormField<int>(
-                        value: _partyId,
+                        initialValue: _partyId,
                         decoration: const InputDecoration(labelText: 'Select customer / supplier', border: OutlineInputBorder()),
                         items: _parties.map((p) => DropdownMenuItem<int>(
                           value: p['id'] as int,
