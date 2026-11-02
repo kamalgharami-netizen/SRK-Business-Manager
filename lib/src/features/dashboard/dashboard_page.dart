@@ -11,6 +11,7 @@ import '../accounting/accounts_page.dart';
 
 import '../expenses/expenses_page.dart';
 import '../invoices/invoices_page.dart';
+import '../invoices/debit_notes_page.dart';
 import '../invoices/sales_returns_page.dart';
 import '../payments/payments_page.dart';
 import '../purchases/purchases_page.dart';
@@ -215,6 +216,7 @@ class _DashboardPageState extends State<DashboardPage> with WidgetsBindingObserv
   static const modules = <_ModuleInfo>[
     _ModuleInfo('Sales & Invoices', Icons.point_of_sale),
     _ModuleInfo('Sales Returns', Icons.assignment_return),
+    _ModuleInfo('Sales Debit Notes', Icons.note_add),
     _ModuleInfo('Purchases', Icons.shopping_cart),
     _ModuleInfo('Purchase Returns & Stock Control', Icons.assignment_return),
     _ModuleInfo('Inventory & Stock', Icons.inventory_2),
@@ -240,6 +242,7 @@ class _DashboardPageState extends State<DashboardPage> with WidgetsBindingObserv
     final Widget page = switch (module.title) {
       'Sales & Invoices' => const InvoicesPage(),
       'Sales Returns' => const SalesReturnsPage(),
+      'Sales Debit Notes' => const DebitNotesPage(),
       'Purchases' => const PurchasesPage(),
       'Purchase Returns & Stock Control' => const StockControlPage(),
       'Receipts & Payments' => const PaymentsPage(),
