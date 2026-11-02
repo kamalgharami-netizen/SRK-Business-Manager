@@ -49,8 +49,6 @@ void main() {
       );
     });
   });
-}
-
 
   group('Purchase return FIFO source protection', () {
     Future<Database> openDatabaseForReturn() async {
@@ -149,3 +147,4 @@ void main() {
       expect(layers[1]['quantity_remaining'], 10);
     });
   });
+}
