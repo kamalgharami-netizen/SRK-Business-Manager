@@ -146,6 +146,12 @@ class _PartyLedgerPageState extends State<PartyLedgerPage> {
           customerAdvance += amount;
         case 'supplier_advance':
           supplierAdvance += amount;
+        case 'customer_advance_allocation':
+          customerAdvance -= amount;
+          receivable -= amount;
+        case 'supplier_advance_allocation':
+          supplierAdvance -= amount;
+          payable -= amount;
       }
       rows.add({
         ...event,
@@ -161,7 +167,8 @@ class _PartyLedgerPageState extends State<PartyLedgerPage> {
         },
         'customer_advance_change': event['kind'] == 'customer_advance' ? amount : 0.0,
         'supplier_advance_change': event['kind'] == 'supplier_advance' ? amount : 0.0,
-        'customer_advance_allocation_change': event['kind'] == 'customer_advance_allocation' ? -amount : 0.0,\n        'supplier_advance_allocation_change': event['kind'] == 'supplier_advance_allocation' ? -amount : 0.0,
+        'customer_advance_allocation_change': event['kind'] == 'customer_advance_allocation' ? -amount : 0.0,
+        'supplier_advance_allocation_change': event['kind'] == 'supplier_advance_allocation' ? -amount : 0.0,
         'receivable': receivable,
         'payable': payable,
         'customer_advance': customerAdvance,
