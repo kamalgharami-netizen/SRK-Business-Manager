@@ -270,10 +270,20 @@ class _DashboardPageState extends State<DashboardPage> with WidgetsBindingObserv
   Widget _summaryCards() => FutureBuilder<Map<String, double>>(
     future: _summaryFuture,
     builder: (context, snapshot) {
-      if (snapshot.hasError) return Card(child: Padding(padding: const EdgeInsets.all(16),
-        child: Text('Could not load business overview: \${snapshot.error}')));
-      if (!snapshot.hasData) return const Padding(padding: EdgeInsets.all(24),
-        child: Center(child: CircularProgressIndicator()));
+      if (snapshot.hasError) {
+        return Card(
+          child: Padding(
+            padding: const EdgeInsets.all(16),
+            child: Text('Could not load business overview: ${snapshot.error}'),
+          ),
+        );
+      }
+      if (!snapshot.hasData) {
+        return const Padding(
+          padding: EdgeInsets.all(24),
+          child: Center(child: CircularProgressIndicator()),
+        );
+      }
       final v = snapshot.data!;
       return LayoutBuilder(builder: (context, c) {
         final w = c.maxWidth >= 1000 ? (c.maxWidth - 36) / 4 : c.maxWidth >= 560 ? (c.maxWidth - 12) / 2 : c.maxWidth;
