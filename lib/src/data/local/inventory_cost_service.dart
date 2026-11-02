@@ -66,6 +66,32 @@ class InventoryCostService {
     return cost;
   }
 
+  /// Ensures a purchase return removes the same inventory value that its
+  /// accounting journal reverses. Recoverable and pending-review GST is not
+  /// part of inventory cost; explicitly ineligible GST is capitalised.
+  static void validatePurchaseReturnInventoryValue({
+    required double fifoCostRemoved,
+    required double taxableSubtotal,
+    required double taxAmount,
+    required bool itcIneligible,
+    double tolerance = 0.02,
+  }) {
+    if (!fifoCostRemoved.isFinite || fifoCostRemoved < 0 ||
+        !taxableSubtotal.isFinite || taxableSubtotal < 0 ||
+        !taxAmount.isFinite || taxAmount < 0 ||
+        !tolerance.isFinite || tolerance < 0) {
+      throw StateError('Purchase return inventory reconciliation values are invalid.');
+    }
+    final expectedInventoryCredit =
+        taxableSubtotal + (itcIneligible ? taxAmount : 0);
+    if ((fifoCostRemoved - expectedInventoryCredit).abs() > tolerance) {
+      throw StateError(
+        'Purchase return inventory value does not match the accounting reversal. '
+        'Check the original purchase discount, GST and FIFO cost layer.',
+      );
+    }
+  }
+
   /// Consumes oldest available cost layers and returns the FIFO cost.
   /// If historical stock has no cost layer, it is valued at the saved product
   /// purchase price and recorded as an estimate rather than silently omitted.
