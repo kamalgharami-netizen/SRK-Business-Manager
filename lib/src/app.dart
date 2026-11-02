@@ -14,11 +14,7 @@ class SrkBusinessManagerApp extends StatelessWidget {
     return MaterialApp(
       title: 'SRK Business Manager',
       debugShowCheckedModeBanner: false,
-      theme: ThemeData(
-        useMaterial3: true,
-        colorScheme: ColorScheme.fromSeed(seedColor: const Color(0xFF2457A7)),
-        scaffoldBackgroundColor: const Color(0xFFF6F7FB),
-      ),
+      theme: AppTheme.light(),
       home: config.hasSupabaseConfig
           ? const CloudAuthGate()
           : const DashboardPage(cloudConfigured: false),
