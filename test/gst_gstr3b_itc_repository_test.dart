@@ -168,6 +168,32 @@ void main() {
       );
     });
 
+    test('rejects duplicate CSV column headers', () {
+      expect(
+        () => Gstr2bCsvImporter.parse(
+          'supplier_gstin,invoice_number,invoice_date,return_period,taxable_value,igst,cgst,sgst,cess,igst\n'
+          '27AAPFU0939F1ZV,INV-104,2026-10-12,2026-10,100,18,0,0,0,18',
+        ),
+        throwsFormatException,
+      );
+    });
+
+    test('rejects CSV rows with missing or extra columns', () {
+      expect(
+        () => Gstr2bCsvImporter.parse(
+          'supplier_gstin,invoice_number,invoice_date,return_period,taxable_value,igst,cgst,sgst,cess\n'
+          '27AAPFU0939F1ZV,INV-105,2026-10-12,2026-10,100,18,0,0',
+        ),
+        throwsFormatException,
+      );
+      expect(
+        () => Gstr2bCsvImporter.parse(
+          'supplier_gstin,invoice_number,invoice_date,return_period,taxable_value,igst,cgst,sgst,cess\n'
+          '27AAPFU0939F1ZV,INV-106,2026-10-12,2026-10,100,18,0,0,0,EXTRA',
+        ),
+        throwsFormatException,
+      );
+    });
     test('rejects a CSV without mandatory headers', () {
       expect(
         () => Gstr2bCsvImporter.parse('invoice_number,igst\nINV-1,18'),
