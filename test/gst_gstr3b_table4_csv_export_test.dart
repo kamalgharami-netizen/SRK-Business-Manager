@@ -23,7 +23,7 @@ void main() {
         returnPeriod: '2026-11',
         summary: summary,
       );
-      expect(csv, startsWith('\\uFEFF'));
+      expect(csv, startsWith('\uFEFF'));
       expect(csv, contains('PREPARATION_CHECKS_PASSED'));
       expect(csv, contains('4(A)(5),Other Eligible ITC / Reclaim,18.00,9.00,9.00,2.00'));
       expect(csv, contains('4(B)(2),Other Reversal,3.00,0.00,0.00,0.00'));
