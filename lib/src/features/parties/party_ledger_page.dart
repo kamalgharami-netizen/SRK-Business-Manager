@@ -91,6 +91,26 @@ class _PartyLedgerPageState extends State<PartyLedgerPage> {
         'sort': (payment['id'] as int) + 1000000000,
       });
     }
+    final allocations = await db.rawQuery('''
+      SELECT a.amount, a.allocation_date, a.id, p.payment_type,
+             i.invoice_number
+      FROM payment_allocations a
+      JOIN payments p ON p.id = a.payment_id
+      JOIN invoices i ON i.id = a.invoice_id
+      WHERE p.party_id = ?
+      ORDER BY a.allocation_date, a.id
+    ''', [id]);
+    for (final allocation in allocations) {
+      final isCustomer = allocation['payment_type'] == 'receipt';
+      events.add({
+        'date': allocation['allocation_date'] as String,
+        'reference': 'Allocation #${allocation['id']} • ${allocation['invoice_number']}',
+        'description': isCustomer ? 'Customer advance applied' : 'Supplier advance applied',
+        'kind': isCustomer ? 'customer_advance_allocation' : 'supplier_advance_allocation',
+        'amount': ((allocation['amount'] as num?) ?? 0).toDouble(),
+        'sort': (allocation['id'] as int) + 2000000000,
+      });
+    }
     events.sort((a, b) {
       final byDate = (a['date'] as String).compareTo(b['date'] as String);
       return byDate != 0 ? byDate : (a['sort'] as int).compareTo(b['sort'] as int);
@@ -140,7 +160,7 @@ class _PartyLedgerPageState extends State<PartyLedgerPage> {
           _ => 0.0,
         },
         'customer_advance_change': event['kind'] == 'customer_advance' ? amount : 0.0,
-        'supplier_advance_change': event['kind'] == 'supplier_advance' ? amount : 0.0,
+        'supplier_advance_change': event['kind'] == 'supplier_advance' ? amount : 0.0,\n        'customer_advance_allocation_change': event['kind'] == 'customer_advance_allocation' ? -amount : 0.0,\n        'supplier_advance_allocation_change': event['kind'] == 'supplier_advance_allocation' ? -amount : 0.0,
         'receivable': receivable,
         'payable': payable,
         'customer_advance': customerAdvance,
