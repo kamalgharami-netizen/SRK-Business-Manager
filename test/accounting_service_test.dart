@@ -448,5 +448,48 @@ void main() {
       expect(lines[0]['debit'], 375);
       expect(lines[1]['credit'], 375);
     });
+
+    test('posts a balanced customer advance allocation without cash movement', () async {
+      final db = await _openAccountingDatabase();
+      addTearDown(db.close);
+      await db.transaction((txn) => AccountingService.postAdvanceAllocation(
+        txn, allocationId: 501, date: '2026-11-02', paymentType: 'receipt', amount: 125,
+      ));
+      final lines = await db.rawQuery('''
+        SELECT accounts.account_code, journal_lines.debit, journal_lines.credit
+        FROM journal_lines JOIN accounts ON accounts.id = journal_lines.account_id
+        ORDER BY journal_lines.id
+      ''');
+      expect(lines.map((row) => row['account_code']), ['2200', '1100']);
+      expect(lines[0]['debit'], 125);
+      expect(lines[1]['credit'], 125);
+    });
+
+    test('posts a balanced supplier advance allocation without bank movement', () async {
+      final db = await _openAccountingDatabase();
+      addTearDown(db.close);
+      await db.transaction((txn) => AccountingService.postAdvanceAllocation(
+        txn, allocationId: 502, date: '2026-11-02', paymentType: 'payment', amount: 90,
+      ));
+      final lines = await db.rawQuery('''
+        SELECT accounts.account_code, journal_lines.debit, journal_lines.credit
+        FROM journal_lines JOIN accounts ON accounts.id = journal_lines.account_id
+        ORDER BY journal_lines.id
+      ''');
+      expect(lines.map((row) => row['account_code']), ['2000', '1400']);
+      expect(lines[0]['debit'], 90);
+      expect(lines[1]['credit'], 90);
+    });
+
+    test('prevents duplicate journal posting for the same advance allocation', () async {
+      final db = await _openAccountingDatabase();
+      addTearDown(db.close);
+      Future<void> post() => db.transaction((txn) => AccountingService.postAdvanceAllocation(
+        txn, allocationId: 503, date: '2026-11-02', paymentType: 'receipt', amount: 20,
+      ));
+      await post();
+      await expectLater(post(), throwsA(isA<StateError>()));
+      expect(await db.query('journal_entries'), hasLength(1));
+    });
   });
 }
