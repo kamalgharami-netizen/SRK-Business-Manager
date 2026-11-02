@@ -156,6 +156,29 @@ void main() {
       expect(summary.negativeNetItcLiability.sgst, 0);
     });
 
+    test('blocks draft readiness when individually valid amounts overflow an ITC total', () {
+      final largeAmount = double.maxFinite;
+      final summary = Gstr3bItcCalculator.summarize([
+        Gstr3bItcEntry(
+          documentReference: 'LARGE-01',
+          category: Gstr3bItcCategory.other,
+          treatment: Gstr3bItcTreatment.eligible,
+          tax: Gstr3bTaxAmounts(igst: largeAmount),
+        ),
+        Gstr3bItcEntry(
+          documentReference: 'LARGE-02',
+          category: Gstr3bItcCategory.other,
+          treatment: Gstr3bItcTreatment.eligible,
+          tax: Gstr3bTaxAmounts(igst: largeAmount),
+        ),
+      ]);
+
+      expect(summary.issues, contains(
+        'ITC totals exceed the supported numeric range; review the source amounts.',
+      ));
+      expect(summary.canPrepareDraft, isFalse);
+    });
+
     test('flags entries without a source document reference', () {
       final summary = Gstr3bItcCalculator.summarize([
         const Gstr3bItcEntry(

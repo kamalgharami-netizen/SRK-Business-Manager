@@ -204,6 +204,16 @@ class Gstr3bItcCalculator {
       }
     }
 
+    final aggregateAmounts = [
+      importGoods, importServices, reverseCharge, inputServiceDistributor,
+      other, reversalRules, reversalOther, ineligible, reclaimed,
+    ];
+    if (aggregateAmounts.any((amount) =>
+        !amount.igst.isFinite || !amount.cgst.isFinite ||
+        !amount.sgst.isFinite || !amount.cess.isFinite)) {
+      issues.add('ITC totals exceed the supported numeric range; review the source amounts.');
+    }
+
     return Gstr3bItcSummary(
       importGoods: importGoods,
       importServices: importServices,
