@@ -66,7 +66,7 @@ class _Gstr3bItcPageState extends State<Gstr3bItcPage> {
         Gstr3bItcRepository.listPeriodReviewItems(period),
         Gstr3bItcRepository.listAdjustmentAuditTrail(period),
         Gstr3bRcmRepository.listPeriod(period),
-        Gstr3bRcmRepository.listAuditHistory(returnPeriod: period),
+        Gstr3bRcmRepository.listAuditHistory(returnPeriod: period, limit: 1000),
       ]);
       if (!mounted) return;
       setState(() {
@@ -537,7 +537,7 @@ class _Gstr3bItcPageState extends State<Gstr3bItcPage> {
           Text('RCM Liability & Cash Payment Audit History',
               style: Theme.of(context).textTheme.titleMedium),
           const Text(
-            'Database-triggered history of RCM liability and cash-payment creation, edits and deletion.',
+            'Database-triggered history of RCM liability and cash-payment creation, edits and deletion. The screen loads up to the latest 1,000 events for this return period; the CSV exports the events currently loaded.',
           ),
           const SizedBox(height: 8),
           Align(
