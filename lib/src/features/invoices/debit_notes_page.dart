@@ -72,7 +72,7 @@ class _DebitNotesPageState extends State<DebitNotesPage> {
     final hsn = TextEditingController();
     final formKey = GlobalKey<FormState>();
     int? selectedInvoiceId = _invoices.first['id'] as int;
-    var saving = false;
+    const saving = false;
 
     final accepted = await showDialog<bool>(
       context: context,
@@ -98,7 +98,7 @@ class _DebitNotesPageState extends State<DebitNotesPage> {
                     mainAxisSize: MainAxisSize.min,
                     children: [
                       DropdownButtonFormField<int>(
-                        value: selectedInvoiceId,
+                        initialValue: selectedInvoiceId,
                         isExpanded: true,
                         decoration: const InputDecoration(labelText: 'Original Sales Invoice *'),
                         items: _invoices.map((invoice) => DropdownMenuItem<int>(
@@ -118,19 +118,19 @@ class _DebitNotesPageState extends State<DebitNotesPage> {
                       Row(children: [
                         Expanded(child: TextFormField(controller: quantity, keyboardType: const TextInputType.numberWithOptions(decimal: true),
                           decoration: const InputDecoration(labelText: 'Quantity *'), onChanged: (_) => refresh(() {}),
-                          validator: (v) { final n = double.tryParse(v ?? ''); return n == null || !n.isFinite || n <= 0 ? 'Invalid quantity' : null; })),
+                          validator: (v) { final n = double.tryParse(v ?? ''); return n == null || n.isNaN || n.isInfinite || n <= 0 ? 'Invalid quantity' : null; })),
                         const SizedBox(width: 8),
                         Expanded(child: TextFormField(controller: unit, decoration: const InputDecoration(labelText: 'Unit *'),
                           validator: (v) => (v == null || v.trim().isEmpty) ? 'Required' : null)),
                         const SizedBox(width: 8),
                         Expanded(child: TextFormField(controller: rate, keyboardType: const TextInputType.numberWithOptions(decimal: true),
                           decoration: const InputDecoration(labelText: 'Rate *'), onChanged: (_) => refresh(() {}),
-                          validator: (v) { final n = double.tryParse(v ?? ''); return n == null || !n.isFinite || n < 0 ? 'Invalid rate' : null; })),
+                          validator: (v) { final n = double.tryParse(v ?? ''); return n == null || n.isNaN || n.isInfinite || n < 0 ? 'Invalid rate' : null; })),
                       ]),
                       Row(children: [
                         Expanded(child: TextFormField(controller: gstRate, keyboardType: const TextInputType.numberWithOptions(decimal: true),
                           decoration: const InputDecoration(labelText: 'GST Rate % *'), onChanged: (_) => refresh(() {}),
-                          validator: (v) { final n = double.tryParse(v ?? ''); return n == null || !n.isFinite || n < 0 || n > 100 ? 'Invalid GST rate' : null; })),
+                          validator: (v) { final n = double.tryParse(v ?? ''); return n == null || n.isNaN || n.isInfinite || n < 0 || n > 100 ? 'Invalid GST rate' : null; })),
                         const SizedBox(width: 8),
                         Expanded(child: TextFormField(controller: hsn, decoration: const InputDecoration(labelText: 'HSN/SAC (optional)'))),
                       ]),
