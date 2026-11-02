@@ -37,7 +37,7 @@ class Gstr3bTable4CsvExport {
       ['Disclaimer', 'Internal working paper only; not GSTN upload JSON, tax advice or filing confirmation. Verify source documents, GSTR-2B and applicable law before filing.'],
       for (final issue in summary.issues) ['Data Issue', issue],
     ];
-    return '\uFEFF${rows.map((row) => row.map(_escape).join(',')).join('\\r\\n')}\\r\\n';
+    return '\uFEFF${rows.map((row) => row.map(_escape).join(',')).join('\r\n')}\\r\\n';
   }
 
   static List<String> _row(String code, String description, Gstr3bTaxAmounts tax) =>
@@ -46,12 +46,12 @@ class Gstr3bTable4CsvExport {
   static String _amount(double value) => value.toStringAsFixed(2);
 
   static String _escape(String value) {
-    final safe = RegExp(r'^[\\s]*[=+\\-@]').hasMatch(value) ||
-            value.startsWith('\\t') || value.startsWith('\\r')
+    final safe = RegExp(r'^[\s]*[=+\-@]').hasMatch(value) ||
+            value.startsWith('\t') || value.startsWith('\r')
         ? "'$value"
         : value;
     if (safe.contains(',') || safe.contains('"') ||
-        safe.contains('\\n') || safe.contains('\\r')) {
+        safe.contains('\n') || safe.contains('\r')) {
       return '"${safe.replaceAll('"', '""')}"';
     }
     return safe;
