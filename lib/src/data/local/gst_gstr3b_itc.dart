@@ -132,7 +132,10 @@ class Gstr3bItcSummary {
     );
   }
 
-  bool get canPrepareDraft => issues.isEmpty && pendingReviewCount == 0;
+  bool get requiresNegativeNetItcReview => !negativeNetItcLiability.isZero;
+
+  bool get canPrepareDraft =>
+      issues.isEmpty && pendingReviewCount == 0 && !requiresNegativeNetItcReview;
 }
 
 class Gstr3bItcCalculator {
