@@ -298,6 +298,9 @@ class AppDatabase {
           await _createGstr3bRcmSchema(db);
           await _createGstr3bRcmAuditSchema(db);
         }
+        if (oldVersion < 27) {
+          await _createPaymentAllocationsSchema(db);
+        }
         if (oldVersion < 26) {
           await _seedDefaultAccounts(db);
         }

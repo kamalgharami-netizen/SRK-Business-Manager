@@ -5,7 +5,7 @@ import 'app_database.dart';
 class AdvanceAllocationService {
   AdvanceAllocationService._();
 
-  static Future<int> allocate({required DatabaseExecutor txn, required int paymentId, required int invoiceId, required double amount, required String allocationDate}) async {
+  static Future<int> allocate({required Transaction txn, required int paymentId, required int invoiceId, required double amount, required String allocationDate}) async {
     if (!amount.isFinite || amount <= 0) throw ArgumentError.value(amount, 'amount');
     final ps = await txn.query('payments', where: 'id=?', whereArgs: [paymentId], limit: 1);
     final ins = await txn.query('invoices', where: 'id=?', whereArgs: [invoiceId], limit: 1);
