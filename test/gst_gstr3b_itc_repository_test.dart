@@ -243,7 +243,7 @@ void main() {
     });
 
     test('rejects rows with missing supplier identity or invalid invoice dates and periods', () {
-      final header = 'supplier_gstin,invoice_number,invoice_date,return_period,taxable_value,igst,cgst,sgst,cess\\n';
+      const header = 'supplier_gstin,invoice_number,invoice_date,return_period,taxable_value,igst,cgst,sgst,cess\\n';
       for (final row in [
         ',INV-200,2026-10-12,2026-10,100,18,0,0,0',
         '27AAPFU0939F1ZV,,2026-10-12,2026-10,100,18,0,0,0',
