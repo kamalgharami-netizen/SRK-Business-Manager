@@ -16,6 +16,30 @@ class AccountingService {
   }
 
 
+  static Future<void> postOpeningInventory(
+    Transaction txn, {
+    required int productId,
+    required String productName,
+    required String date,
+    required double inventoryValue,
+  }) async {
+    if (productId <= 0 || !inventoryValue.isFinite || inventoryValue < 0) {
+      throw StateError('Opening inventory values are invalid.');
+    }
+    if (inventoryValue == 0) return;
+    await _post(
+      txn,
+      sourceType: 'opening_inventory',
+      sourceId: productId,
+      date: date,
+      memo: 'Opening inventory: $productName',
+      lines: [
+        {'code': '1200', 'debit': inventoryValue, 'credit': 0.0, 'description': 'Opening inventory recognised'},
+        {'code': '3200', 'debit': 0.0, 'credit': inventoryValue, 'description': 'Opening balance equity'},
+      ],
+    );
+  }
+
   static Future<void> postSalesReturn(Transaction txn, {
     required int returnId,
     required String returnNumber,
