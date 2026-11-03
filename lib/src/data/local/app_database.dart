@@ -18,7 +18,7 @@ class AppDatabase {
   AppDatabase._();
 
   static final AppDatabase instance = AppDatabase._();
-  static const int _databaseVersion = 28;
+  static const int _databaseVersion = 29;
   String? _databasePath;
   String? _activeBusinessId;
   String? _activeBusinessRole;
@@ -305,6 +305,25 @@ class AppDatabase {
         if (oldVersion < 28) {
           await _createDebitNoteSchema(db);
         }
+        if (oldVersion < 29) {
+          await db.execute('ALTER TABLE staff_members ADD COLUMN sync_id TEXT');
+          await _backfillSyncIds(db, 'staff_members');
+          await db.execute('CREATE UNIQUE INDEX idx_staff_members_sync_id ON staff_members(sync_id)');
+          final legacyStaff = await db.query('staff_members', orderBy: 'id ASC');
+          for (final row in legacyStaff) {
+            final syncId = row['sync_id'] as String;
+            final payload = Map<String, dynamic>.from(row)
+              ..remove('id')
+              ..['sync_id'] = syncId;
+            await enqueueSyncOperation(
+              tableName: 'staff_members',
+              recordId: syncId,
+              operation: 'insert',
+              payload: payload,
+              executor: db,
+            );
+          }
+        }
         if (oldVersion < 26) {
           await _seedDefaultAccounts(db);
         }
@@ -369,7 +388,8 @@ class AppDatabase {
 
   Future<void> _backfillSyncIds(DatabaseExecutor db, String tableName) async {
     if (tableName != 'parties' && tableName != 'products' && tableName != 'expenses' &&
-        tableName != 'invoices' && tableName != 'invoice_items' && tableName != 'stock_movements') {
+        tableName != 'invoices' && tableName != 'invoice_items' && tableName != 'stock_movements' &&
+        tableName != 'staff_members') {
       throw ArgumentError.value(tableName, 'tableName');
     }
     final rows = await db.query(
@@ -558,6 +578,7 @@ class AppDatabase {
     await db.execute('''
       CREATE TABLE staff_members (
         id INTEGER PRIMARY KEY AUTOINCREMENT,
+        sync_id TEXT UNIQUE,
         display_name TEXT NOT NULL,
         role TEXT NOT NULL DEFAULT 'staff',
         phone TEXT,
