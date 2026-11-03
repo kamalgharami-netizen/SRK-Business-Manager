@@ -274,7 +274,7 @@ class _DashboardPageState extends State<DashboardPage> with WidgetsBindingObserv
     if (mounted) setState(() => _summaryFuture = _loadSummary());
   }
 
-  Widget _moduleTile(_ModuleInfo module) => Card(elevation: 0, child: ListTile(
+  Widget _moduleTile(_ModuleInfo module) => Card(elevation: 3, shadowColor: const Color(0xFF173B70).withValues(alpha: .10), child: ListTile(
     dense: true, leading: CircleAvatar(child: Icon(module.icon)),
     title: Text(module.title, style: const TextStyle(fontWeight: FontWeight.w600)),
     trailing: const Icon(Icons.chevron_right), onTap: () => _openModule(module)));
@@ -309,11 +309,11 @@ class _DashboardPageState extends State<DashboardPage> with WidgetsBindingObserv
     });
 
   Widget _content(bool desktop) => SingleChildScrollView(
-    padding: EdgeInsets.all(desktop ? 28 : 16),
+    padding: EdgeInsets.fromLTRB(desktop ? 28 : 16, desktop ? 28 : 18, desktop ? 28 : 16, 34),
     child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
       Row(children: [
         Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-          Text('Business Dashboard', style: Theme.of(context).textTheme.headlineMedium?.copyWith(fontWeight: FontWeight.w800)),
+          Text('Business Dashboard', style: Theme.of(context).textTheme.headlineMedium?.copyWith(fontSize: desktop ? 29 : 24, fontWeight: FontWeight.w900, color: const Color(0xFF102A56))),
           const SizedBox(height: 5),
           const Text('A clear view of your business activity and accounts'),
         ])),
@@ -328,7 +328,27 @@ class _DashboardPageState extends State<DashboardPage> with WidgetsBindingObserv
         else Align(alignment: Alignment.centerLeft, child: Chip(
           avatar: const Icon(Icons.verified_user, size: 18), label: Text("Access role: ${_businessRole ?? 'unknown'}"))),
       ],
-      const SizedBox(height: 22), _summaryCards(), const SizedBox(height: 8),
+      const SizedBox(height: 18),
+      if (!desktop) Container(
+        width: double.infinity,
+        padding: const EdgeInsets.all(20),
+        decoration: BoxDecoration(
+          gradient: const LinearGradient(begin: Alignment.topLeft, end: Alignment.bottomRight, colors: [Color(0xFF173F7A), Color(0xFF2869C4), Color(0xFF4B8DE2)]),
+          borderRadius: BorderRadius.circular(24),
+          boxShadow: const [BoxShadow(color: Color(0x332457A7), blurRadius: 20, offset: Offset(0, 9))],
+        ),
+        child: Row(children: [
+          Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+            const Text('YOUR BUSINESS, IN CONTROL', style: TextStyle(color: Colors.white70, fontSize: 10, letterSpacing: 1.2, fontWeight: FontWeight.w800)),
+            const SizedBox(height: 7),
+            const Text('Everything in one place', style: TextStyle(color: Colors.white, fontSize: 19, fontWeight: FontWeight.w900)),
+            const SizedBox(height: 5),
+            Text(widget.cloudConfigured ? 'Cloud workspace connected' : 'Offline-first • Your data stays on this device', style: const TextStyle(color: Colors.white70, fontSize: 11)),
+          ])),
+          Container(width: 58, height: 58, decoration: BoxDecoration(color: Colors.white.withValues(alpha: .16), borderRadius: BorderRadius.circular(19), border: Border.all(color: Colors.white24)), child: const Icon(Icons.storefront_rounded, color: Colors.white, size: 31)),
+        ]),
+      ),
+      const SizedBox(height: 20), _summaryCards(), const SizedBox(height: 8),
       const Text('* Receivables and payables are estimated from invoice balances, returns and party opening balances.', style: TextStyle(fontSize: 11)),
       const SizedBox(height: 26),
       Text('Quick actions', style: Theme.of(context).textTheme.titleLarge?.copyWith(fontWeight: FontWeight.bold)),
@@ -338,7 +358,7 @@ class _DashboardPageState extends State<DashboardPage> with WidgetsBindingObserv
         final cols = c.maxWidth >= 700 ? 4 : c.maxWidth >= 420 ? 2 : 1;
         return GridView.builder(shrinkWrap: true, physics: const NeverScrollableScrollPhysics(), itemCount: quick.length,
           gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(crossAxisCount: cols, crossAxisSpacing: 12, mainAxisSpacing: 12, childAspectRatio: desktop ? 2.6 : 2.3),
-          itemBuilder: (context, i) { final m = quick[i]; return Card(elevation: 0, child: InkWell(onTap: () => _openModule(m),
+          itemBuilder: (context, i) { final m = quick[i]; return Card(elevation: 5, shadowColor: const Color(0xFF173B70).withValues(alpha: .10), child: InkWell(borderRadius: BorderRadius.circular(20), onTap: () => _openModule(m),
             child: Padding(padding: const EdgeInsets.all(14), child: Row(children: [
               CircleAvatar(child: Icon(m.icon)), const SizedBox(width: 10),
               Expanded(child: Text(m.title, style: const TextStyle(fontWeight: FontWeight.w700))),
@@ -510,7 +530,8 @@ class _SummaryCard extends StatelessWidget {
     return SizedBox(
       width: width,
       child: Card(
-        elevation: 0,
+        elevation: 6,
+        shadowColor: accent.withValues(alpha: .16),
         child: Padding(
           padding: const EdgeInsets.all(16),
           child: Row(
