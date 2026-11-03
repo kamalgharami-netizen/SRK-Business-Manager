@@ -4,6 +4,7 @@ import 'dart:typed_data';
 import 'package:flutter/material.dart';
 import 'package:file_picker/file_picker.dart';
 import '../../data/local/app_database.dart';
+import '../../data/local/supplier_ledger_reconciliation.dart';
 import '../../data/local/gst_return_readiness.dart';
 import '../../data/local/gst_gstr1_classification.dart';
 import '../../data/local/gst_gstr1_hsn_summary.dart';
@@ -38,6 +39,7 @@ class _ReportsPageState extends State<ReportsPage> {
   double _balanceAssets = 0;
   double _balanceLiabilities = 0;
   double _balanceEquity = 0;
+  Map<String, Object?> _supplierReconciliation = const {};
   DateTime? _startDate;
   DateTime? _endDate;
   bool _gstr1Checking = false;
@@ -437,6 +439,11 @@ class _ReportsPageState extends State<ReportsPage> {
         balanceSheetRows.add({...row, 'balance': balance});
       }
     }
+    final supplierReconciliation = await SupplierLedgerReconciliation.load(
+      db,
+      asOfDate: _endDate == null ? null : _date(_endDate!),
+    );
+
     final currentPeriodEarnings = profitIncome - profitExpense;
     if (!mounted) return;
     setState(() {
@@ -469,6 +476,7 @@ class _ReportsPageState extends State<ReportsPage> {
       _balanceAssets = balanceAssets;
       _balanceLiabilities = balanceLiabilities;
       _balanceEquity = balanceEquity + currentPeriodEarnings;
+      _supplierReconciliation = supplierReconciliation;
       _loading = false;
     });
   }
@@ -1019,6 +1027,48 @@ class _ReportsPageState extends State<ReportsPage> {
       trailing: Text(value, style: const TextStyle(fontWeight: FontWeight.bold))),
   );
 
+
+  Widget _supplierReconciliationCard() {
+    final data = _supplierReconciliation;
+    if (data.isEmpty) return const SizedBox.shrink();
+    final reconciled = data['is_reconciled'] == true;
+    final difference = (data['difference'] as num?)?.toDouble() ?? 0;
+    return Card(
+      child: Padding(
+        padding: const EdgeInsets.all(16),
+        child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+          Row(children: [
+            const Icon(Icons.balance),
+            const SizedBox(width: 8),
+            Expanded(child: Text('Supplier Ledger vs Accounts Payable',
+              style: Theme.of(context).textTheme.titleMedium)),
+            Icon(reconciled ? Icons.check_circle : Icons.warning_amber_rounded,
+              color: reconciled ? Colors.green : Theme.of(context).colorScheme.error),
+          ]),
+          const SizedBox(height: 12),
+          _metric('Supplier sub-ledger balance', _money((data['supplier_ledger_balance'] as num?)?.toDouble() ?? 0), Icons.people),
+          _metric('Accounts Payable control (2000)', _money((data['control_account_balance'] as num?)?.toDouble() ?? 0), Icons.account_balance),
+          _metric('Difference (sub-ledger − control)', _money(difference), Icons.compare_arrows),
+          const Divider(),
+          Text('Opening supplier balances: ${_money(data['opening_balance'])}'),
+          Text('Purchases: ${_money(data['purchase_total'])}  •  Returns: ${_money(data['purchase_return_total'])}'),
+          Text('Invoice payments: ${_money(data['linked_payment_total'])}  •  Advance allocations: ${_money(data['advance_allocation_total'])}'),
+          if ((data['unassigned_purchase_count'] as num).toInt() > 0)
+            Text('Purchases without supplier: ${data['unassigned_purchase_count']} • ${_money(data['unassigned_purchase_total'])}',
+              style: TextStyle(color: Theme.of(context).colorScheme.error)),
+          if ((data['missing_journal_count'] as num).toInt() > 0)
+            Text('Transactions missing posted journal: ${data['missing_journal_count']} • ${_money(data['missing_journal_amount'])}',
+              style: TextStyle(color: Theme.of(context).colorScheme.error)),
+          const SizedBox(height: 8),
+          Text(reconciled
+            ? 'Reconciled within ₹0.01 tolerance. This is a read-only control check.'
+            : 'Review the difference and flagged transactions. No accounting entries were changed.',
+            style: Theme.of(context).textTheme.bodySmall),
+        ]),
+      ),
+    );
+  }
+
   Widget _gstDateFilter({bool pointInTime = false}) => Card(
     child: Padding(
       padding: const EdgeInsets.all(12),
@@ -1073,6 +1123,7 @@ class _ReportsPageState extends State<ReportsPage> {
                   : 'Period: ${_startDate == null ? 'Beginning' : _date(_startDate!)} to ${_endDate == null ? 'Latest' : _date(_endDate!)}',
             ),
           ],
+          if (title == 'Trial Balance') _supplierReconciliationCard(),
           if (title == 'GST Reports') ...[
             _gstr1ReadinessCard(),
             _gstr1ClassificationCard(),
