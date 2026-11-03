@@ -14,10 +14,10 @@ void main() {
     });
 
     test('includes staff profiles as a supported cloud entity', () {
-    expect(BusinessSyncEntityPolicy.supports('staff_members'), isTrue);
-  });
+      expect(BusinessSyncEntityPolicy.supports('staff_members'), isTrue);
+    });
 
-  test('includes business profile as a supported cloud entity', () {
+    test('includes business profile as a supported cloud entity', () {
       expect(BusinessSyncEntityPolicy.supports('business_profile'), isTrue);
     });
 
