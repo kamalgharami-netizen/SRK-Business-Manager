@@ -1337,6 +1337,41 @@ class AppDatabase {
     }
     final db = await database;
     await db.transaction((txn) async {
+      if (tableName == 'business_profile') {
+        if (_activeBusinessId == null ||
+            recordId != _activeBusinessId ||
+            payload['sync_id'] != recordId) {
+          throw const FormatException('Cloud business profile scope is invalid.');
+        }
+        const profileKeys = [
+          'company_name',
+          'company_phone',
+          'company_address',
+          'company_gstin',
+          'company_state',
+        ];
+        if (isDeleted) {
+          await txn.delete(
+            'app_settings',
+            where: 'setting_key IN (?, ?, ?, ?, ?)',
+            whereArgs: profileKeys,
+          );
+          return;
+        }
+        for (final key in profileKeys) {
+          final value = payload[key];
+          if (value is! String) {
+            throw FormatException('Cloud business profile field is invalid: $key');
+          }
+          await txn.insert(
+            'app_settings',
+            {'setting_key': key, 'setting_value': value},
+            conflictAlgorithm: ConflictAlgorithm.replace,
+          );
+        }
+        return;
+      }
+
       if (isDeleted) {
         await txn.delete(tableName, where: 'sync_id = ?', whereArgs: [recordId]);
         return;
