@@ -260,6 +260,7 @@ class InventoryCostService {
     required String removedAt,
     String? warehouseSyncId,
     List<Map<String, Object?>>? consumedLayers,
+    bool unassignedOnly = false,
   }) async {
     if (quantity <= 0 || !quantity.isFinite) {
       throw StateError('Removal quantity must be positive.');
@@ -268,12 +269,16 @@ class InventoryCostService {
     var totalCost = 0.0;
     final layers = await txn.query(
       'inventory_cost_layers',
-      where: warehouseSyncId == null
-          ? 'product_id = ? AND quantity_remaining > 0'
-          : 'product_id = ? AND warehouse_sync_id = ? AND quantity_remaining > 0',
-      whereArgs: warehouseSyncId == null
+      where: unassignedOnly
+          ? 'product_id = ? AND warehouse_sync_id IS NULL AND quantity_remaining > 0'
+          : warehouseSyncId == null
+              ? 'product_id = ? AND quantity_remaining > 0'
+              : 'product_id = ? AND warehouse_sync_id = ? AND quantity_remaining > 0',
+      whereArgs: unassignedOnly
           ? [productId]
-          : [productId, warehouseSyncId],
+          : warehouseSyncId == null
+              ? [productId]
+              : [productId, warehouseSyncId],
       orderBy: 'received_at ASC, id ASC',
     );
     for (final layer in layers) {
@@ -300,7 +305,7 @@ class InventoryCostService {
       totalCost += used * unitCost;
       remaining -= used;
     }
-    if (remaining > 0.0000001 && warehouseSyncId != null) {
+    if (remaining > 0.0000001 && (warehouseSyncId != null || unassignedOnly)) {
       throw StateError(
         'Insufficient stock in the selected warehouse. Unassigned or other-warehouse stock cannot be used for this adjustment.',
       );
