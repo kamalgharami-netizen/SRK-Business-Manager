@@ -182,7 +182,7 @@ class _CompanySetupPageState extends State<CompanySetupPage> {
                   _field(_name, 'Business / trade name *', validator: _required, capitalization: TextCapitalization.words),
                   _field(_legalName, 'Legal name (as per PAN, optional)', capitalization: TextCapitalization.words),
                   DropdownButtonFormField<String>(
-                    value: _businessType,
+                    initialValue: _businessType,
                     decoration: const InputDecoration(labelText: 'Business constitution'),
                     items: _businessTypes.entries.map((e) => DropdownMenuItem(value: e.key, child: Text(e.value))).toList(),
                     onChanged: _busy ? null : (v) => setState(() => _businessType = v),
@@ -200,7 +200,7 @@ class _CompanySetupPageState extends State<CompanySetupPage> {
                   _field(_postalCode, 'PIN code', keyboardType: TextInputType.number,
                     validator: (v) => _optionalPattern(v ?? '', r'^[1-9][0-9]{5}$', 'Enter a valid 6-digit PIN code.')),
                   DropdownButtonFormField<String>(
-                    value: _state,
+                    initialValue: _state,
                     decoration: const InputDecoration(labelText: 'State / Union Territory'),
                     items: IndianStates.all.map((s) => DropdownMenuItem(value: s, child: Text(s))).toList(),
                     onChanged: _busy ? null : (v) => setState(() => _state = v),
@@ -218,7 +218,7 @@ class _CompanySetupPageState extends State<CompanySetupPage> {
                       return null;
                     }),
                   DropdownButtonFormField<String>(
-                    value: _gstType,
+                    initialValue: _gstType,
                     decoration: const InputDecoration(labelText: 'GST registration type'),
                     items: _gstTypes.entries.map((e) => DropdownMenuItem(value: e.key, child: Text(e.value))).toList(),
                     onChanged: _busy ? null : (v) => setState(() => _gstType = v),
