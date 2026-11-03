@@ -716,5 +716,64 @@ void main() {
       expect(rows.single['quantity_remaining'], 3);
     });
 
+    test('replays legacy stock allocation without changing total FIFO quantity', () async {
+      final db = await openWarehouseDatabase();
+      addTearDown(db.close);
+      await db.insert('inventory_cost_layers', {
+        'product_id': 1, 'warehouse_sync_id': null,
+        'source_type': 'legacy_opening', 'received_at': '2026-11-01',
+        'quantity_received': 5, 'quantity_remaining': 5,
+        'unit_cost': 80, 'is_estimated': 1,
+      });
+      await db.transaction((txn) =>
+          InventoryCostService.applyRemoteStockAdjustmentEffect(
+            txn,
+            productId: 1,
+            warehouseSyncId: 'warehouse-A',
+            direction: 'allocate',
+            quantity: 3,
+            layers: [
+              {'quantity': 3, 'unit_cost': 80, 'is_estimated': 1},
+            ],
+            adjustedAt: '2026-11-03T12:00:00',
+          ));
+      final rows = await db.query('inventory_cost_layers', orderBy: 'id');
+      expect(rows.length, 2);
+      expect(rows[0]['quantity_remaining'], 2);
+      expect(rows[1]['warehouse_sync_id'], 'warehouse-A');
+      expect(rows[1]['quantity_remaining'], 3);
+      expect(rows[1]['unit_cost'], 80);
+      expect(rows[1]['is_estimated'], 1);
+    });
+
+    test('rejects legacy allocation if the destination device has no unassigned FIFO stock', () async {
+      final db = await openWarehouseDatabase();
+      addTearDown(db.close);
+      await db.insert('inventory_cost_layers', {
+        'product_id': 1, 'warehouse_sync_id': 'warehouse-B',
+        'source_type': 'purchase', 'received_at': '2026-11-01',
+        'quantity_received': 5, 'quantity_remaining': 5,
+        'unit_cost': 80, 'is_estimated': 1,
+      });
+      await expectLater(
+        db.transaction((txn) =>
+            InventoryCostService.applyRemoteStockAdjustmentEffect(
+              txn,
+              productId: 1,
+              warehouseSyncId: 'warehouse-A',
+              direction: 'allocate',
+              quantity: 3,
+              layers: [
+                {'quantity': 3, 'unit_cost': 80, 'is_estimated': 1},
+              ],
+              adjustedAt: '2026-11-03T12:00:00',
+            )),
+        throwsA(isA<StateError>()),
+      );
+      final rows = await db.query('inventory_cost_layers');
+      expect(rows.single['warehouse_sync_id'], 'warehouse-B');
+      expect(rows.single['quantity_remaining'], 5);
+    });
+
   });
 }
