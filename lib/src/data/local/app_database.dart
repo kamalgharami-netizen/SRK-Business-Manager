@@ -1227,6 +1227,54 @@ class AppDatabase {
     await enqueueSyncOperation(tableName: 'stock_movements', recordId: syncId, operation: 'insert', payload: row, executor: executor);
   }
 
+  /// Queues one complete warehouse transfer, including its FIFO layer
+  /// allocations and both warehouse movement identifiers, as one cloud record.
+  Future<void> enqueueWarehouseTransferSync(
+    DatabaseExecutor executor,
+    int transferId,
+  ) async {
+    final rows = await executor.query(
+      'warehouse_transfers',
+      where: 'id = ?',
+      whereArgs: [transferId],
+      limit: 1,
+    );
+    if (rows.isEmpty) {
+      throw StateError('Warehouse transfer could not be reloaded for sync.');
+    }
+    final row = Map<String, dynamic>.from(rows.single);
+    final syncId = row['sync_id'] as String?;
+    if (syncId == null || syncId.isEmpty) {
+      throw StateError('Warehouse transfer is missing its cloud identifier.');
+    }
+    final productRows = await executor.query(
+      'products',
+      columns: ['sync_id'],
+      where: 'id = ?',
+      whereArgs: [row['product_id']],
+      limit: 1,
+    );
+    final productSyncId = productRows.isEmpty
+        ? null
+        : productRows.first['sync_id'] as String?;
+    if (productSyncId == null || productSyncId.isEmpty) {
+      throw StateError('Warehouse transfer product is missing its cloud identifier.');
+    }
+    final payload = Map<String, dynamic>.from(row)
+      ..remove('id')
+      ..remove('product_id')
+      ..remove('layers_json')
+      ..['product_sync_id'] = productSyncId
+      ..['layers'] = jsonDecode(row['layers_json'] as String);
+    await enqueueSyncOperation(
+      tableName: 'warehouse_transfers',
+      recordId: syncId,
+      operation: 'insert',
+      payload: payload,
+      executor: executor,
+    );
+  }
+
   /// Adds a local change to the durable queue for later cloud delivery.
   Future<int> enqueueSyncOperation({
     required String tableName,
@@ -2217,6 +2265,7 @@ class AppDatabase {
           'sync_conflict_resolutions',
           'sync_metadata',
           'payment_allocations',
+          'warehouse_transfers',
         };
         if (!names.containsAll(currentSyncTables)) {
           throw const FormatException(
