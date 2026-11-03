@@ -11,45 +11,18 @@ class SupplierLedgerReconciliation {
     final journalCutoff = asOfDate == null ? '' : ' AND je.entry_date <= ?';
     final missingDateClause = asOfDate == null ? '' : 'AND x.tx_date <= ?';
 
-    var opening = 0.0;
-    var includeOpening = asOfDate == null;
-    if (asOfDate != null) {
-      final configuredDate = await db.query(
-        'app_settings',
-        columns: ['setting_value'],
-        where: 'setting_key = ?',
-        whereArgs: ['opening_balance_date'],
-        limit: 1,
-      );
-      String? openingDate = configuredDate.isEmpty
-          ? null
-          : configuredDate.first['setting_value'] as String?;
-      if (openingDate == null) {
-        final legacy = await db.rawQuery("""
-          SELECT MIN(entry_date) AS opening_date
-          FROM journal_entries
-          WHERE source_type='opening_balance' AND status='posted'
-        """);
-        openingDate = legacy.first['opening_date'] as String?;
-        if (openingDate != null) openingDate = openingDate.substring(0, 10);
-      }
-      if (openingDate == null) {
-        final firstPartyOpening = await db.rawQuery("""
-          SELECT MIN(created_at) AS opening_date
-          FROM parties WHERE opening_balance > 0
-        """);
-        openingDate = firstPartyOpening.first['opening_date'] as String?;
-        if (openingDate != null) openingDate = openingDate.substring(0, 10);
-      }
-      includeOpening = openingDate == null || openingDate.compareTo(asOfDate) <= 0;
-    }
-    if (includeOpening) {
-      final openingRows = await db.rawQuery("""
-        SELECT COALESCE(SUM(CASE WHEN balance_type='payable' THEN opening_balance ELSE 0 END),0) AS opening
-        FROM parties
-      """);
-      opening = (openingRows.single['opening'] as num).toDouble();
-    }
+    final openingRows = asOfDate == null
+        ? await db.rawQuery("""
+            SELECT COALESCE(SUM(CASE WHEN balance_type='payable' THEN opening_balance ELSE 0 END),0) AS opening
+            FROM parties
+          """)
+        : await db.rawQuery("""
+            SELECT COALESCE(SUM(CASE WHEN balance_type='payable'
+              AND date(created_at) <= date(?) THEN opening_balance ELSE 0 END),0) AS opening
+            FROM parties
+          """, [asOfDate]);
+    final opening = (openingRows.single['opening'] as num).toDouble();
+
     final purchaseRows = await db.rawQuery("SELECT COALESCE(SUM(grand_total),0) AS total FROM invoices WHERE invoice_type='purchase'$invoiceCutoff", asOfDate == null ? [] : [asOfDate]);
     final returnRows = await db.rawQuery("SELECT COALESCE(SUM(grand_total),0) AS total FROM invoices WHERE invoice_type='purchase_return'$invoiceCutoff", asOfDate == null ? [] : [asOfDate]);
     final paymentRows = await db.rawQuery("SELECT COALESCE(SUM(amount),0) AS total FROM payments WHERE payment_type='payment' AND invoice_id IS NOT NULL$paymentCutoff", asOfDate == null ? [] : [asOfDate]);
@@ -87,7 +60,7 @@ class SupplierLedgerReconciliation {
         UNION ALL
         SELECT id, grand_total, invoice_date, 'purchase_return' FROM invoices WHERE invoice_type='purchase_return'
         UNION ALL
-        SELECT id, amount, payment_date, 'payment' FROM payments WHERE payment_type='payment' AND invoice_id IS NOT NULL
+        SELECT id, amount, payment_date, 'payment' FROM payments WHERE payment_type='payment'
         UNION ALL
         SELECT a.id, a.amount, a.allocation_date, 'advance_allocation'
         FROM payment_allocations a INNER JOIN payments p ON p.id=a.payment_id WHERE p.payment_type='payment'
