@@ -7,6 +7,7 @@ class BusinessSyncEntityPolicy {
 
   static const List<String> pullOrder = [
     'business_profile',
+    'staff_members',
     'parties',
     'products',
     'expenses',
