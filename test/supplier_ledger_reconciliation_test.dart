@@ -37,7 +37,25 @@ void main() {
     await addJournal('payment', 1, 100, 0);
     // Unallocated supplier advance has a payment journal but does not reduce payable until allocated.
     await addJournal('payment', 2, 30, 0, accountId: 2);
-    await addJournal('advance_allocation', 1, 0, 20, accountId: 2);
+    final allocationEntry = await db.insert('journal_entries', {
+      'source_type': 'advance_allocation',
+      'source_id': 1,
+      'entry_date': '2026-01-06',
+      'status': 'posted',
+    });
+    // Applying an advance debits Accounts Payable and credits Supplier Advances.
+    await db.insert('journal_lines', {
+      'journal_entry_id': allocationEntry,
+      'account_id': 1,
+      'debit': 20,
+      'credit': 0,
+    });
+    await db.insert('journal_lines', {
+      'journal_entry_id': allocationEntry,
+      'account_id': 2,
+      'debit': 0,
+      'credit': 20,
+    });
     final result = await SupplierLedgerReconciliation.load(db);
     expect(result['supplier_ledger_balance'], 430);
     expect(result['control_account_balance'], 430);
