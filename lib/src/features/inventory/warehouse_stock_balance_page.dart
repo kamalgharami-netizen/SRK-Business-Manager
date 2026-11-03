@@ -53,9 +53,11 @@ class _WarehouseStockBalancePageState extends State<WarehouseStockBalancePage> {
         LEFT JOIN inventory_cost_layers l
           ON l.warehouse_sync_id = w.sync_id
           AND l.quantity_remaining > 0
-        LEFT JOIN products p
-          ON p.id = l.product_id
-          AND (p.is_service = 0 OR p.is_service IS NULL)
+          AND EXISTS (
+            SELECT 1 FROM products p
+            WHERE p.id = l.product_id
+              AND (p.is_service = 0 OR p.is_service IS NULL)
+          )
         GROUP BY w.sync_id, w.name, w.code, w.is_active
         ORDER BY w.is_active DESC, w.name COLLATE NOCASE
       ''');
