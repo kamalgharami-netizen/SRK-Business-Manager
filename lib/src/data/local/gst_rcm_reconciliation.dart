@@ -11,8 +11,8 @@ class GstRcmReconciliation {
     String? startDate,
     String? endDate,
   }) async {
-    final startPeriod = startDate == null ? null : startDate.substring(0, 7);
-    final endPeriod = endDate == null ? null : endDate.substring(0, 7);
+    final startPeriod = startDate?.substring(0, 7);
+    final endPeriod = endDate?.substring(0, 7);
     final where = <String>[];
     final args = <Object?>[];
     if (startPeriod != null) {
