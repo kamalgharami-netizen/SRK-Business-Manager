@@ -935,7 +935,7 @@ class _StockControlPageState extends State<StockControlPage> {
             transferredAt: timestamp,
           );
 
-          final outgoingId = await txn.insert('stock_movements', {
+          await txn.insert('stock_movements', {
             'sync_id': AppDatabase.instance.createSyncId(),
             'product_id': productId,
             'warehouse_sync_id': sourceWarehouseSyncId,
@@ -945,7 +945,7 @@ class _StockControlPageState extends State<StockControlPage> {
             'notes': 'TRANSFER OUT • To: ${destinationName} • ${note.isEmpty ? 'FIFO value ₹${cost.toStringAsFixed(2)}' : note}',
             'created_at': timestamp,
           });
-          final incomingId = await txn.insert('stock_movements', {
+          await txn.insert('stock_movements', {
             'sync_id': AppDatabase.instance.createSyncId(),
             'product_id': productId,
             'warehouse_sync_id': destinationWarehouseSyncId,
