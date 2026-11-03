@@ -1407,7 +1407,14 @@ class AppDatabase {
           throw const FormatException('Cloud warehouse identifier does not match its record ID.');
         }
         if (isDeleted) {
-          await txn.delete('warehouses', where: 'sync_id = ?', whereArgs: [recordId]);
+          // Keep historical invoice and stock references intact; remote deletion
+          // is represented locally as deactivation.
+          await txn.update(
+            'warehouses',
+            {'is_active': 0, 'updated_at': DateTime.now().toIso8601String()},
+            where: 'sync_id = ?',
+            whereArgs: [recordId],
+          );
           return;
         }
         final name = payload['name'];
@@ -1535,6 +1542,23 @@ class AppDatabase {
       }
 
       if (tableName == 'stock_movements') {
+        final warehouseSyncId = payload['warehouse_sync_id'];
+        if (warehouseSyncId != null &&
+            (warehouseSyncId is! String || warehouseSyncId.trim().isEmpty)) {
+          throw const FormatException('Cloud stock movement warehouse reference is invalid.');
+        }
+        if (warehouseSyncId is String) {
+          final warehouseRows = await txn.query(
+            'warehouses',
+            columns: ['sync_id'],
+            where: 'sync_id = ?',
+            whereArgs: [warehouseSyncId.trim()],
+            limit: 1,
+          );
+          if (warehouseRows.isEmpty) {
+            throw StateError('Stock movement warehouse is not available on this device yet.');
+          }
+        }
         final productSyncId = payload['product_sync_id'];
         final movementType = payload['movement_type'];
         final quantityChange = payload['quantity_change'];
@@ -1564,6 +1588,7 @@ class AppDatabase {
         final values = <String, Object?>{
           'sync_id': recordId,
           'product_id': productRows.first['id'] as int,
+          'warehouse_sync_id': warehouseSyncId,
           'movement_type': movementType,
           'quantity_change': quantityChange.toDouble(),
           'reference': reference,
@@ -1756,6 +1781,23 @@ class AppDatabase {
       }
 
       if (tableName == 'invoices') {
+        final warehouseSyncId = payload['warehouse_sync_id'];
+        if (warehouseSyncId != null &&
+            (warehouseSyncId is! String || warehouseSyncId.trim().isEmpty)) {
+          throw const FormatException('Cloud invoice warehouse reference is invalid.');
+        }
+        if (warehouseSyncId is String) {
+          final warehouseRows = await txn.query(
+            'warehouses',
+            columns: ['sync_id'],
+            where: 'sync_id = ?',
+            whereArgs: [warehouseSyncId.trim()],
+            limit: 1,
+          );
+          if (warehouseRows.isEmpty) {
+            throw StateError('Invoice warehouse is not available on this device yet.');
+          }
+        }
         final partySyncId = payload['party_sync_id'] as String?;
         int? localPartyId;
         if (partySyncId != null && partySyncId.isNotEmpty) {
