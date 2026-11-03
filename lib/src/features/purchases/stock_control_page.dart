@@ -606,6 +606,12 @@ class _StockControlPageState extends State<StockControlPage> {
       where: 'is_service = 0 OR is_service IS NULL',
       orderBy: 'name COLLATE NOCASE',
     );
+    final warehouses = await db.query(
+      'warehouses',
+      columns: ['sync_id', 'name', 'code'],
+      where: 'is_active = 1',
+      orderBy: 'name COLLATE NOCASE',
+    );
     if (!mounted) return;
     if (products.isEmpty) {
       _message('Add a stock product before adjusting inventory.');
@@ -613,6 +619,9 @@ class _StockControlPageState extends State<StockControlPage> {
     }
 
     int? productId;
+    String? warehouseSyncId = warehouses.length == 1
+        ? warehouses.single['sync_id'] as String?
+        : null;
     String direction = 'increase';
     final quantity = TextEditingController();
     final reason = TextEditingController();
@@ -641,6 +650,18 @@ class _StockControlPageState extends State<StockControlPage> {
                     onChanged: (value) => refresh(() => productId = value),
                   ),
                   const SizedBox(height: 12),
+                  if (warehouses.isNotEmpty)
+                    DropdownButtonFormField<String>(
+                      initialValue: warehouseSyncId,
+                      decoration: const InputDecoration(labelText: 'Warehouse *'),
+                      items: warehouses.map((row) => DropdownMenuItem<String>(
+                        value: row['sync_id'] as String,
+                        child: Text('${row['name']} • ${row['code'] ?? ''}'),
+                      )).toList(),
+                      validator: (value) => value == null ? 'Select a warehouse' : null,
+                      onChanged: (value) => refresh(() => warehouseSyncId = value),
+                    ),
+                  if (warehouses.isNotEmpty) const SizedBox(height: 12),
                   DropdownButtonFormField<String>(
                     initialValue: direction,
                     decoration: const InputDecoration(labelText: 'Adjustment type'),
@@ -718,6 +739,7 @@ class _StockControlPageState extends State<StockControlPage> {
               productId: productId!,
               quantity: signedQty,
               adjustedAt: now.toIso8601String(),
+              warehouseSyncId: warehouseSyncId,
             );
           } else {
             adjustmentCost = await InventoryCostService.removeStockAtFifo(
@@ -725,6 +747,7 @@ class _StockControlPageState extends State<StockControlPage> {
               productId: productId!,
               quantity: -signedQty,
               removedAt: now.toIso8601String(),
+              warehouseSyncId: warehouseSyncId,
             );
           }
           await txn.rawUpdate(
@@ -734,6 +757,7 @@ class _StockControlPageState extends State<StockControlPage> {
           final movementId = await txn.insert('stock_movements', {
             'sync_id': AppDatabase.instance.createSyncId(),
             'product_id': productId,
+            'warehouse_sync_id': warehouseSyncId,
             'movement_type': 'adjustment',
             'quantity_change': signedQty,
             'reference': 'ADJ-${now.microsecondsSinceEpoch}',
