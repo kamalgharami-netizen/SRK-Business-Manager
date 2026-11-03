@@ -27,7 +27,7 @@ The repository contains a working Flutter application foundation and feature mod
 - Purchase and sales invoices and their returns are now included in invoice sync. The current workflow reconstructs source-linked FIFO costs and accounting journals for these transaction types on receiving devices. This has passed the configured CI analyzer, automated tests and Windows/Android build jobs; broader real-device multi-device reconciliation remains pending.
 - Stock movements and product quantity snapshots sync separately. The receiver does not replay movement deltas, to avoid double-counting during repeated pulls.
 - Cloud sync currently performs paged reconciliation of supported records; production-scale incremental sync and broader entity coverage remain pending.
-- Business profile fields (name, phone, address, GSTIN and GST registration state) now sync bidirectionally for business owners/admins. Staff profiles remain local records; cloud login accounts and role-based permissions in the Team & Access screen are separate concepts.
+- Business profile fields (name, phone, address, GSTIN and GST registration state) and staff profiles now sync bidirectionally for business owners/admins. Staff profile labels remain separate from cloud login accounts and role-based permissions in the Team & Access screen.
 - A team member must already have registered for a cloud account before an owner/admin can add that account to a business. The current flow does not send invitation emails.
 - The local backup/restore feature does not replace a tested off-device backup and disaster-recovery plan.
 
