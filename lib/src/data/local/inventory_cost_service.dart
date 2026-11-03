@@ -478,6 +478,108 @@ class InventoryCostService {
   }
 
 
+
+  /// Replays a cloud transfer only when the destination device has the same
+  /// source FIFO sequence. A mismatch is rejected instead of inventing stock.
+  static Future<double> applyRemoteWarehouseTransferLayers(
+    Transaction txn, {
+    required int productId,
+    required String sourceWarehouseSyncId,
+    required String destinationWarehouseSyncId,
+    required List<Map<String, dynamic>> layers,
+    required String transferredAt,
+    required double expectedTotalCost,
+  }) async {
+    if (sourceWarehouseSyncId.trim().isEmpty ||
+        destinationWarehouseSyncId.trim().isEmpty ||
+        sourceWarehouseSyncId == destinationWarehouseSyncId ||
+        !expectedTotalCost.isFinite ||
+        expectedTotalCost < 0 ||
+        layers.isEmpty) {
+      throw const FormatException('Cloud warehouse transfer details are invalid.');
+    }
+    final warehouses = await txn.query(
+      'warehouses',
+      columns: ['sync_id'],
+      where: 'sync_id IN (?, ?)',
+      whereArgs: [sourceWarehouseSyncId, destinationWarehouseSyncId],
+    );
+    if (warehouses.length != 2) {
+      throw StateError('A warehouse referenced by the cloud transfer is missing.');
+    }
+    final sourceLayers = await txn.query(
+      'inventory_cost_layers',
+      where: 'product_id = ? AND warehouse_sync_id = ? AND quantity_remaining > 0',
+      whereArgs: [productId, sourceWarehouseSyncId],
+      orderBy: 'received_at ASC, id ASC',
+    );
+    var sourceIndex = 0;
+    var totalQuantity = 0.0;
+    var totalCost = 0.0;
+    for (final allocation in layers) {
+      final allocationQty = allocation['quantity'];
+      final allocationCost = allocation['unit_cost'];
+      final estimated = allocation['is_estimated'];
+      if (allocationQty is! num || !allocationQty.toDouble().isFinite ||
+          allocationQty <= 0 ||
+          allocationCost is! num || !allocationCost.toDouble().isFinite ||
+          allocationCost < 0 ||
+          estimated is! int || (estimated != 0 && estimated != 1)) {
+        throw const FormatException('Cloud transfer FIFO allocation is invalid.');
+      }
+      var remaining = allocationQty.toDouble();
+      final unitCost = allocationCost.toDouble();
+      while (remaining > 0.0000001) {
+        if (sourceIndex >= sourceLayers.length) {
+          throw StateError('Cloud transfer exceeds the available source FIFO stock.');
+        }
+        final source = sourceLayers[sourceIndex];
+        final available = (source['quantity_remaining'] as num).toDouble();
+        final sourceCost = (source['unit_cost'] as num).toDouble();
+        final sourceEstimated = (source['is_estimated'] as num?)?.toInt() ?? 0;
+        if (!available.isFinite || available <= 0 ||
+            !sourceCost.isFinite || sourceCost < 0 ||
+            (sourceCost - unitCost).abs() > 0.000001 ||
+            sourceEstimated != estimated) {
+          throw StateError(
+            'Cloud transfer FIFO does not match this device. Sync source purchases and adjustments before retrying.',
+          );
+        }
+        final moved = available < remaining ? available : remaining;
+        await txn.rawUpdate(
+          'UPDATE inventory_cost_layers SET quantity_remaining = quantity_remaining - ? WHERE id = ?',
+          [moved, source['id']],
+        );
+        await txn.insert('inventory_cost_layers', {
+          'product_id': productId,
+          'warehouse_sync_id': destinationWarehouseSyncId,
+          'source_type': 'warehouse_transfer',
+          'source_id': null,
+          'received_at': transferredAt,
+          'quantity_received': moved,
+          'quantity_remaining': moved,
+          'unit_cost': unitCost,
+          'is_estimated': estimated,
+        });
+        totalQuantity += moved;
+        totalCost += moved * unitCost;
+        remaining -= moved;
+        final sourceRemaining = available - moved;
+        if (sourceRemaining <= 0.0000001) sourceIndex++;
+      }
+    }
+    final expectedQuantity = layers.fold<double>(
+      0,
+      (sum, row) => sum + (row['quantity'] as num).toDouble(),
+    );
+    if ((totalQuantity - expectedQuantity).abs() > 0.000001 ||
+        (totalCost - expectedTotalCost).abs() > 0.01) {
+      throw const FormatException('Cloud transfer quantity or valuation does not reconcile.');
+    }
+    return totalCost;
+  }
+
+
   /// Restores returned sale quantities into FIFO inventory using the exact
   /// cost allocations recorded against the original sale item.
   static Future<double> restoreSalesReturn(
