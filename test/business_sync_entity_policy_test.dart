@@ -17,6 +17,10 @@ void main() {
       expect(BusinessSyncEntityPolicy.supports('staff_members'), isTrue);
     });
 
+    test('includes warehouse master data as a supported cloud entity', () {
+      expect(BusinessSyncEntityPolicy.supports('warehouses'), isTrue);
+    });
+
     test('includes business profile as a supported cloud entity', () {
       expect(BusinessSyncEntityPolicy.supports('business_profile'), isTrue);
     });
