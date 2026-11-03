@@ -384,6 +384,59 @@ class InventoryCostService {
       throw const FormatException('Cloud stock decrease FIFO quantity does not reconcile.');
     }
 
+    if (direction == 'allocate') {
+      if (warehouseSyncId == null) {
+        throw const FormatException('A destination warehouse is required for legacy stock allocation.');
+      }
+      final sourceLayers = await txn.query(
+        'inventory_cost_layers',
+        where: 'product_id = ? AND warehouse_sync_id IS NULL AND quantity_remaining > 0',
+        whereArgs: [productId],
+        orderBy: 'received_at ASC, id ASC',
+      );
+      var sourceIndex = 0;
+      for (final allocation in layers) {
+        var remaining = (allocation['quantity'] as num).toDouble();
+        final unitCost = (allocation['unit_cost'] as num).toDouble();
+        final estimated = allocation['is_estimated'] as int;
+        while (remaining > 0.0000001) {
+          if (sourceIndex >= sourceLayers.length) {
+            throw StateError('Cloud legacy stock allocation exceeds unassigned FIFO stock.');
+          }
+          final source = sourceLayers[sourceIndex];
+          final available = (source['quantity_remaining'] as num).toDouble();
+          final sourceCost = (source['unit_cost'] as num).toDouble();
+          final sourceEstimated = (source['is_estimated'] as num?)?.toInt() ?? 0;
+          if (!available.isFinite || available <= 0 ||
+              (sourceCost - unitCost).abs() > 0.000001 ||
+              sourceEstimated != estimated) {
+            throw StateError('Cloud legacy stock FIFO does not match this device.');
+          }
+          final used = available < remaining ? available : remaining;
+          await txn.rawUpdate(
+            'UPDATE inventory_cost_layers SET quantity_remaining = quantity_remaining - ? WHERE id = ?',
+            [used, source['id']],
+          );
+          remaining -= used;
+          if (available - used <= 0.0000001) sourceIndex++;
+        }
+      }
+      for (final allocation in layers) {
+        await txn.insert('inventory_cost_layers', {
+          'product_id': productId,
+          'warehouse_sync_id': warehouseSyncId,
+          'source_type': 'legacy_allocation',
+          'source_id': null,
+          'received_at': adjustedAt,
+          'quantity_received': (allocation['quantity'] as num).toDouble(),
+          'quantity_remaining': (allocation['quantity'] as num).toDouble(),
+          'unit_cost': (allocation['unit_cost'] as num).toDouble(),
+          'is_estimated': allocation['is_estimated'] as int,
+        });
+      }
+      return;
+    }
+
     if (direction == 'increase') {
       for (final allocation in layers) {
         await txn.insert('inventory_cost_layers', {
