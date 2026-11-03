@@ -44,7 +44,16 @@ void main() {
     expect(result['is_reconciled'], true);
   });
 
-  test('excludes later-created opening balances from historical reports', () async {\n    final db = await fixture();\n    addTearDown(db.close);\n    await db.insert('parties', {'id': 1, 'opening_balance': 100, 'balance_type': 'payable', 'created_at': '2026-02-01'});\n    final result = await SupplierLedgerReconciliation.load(db, asOfDate: '2026-01-31');\n    expect(result['opening_balance'], 0);\n    expect(result['supplier_ledger_balance'], 0);\n  });\n\n  test('flags unassigned purchase and missing journal', () async {
+  test('excludes later-created opening balances from historical reports', () async {
+    final db = await fixture();
+    addTearDown(db.close);
+    await db.insert('parties', {'id': 1, 'opening_balance': 100, 'balance_type': 'payable', 'created_at': '2026-02-01'});
+    final result = await SupplierLedgerReconciliation.load(db, asOfDate: '2026-01-31');
+    expect(result['opening_balance'], 0);
+    expect(result['supplier_ledger_balance'], 0);
+  });
+
+  test('flags unassigned purchase and missing journal', () async {
     final db = await fixture();
     addTearDown(db.close);
     await db.insert('invoices', {'id': 1, 'invoice_type': 'purchase', 'party_id': null, 'invoice_date': '2026-01-01', 'grand_total': 250});
