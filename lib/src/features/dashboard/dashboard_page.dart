@@ -26,6 +26,7 @@ import '../parties/parties_page.dart';
 import '../parties/party_ledger_page.dart';
 import '../products/products_page.dart';
 import '../inventory/warehouses_page.dart';
+import '../inventory/warehouse_stock_balance_page.dart';
 
 class DashboardPage extends StatefulWidget {
   const DashboardPage({super.key, required this.cloudConfigured});
@@ -222,6 +223,7 @@ class _DashboardPageState extends State<DashboardPage> with WidgetsBindingObserv
     _ModuleInfo('Purchase Returns & Stock Control', Icons.assignment_return),
     _ModuleInfo('Inventory & Stock', Icons.inventory_2),
     _ModuleInfo('Warehouse Master', Icons.warehouse_outlined),
+    _ModuleInfo('Warehouse Stock Balance', Icons.warehouse),
     _ModuleInfo('Stock Valuation', Icons.price_check),
     _ModuleInfo('Trial Balance', Icons.balance),
     _ModuleInfo('Profit & Loss', Icons.analytics),
@@ -261,6 +263,7 @@ class _DashboardPageState extends State<DashboardPage> with WidgetsBindingObserv
       'Party Ledger' => const PartyLedgerPage(),
       'Inventory & Stock' => const ProductsPage(),
       'Warehouse Master' => const WarehousesPage(),
+      'Warehouse Stock Balance' => const WarehouseStockBalancePage(),
       'Stock Valuation' => const ReportsPage(reportType: 'Stock Valuation'),
       'Trial Balance' => const ReportsPage(reportType: 'Trial Balance'),
       'Profit & Loss' => const ReportsPage(reportType: 'Profit & Loss'),
