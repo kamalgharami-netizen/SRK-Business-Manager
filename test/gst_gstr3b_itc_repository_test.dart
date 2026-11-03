@@ -241,6 +241,35 @@ void main() {
         throwsFormatException,
       );
     });
+
+    test('rejects rows with missing supplier identity or invalid invoice dates and periods', () {
+      const header = 'supplier_gstin,invoice_number,invoice_date,return_period,taxable_value,igst,cgst,sgst,cess\\n';
+      for (final row in [
+        ',INV-200,2026-10-12,2026-10,100,18,0,0,0',
+        '27AAPFU0939F1ZV,,2026-10-12,2026-10,100,18,0,0,0',
+        '27AAPFU0939F1ZV,INV-200,2026-02-30,2026-10,100,18,0,0,0',
+        '27AAPFU0939F1ZV,INV-200,2026-10-12,2026-13,100,18,0,0,0',
+      ]) {
+        expect(() => Gstr2bCsvImporter.parse('$header$row'), throwsFormatException);
+      }
+    });
+
+    test('rejects CSV rows with negative taxable values or GST components', () {
+      const header = 'supplier_gstin,invoice_number,invoice_date,return_period,taxable_value,igst,cgst,sgst,cess\\n';
+      expect(
+        () => Gstr2bCsvImporter.parse(
+          '${header}27AAPFU0939F1ZV,INV-201,2026-10-12,2026-10,-1,18,0,0,0',
+        ),
+        throwsFormatException,
+      );
+      expect(
+        () => Gstr2bCsvImporter.parse(
+          '${header}27AAPFU0939F1ZV,INV-202,2026-10-12,2026-10,100,-1,0,0,0',
+        ),
+        throwsFormatException,
+      );
+    });
+
     test('rejects a CSV without mandatory headers', () {
       expect(
         () => Gstr2bCsvImporter.parse('invoice_number,igst\nINV-1,18'),
