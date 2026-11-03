@@ -1720,7 +1720,7 @@ class AppDatabase {
           'movement_type': 'adjustment',
           'quantity_change': -quantity.toDouble(),
           'reference': reference,
-          'notes': 'TRANSFER OUT • To: ${sourceWarehouseRows.single['name']} • ${notes ?? ''}',
+          'notes': 'TRANSFER OUT • To: ${destinationWarehouseRows.single['name']} • ${notes ?? ''}',
           'created_at': transferredAt,
         });
         await txn.insert('stock_movements', {
@@ -1730,7 +1730,7 @@ class AppDatabase {
           'movement_type': 'adjustment',
           'quantity_change': quantity.toDouble(),
           'reference': reference,
-          'notes': 'TRANSFER IN • From: ${destinationWarehouseRows.single['name']} • ${notes ?? ''}',
+          'notes': 'TRANSFER IN • From: ${sourceWarehouseRows.single['name']} • ${notes ?? ''}',
           'created_at': transferredAt,
         });
         return;
