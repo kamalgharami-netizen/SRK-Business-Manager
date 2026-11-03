@@ -10,7 +10,6 @@ class GstLedgerReconciliation {
     String? endDate,
   }) async {
     final invoiceDate = _dateClause('i.invoice_date', startDate, endDate);
-    final returnDate = _dateClause('r.invoice_date', startDate, endDate);
     final noteDate = _dateClause('dn.note_date', startDate, endDate);
     final journalDate = _dateClause('je.entry_date', startDate, endDate);
 
