@@ -27,20 +27,25 @@ void main() {
     await db.insert('payments', {'id': 2, 'payment_type': 'payment', 'invoice_id': null, 'payment_date': '2026-01-04', 'amount': 30});
     await db.insert('payment_allocations', {'id': 1, 'payment_id': 2, 'allocation_date': '2026-01-05', 'amount': 20});
     await db.insert('accounts', {'id': 1, 'account_code': '2000'});
-    Future<void> addJournal(String source, int id, double debit, double credit) async {
+    await db.insert('accounts', {'id': 2, 'account_code': '1400'});
+    Future<void> addJournal(String source, int id, double debit, double credit, {int accountId = 1}) async {
       final entry = await db.insert('journal_entries', {'source_type': source, 'source_id': id, 'entry_date': '2026-01-06', 'status': 'posted'});
-      await db.insert('journal_lines', {'journal_entry_id': entry, 'account_id': 1, 'debit': debit, 'credit': credit});
+      await db.insert('journal_lines', {'journal_entry_id': entry, 'account_id': accountId, 'debit': debit, 'credit': credit});
     }
     await addJournal('purchase_invoice', 1, 0, 500);
     await addJournal('purchase_return', 2, 50, 0);
     await addJournal('payment', 1, 100, 0);
     // Unallocated supplier advance has a payment journal but does not reduce payable until allocated.
-    await addJournal('payment', 2, 0, 0);
-    await addJournal('advance_allocation', 1, 20, 0);
+    await addJournal('payment', 2, 30, 0, accountId: 2);
+    await addJournal('advance_allocation', 1, 0, 20, accountId: 2);
     final result = await SupplierLedgerReconciliation.load(db);
     expect(result['supplier_ledger_balance'], 430);
     expect(result['control_account_balance'], 430);
     expect(result['difference'], 0);
+    expect(result['supplier_advance_ledger_balance'], 10);
+    expect(result['supplier_advance_control_balance'], 10);
+    expect(result['supplier_advance_difference'], 0);
+    expect(result['is_supplier_advance_reconciled'], true);
     expect(result['is_reconciled'], true);
   });
 
