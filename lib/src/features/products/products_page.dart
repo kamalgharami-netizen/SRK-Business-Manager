@@ -1,6 +1,8 @@
 import 'package:flutter/material.dart';
 
 import '../../data/local/app_database.dart';
+import '../../data/local/accounting_service.dart';
+import '../../data/local/inventory_cost_service.dart';
 import '../../data/sync/business_sync_service.dart';
 
 class ProductsPage extends StatefulWidget {
@@ -82,7 +84,18 @@ class _ProductsPageState extends State<ProductsPage> {
                   ),
                   TextFormField(controller: purchasePrice, decoration: const InputDecoration(labelText: 'Purchase price'), keyboardType: const TextInputType.numberWithOptions(decimal: true), validator: _nonNegativeNumber),
                   TextFormField(controller: salePrice, decoration: const InputDecoration(labelText: 'Sale price'), keyboardType: const TextInputType.numberWithOptions(decimal: true), validator: _nonNegativeNumber),
-                  TextFormField(controller: stock, decoration: const InputDecoration(labelText: 'Opening / current stock'), keyboardType: const TextInputType.numberWithOptions(decimal: true), validator: _nonNegativeNumber),
+                  TextFormField(
+                    controller: stock,
+                    readOnly: product != null,
+                    decoration: InputDecoration(
+                      labelText: product == null ? 'Opening stock' : 'Current stock',
+                      helperText: product == null
+                          ? 'Opening stock will be valued at the entered purchase price.'
+                          : 'Use Stock Control to change stock quantity.',
+                    ),
+                    keyboardType: const TextInputType.numberWithOptions(decimal: true),
+                    validator: _nonNegativeNumber,
+                  ),
                   TextFormField(
                     controller: lowStockAlert,
                     decoration: const InputDecoration(labelText: 'Low-stock alert quantity (0 = disabled)'),
@@ -138,7 +151,23 @@ class _ProductsPageState extends State<ProductsPage> {
       values['sync_id'] = syncId;
       await db.transaction((txn) async {
         if (product == null) {
-          await txn.insert('products', values);
+          final productId = await txn.insert('products', values);
+          final now = DateTime.now().toIso8601String();
+          final openingUnitCost = (values['purchase_price'] as num).toDouble();
+          await InventoryCostService.receiveOpeningStock(
+            txn,
+            productId: productId,
+            quantity: quantity,
+            unitCost: openingUnitCost,
+            receivedAt: now,
+          );
+          await AccountingService.postOpeningInventory(
+            txn,
+            productId: productId,
+            productName: values['name'] as String,
+            date: now,
+            inventoryValue: quantity * openingUnitCost,
+          );
           await AppDatabase.instance.enqueueSyncOperation(
             tableName: 'products',
             recordId: syncId,
