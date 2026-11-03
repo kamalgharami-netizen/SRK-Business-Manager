@@ -21,6 +21,18 @@ void main() {
       expect(BusinessSyncEntityPolicy.supports('warehouses'), isTrue);
     });
 
+    test('includes atomic warehouse transfers as a supported cloud entity', () {
+      expect(BusinessSyncEntityPolicy.supports('warehouse_transfers'), isTrue);
+    });
+
+    test('applies warehouse transfers after products, warehouses and stock source records', () {
+      const order = BusinessSyncEntityPolicy.pullOrder;
+      expect(order.indexOf('products'), lessThan(order.indexOf('warehouse_transfers')));
+      expect(order.indexOf('warehouses'), lessThan(order.indexOf('warehouse_transfers')));
+      expect(order.indexOf('invoices'), lessThan(order.indexOf('warehouse_transfers')));
+      expect(order.indexOf('stock_movements'), lessThan(order.indexOf('warehouse_transfers')));
+    });
+
     test('includes business profile as a supported cloud entity', () {
       expect(BusinessSyncEntityPolicy.supports('business_profile'), isTrue);
     });
