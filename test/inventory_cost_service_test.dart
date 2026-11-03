@@ -327,4 +327,105 @@ void main() {
       expect(layers[1]['quantity_remaining'], 10);
     });
   });
+
+
+  group('Warehouse-scoped stock adjustments', () {
+    Future<Database> openWarehouseDatabase() async {
+      sqfliteFfiInit();
+      final db = await databaseFactoryFfi.openDatabase(inMemoryDatabasePath);
+      await db.execute('''
+        CREATE TABLE products (
+          id INTEGER PRIMARY KEY,
+          purchase_price REAL NOT NULL
+        )
+      ''');
+      await db.execute('''
+        CREATE TABLE inventory_cost_layers (
+          id INTEGER PRIMARY KEY AUTOINCREMENT,
+          product_id INTEGER NOT NULL,
+          warehouse_sync_id TEXT,
+          source_type TEXT NOT NULL,
+          source_id INTEGER,
+          received_at TEXT NOT NULL,
+          quantity_received REAL NOT NULL,
+          quantity_remaining REAL NOT NULL,
+          unit_cost REAL NOT NULL,
+          is_estimated INTEGER NOT NULL DEFAULT 0
+        )
+      ''');
+      await db.insert('products', {'id': 1, 'purchase_price': 50});
+      return db;
+    }
+
+    test('adds an adjustment layer to the selected warehouse', () async {
+      final db = await openWarehouseDatabase();
+      addTearDown(db.close);
+      await db.transaction((txn) => InventoryCostService.addAdjustmentLayer(
+            txn,
+            productId: 1,
+            quantity: 4,
+            adjustedAt: '2026-11-03T12:00:00',
+            warehouseSyncId: 'warehouse-A',
+          ));
+      final rows = await db.query('inventory_cost_layers');
+      expect(rows.single['warehouse_sync_id'], 'warehouse-A');
+      expect(rows.single['quantity_remaining'], 4);
+      expect(rows.single['unit_cost'], 50);
+    });
+
+    test('removes FIFO quantity only from the selected warehouse', () async {
+      final db = await openWarehouseDatabase();
+      addTearDown(db.close);
+      await db.insert('inventory_cost_layers', {
+        'product_id': 1, 'warehouse_sync_id': 'warehouse-A',
+        'source_type': 'purchase', 'received_at': '2026-11-01',
+        'quantity_received': 5, 'quantity_remaining': 5, 'unit_cost': 100,
+      });
+      await db.insert('inventory_cost_layers', {
+        'product_id': 1, 'warehouse_sync_id': 'warehouse-B',
+        'source_type': 'purchase', 'received_at': '2026-11-01',
+        'quantity_received': 7, 'quantity_remaining': 7, 'unit_cost': 200,
+      });
+      final cost = await db.transaction((txn) =>
+          InventoryCostService.removeStockAtFifo(
+            txn,
+            productId: 1,
+            quantity: 3,
+            removedAt: '2026-11-03T12:00:00',
+            warehouseSyncId: 'warehouse-A',
+          ));
+      final rows = await db.query('inventory_cost_layers', orderBy: 'id');
+      expect(cost, 300);
+      expect(rows[0]['quantity_remaining'], 2);
+      expect(rows[1]['quantity_remaining'], 7);
+    });
+
+    test('does not consume another warehouse or unassigned stock on shortage', () async {
+      final db = await openWarehouseDatabase();
+      addTearDown(db.close);
+      await db.insert('inventory_cost_layers', {
+        'product_id': 1, 'warehouse_sync_id': 'warehouse-B',
+        'source_type': 'purchase', 'received_at': '2026-11-01',
+        'quantity_received': 7, 'quantity_remaining': 7, 'unit_cost': 200,
+      });
+      await db.insert('inventory_cost_layers', {
+        'product_id': 1, 'warehouse_sync_id': null,
+        'source_type': 'legacy', 'received_at': '2026-11-01',
+        'quantity_received': 6, 'quantity_remaining': 6, 'unit_cost': 80,
+      });
+      await expectLater(
+        db.transaction((txn) => InventoryCostService.removeStockAtFifo(
+              txn,
+              productId: 1,
+              quantity: 2,
+              removedAt: '2026-11-03T12:00:00',
+              warehouseSyncId: 'warehouse-A',
+            )),
+        throwsA(isA<StateError>()),
+      );
+      final rows = await db.query('inventory_cost_layers', orderBy: 'id');
+      expect(rows[0]['quantity_remaining'], 7);
+      expect(rows[1]['quantity_remaining'], 6);
+    });
+  });
 }
