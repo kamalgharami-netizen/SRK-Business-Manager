@@ -117,6 +117,12 @@ class _PurchasesPageState extends State<PurchasesPage> {
       orderBy: 'name COLLATE NOCASE',
     );
     if (!mounted) return;
+    if (suppliers.isEmpty) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Add a supplier before recording a purchase so the payable is linked to a supplier ledger.')),
+      );
+      return;
+    }
     if (products.isEmpty) {
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(content: Text('Add stock products before recording a purchase.')),
@@ -199,7 +205,8 @@ class _PurchasesPageState extends State<PurchasesPage> {
                     children: [
                       DropdownButtonFormField<int>(
                         initialValue: supplierId,
-                        decoration: const InputDecoration(labelText: 'Supplier (optional)'),
+                        decoration: const InputDecoration(labelText: 'Supplier *'),
+                        validator: (value) => value == null ? 'Select a supplier to track the payable' : null,
                         items: suppliers.map((supplier) => DropdownMenuItem<int>(
                           value: supplier['id'] as int,
                           child: Text(supplier['name'] as String),
