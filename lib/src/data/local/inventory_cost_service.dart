@@ -542,7 +542,7 @@ class InventoryCostService {
             (sourceCost - unitCost).abs() > 0.000001 ||
             sourceEstimated != estimated) {
           throw StateError(
-            'Cloud transfer FIFO does not match this device. Sync source purchases and adjustments before retrying.',
+            'Cloud transfer FIFO does not match this device. The transfer was not applied; reconcile the source inventory before retrying.',
           );
         }
         final moved = available < remaining ? available : remaining;
