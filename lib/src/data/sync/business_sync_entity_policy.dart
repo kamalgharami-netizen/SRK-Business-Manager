@@ -11,6 +11,7 @@ class BusinessSyncEntityPolicy {
     'warehouses',
     'parties',
     'products',
+    'warehouses',
     'expenses',
     'invoices',
     'payments',
