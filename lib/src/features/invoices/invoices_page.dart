@@ -328,6 +328,7 @@ class _InvoicesPageState extends State<InvoicesPage> {
 
           var totalCogs = 0.0;
           final warehouseDemandByProduct = <int, double>{};
+          final warehouseAvailableByProduct = <int, double>{};
           for (final item in prepared) {
             item['sync_id'] = AppDatabase.instance.createSyncId();
             final invoiceItemId = await txn.insert('invoice_items', {'invoice_id': invoiceId, ...item});
@@ -336,11 +337,15 @@ class _InvoicesPageState extends State<InvoicesPage> {
             if (selectedWarehouseSyncId != null) {
               final requested = (warehouseDemandByProduct[itemProductId] ?? 0) + itemQuantity;
               warehouseDemandByProduct[itemProductId] = requested;
-              final availableRows = await txn.rawQuery(
-                'SELECT COALESCE(SUM(quantity_remaining), 0) AS available FROM inventory_cost_layers WHERE product_id = ? AND warehouse_sync_id = ?',
-                [itemProductId, selectedWarehouseSyncId],
-              );
-              final available = (availableRows.single['available'] as num).toDouble();
+              var available = warehouseAvailableByProduct[itemProductId];
+              if (available == null) {
+                final availableRows = await txn.rawQuery(
+                  'SELECT COALESCE(SUM(quantity_remaining), 0) AS available FROM inventory_cost_layers WHERE product_id = ? AND warehouse_sync_id = ?',
+                  [itemProductId, selectedWarehouseSyncId],
+                );
+                available = (availableRows.single['available'] as num).toDouble();
+                warehouseAvailableByProduct[itemProductId] = available;
+              }
               if (requested > available + 0.0000001) {
                 throw StateError('Insufficient stock in the selected warehouse for ${item['description']}. Available: $available');
               }
