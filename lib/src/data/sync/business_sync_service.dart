@@ -1,6 +1,7 @@
 import 'package:supabase_flutter/supabase_flutter.dart';
 
 import '../local/app_database.dart';
+import 'business_sync_entity_policy.dart';
 
 class BusinessSyncResult {
   const BusinessSyncResult({
@@ -150,7 +151,7 @@ class BusinessSyncService {
       final queueId = operation['id'] as int;
       try {
         final entityType = operation['table_name'] as String;
-        if (entityType != 'parties' && entityType != 'products' && entityType != 'expenses' && entityType != 'invoices' && entityType != 'payments' && entityType != 'payment_allocations' && entityType != 'stock_movements') {
+        if (!BusinessSyncEntityPolicy.supports(entityType)) {
           throw StateError('Unsupported sync entity: $entityType');
         }
 
@@ -226,7 +227,7 @@ class BusinessSyncService {
     var downloaded = 0;
     var failed = 0;
 
-    for (final entityType in const ['parties', 'products', 'expenses', 'invoices', 'payments', 'payment_allocations', 'stock_movements']) {
+    for (final entityType in BusinessSyncEntityPolicy.pullOrder) {
       var offset = 0;
       while (true) {
         final rows = await _client
