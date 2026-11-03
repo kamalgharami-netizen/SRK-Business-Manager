@@ -30,15 +30,22 @@ class _BusinessWorkspacePageState extends State<BusinessWorkspacePage> {
         .from('business_members')
         .select('business_id, role')
         .eq('user_id', user.id);
-    final ids = memberships
-        .map((row) => row['business_id'] as String)
-        .toList();
+    final rolesByBusinessId = <String, String>{
+      for (final membership in memberships)
+        membership['business_id'] as String: membership['role'] as String,
+    };
+    final ids = rolesByBusinessId.keys.toList(growable: false);
     if (ids.isEmpty) return [];
-    return client
+    final businesses = await client
         .from('businesses')
         .select('id, name, legal_name, gstin, currency_code')
         .inFilter('id', ids)
         .order('name');
+    return businesses.map<Map<String, dynamic>>((business) {
+      final item = Map<String, dynamic>.from(business);
+      item['current_user_role'] = rolesByBusinessId[item['id']];
+      return item;
+    }).toList(growable: false);
   }
 
   Future<void> _createBusiness() async {
@@ -91,6 +98,14 @@ class _BusinessWorkspacePageState extends State<BusinessWorkspacePage> {
 
     try {
       await AppDatabase.instance.openBusinessDatabase(businessId);
+      final businessRole = business['current_user_role'] as String?;
+      if (businessRole == null || businessRole.isEmpty) {
+        AppDatabase.instance.markCloudRoleUnavailable();
+        throw StateError(
+          'Your membership role could not be verified. Reload the business list and try again.',
+        );
+      }
+      AppDatabase.instance.setCloudBusinessRole(businessRole);
       try {
         final result = await BusinessSyncService(
           businessId: businessId,
