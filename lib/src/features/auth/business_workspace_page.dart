@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:sqflite/sqflite.dart' show ConflictAlgorithm;
 import 'package:supabase_flutter/supabase_flutter.dart';
 
 import '../dashboard/dashboard_page.dart';
@@ -60,6 +61,37 @@ class _BusinessWorkspacePageState extends State<BusinessWorkspacePage> {
 
   Future<void> _signOut() async {
     await Supabase.instance.client.auth.signOut();
+  }
+
+  /// Seeds the device-local settings from the authoritative company record.
+  /// Existing locally edited values are retained; only missing keys are filled.
+  Future<void> _seedCompanyProfile(Map<String, dynamic> business) async {
+    final database = AppDatabase.instance;
+    final db = await database.database;
+    final profile = <String, String>{
+      'company_name': (business['name'] as String? ?? '').trim(),
+      'company_phone': (business['phone'] as String? ?? '').trim(),
+      'company_address': (business['address'] as String? ?? '').trim(),
+      'company_gstin': (business['gstin'] as String? ?? '').trim().toUpperCase(),
+      'company_state': (business['state_name'] as String? ?? '').trim(),
+    };
+    await db.transaction((txn) async {
+      for (final entry in profile.entries) {
+        final existing = await txn.query(
+          'app_settings',
+          columns: ['setting_key'],
+          where: 'setting_key = ?',
+          whereArgs: [entry.key],
+          limit: 1,
+        );
+        if (existing.isEmpty) {
+          await txn.insert('app_settings', {
+            'setting_key': entry.key,
+            'setting_value': entry.value,
+          }, conflictAlgorithm: ConflictAlgorithm.ignore);
+        }
+      }
+    });
   }
 
   Future<void> _openBusiness(Map<String, dynamic> business) async {
@@ -136,6 +168,8 @@ class _BusinessWorkspacePageState extends State<BusinessWorkspacePage> {
           );
         }
       }
+      // Load registration details into this business's local settings once.
+      await _seedCompanyProfile(business);
       if (!mounted) return;
       await Navigator.of(context).push(
         MaterialPageRoute<void>(
