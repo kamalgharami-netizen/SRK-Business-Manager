@@ -27,7 +27,7 @@ on public.businesses for update to authenticated
 using (
   exists (
     select 1 from public.business_members bm
-    where bm.business_id = id and bm.user_id = auth.uid()
+    where bm.business_id = businesses.id and bm.user_id = auth.uid()
       and bm.role in ('owner', 'admin')
   )
 )
