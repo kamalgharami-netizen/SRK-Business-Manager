@@ -18,7 +18,7 @@ class AppDatabase {
   AppDatabase._();
 
   static final AppDatabase instance = AppDatabase._();
-  static const int _databaseVersion = 29;
+  static const int _databaseVersion = 30;
   String? _databasePath;
   String? _activeBusinessId;
   String? _activeBusinessRole;
@@ -304,6 +304,22 @@ class AppDatabase {
         }
         if (oldVersion < 28) {
           await _createDebitNoteSchema(db);
+        }
+        if (oldVersion < 30) {
+          await db.execute('''CREATE TABLE warehouses (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            sync_id TEXT NOT NULL UNIQUE,
+            name TEXT NOT NULL,
+            code TEXT NOT NULL,
+            address TEXT,
+            phone TEXT,
+            is_active INTEGER NOT NULL DEFAULT 1,
+            created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+            updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+            UNIQUE(name COLLATE NOCASE),
+            UNIQUE(code COLLATE NOCASE)
+          )''');
+          await db.execute('CREATE INDEX idx_warehouses_active ON warehouses(is_active, name)');
         }
         if (oldVersion < 29) {
           await db.execute('ALTER TABLE staff_members ADD COLUMN sync_id TEXT');
@@ -595,6 +611,20 @@ class AppDatabase {
     await db.execute('CREATE INDEX idx_expenses_sync_id ON expenses(sync_id)');
     await db.execute('CREATE INDEX idx_sync_queue_created ON sync_queue(created_at)');
     await db.execute('CREATE INDEX idx_invoices_parent ON invoices(parent_invoice_id)');
+    await db.execute('''CREATE TABLE warehouses (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      sync_id TEXT NOT NULL UNIQUE,
+      name TEXT NOT NULL,
+      code TEXT NOT NULL,
+      address TEXT,
+      phone TEXT,
+      is_active INTEGER NOT NULL DEFAULT 1,
+      created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+      updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+      UNIQUE(name COLLATE NOCASE),
+      UNIQUE(code COLLATE NOCASE)
+    )''');
+    await db.execute('CREATE INDEX idx_warehouses_active ON warehouses(is_active, name)');
     await db.execute('''CREATE TABLE stock_movements (
       id INTEGER PRIMARY KEY AUTOINCREMENT,
       sync_id TEXT UNIQUE,
@@ -1357,6 +1387,55 @@ class AppDatabase {
     }
     final db = await database;
     await db.transaction((txn) async {
+      if (tableName == 'warehouses') {
+        if (payload['sync_id'] != recordId) {
+          throw const FormatException('Cloud warehouse identifier does not match its record ID.');
+        }
+        if (isDeleted) {
+          await txn.delete('warehouses', where: 'sync_id = ?', whereArgs: [recordId]);
+          return;
+        }
+        final name = payload['name'];
+        final code = payload['code'];
+        final address = payload['address'];
+        final phone = payload['phone'];
+        final isActive = payload['is_active'];
+        final createdAt = payload['created_at'];
+        final updatedAt = payload['updated_at'];
+        if (name is! String || name.trim().isEmpty ||
+            code is! String || code.trim().isEmpty ||
+            (address != null && address is! String) ||
+            (phone != null && phone is! String) ||
+            isActive is! int || (isActive != 0 && isActive != 1) ||
+            createdAt is! String || createdAt.trim().isEmpty ||
+            updatedAt is! String || updatedAt.trim().isEmpty) {
+          throw const FormatException('Cloud warehouse contains invalid fields.');
+        }
+        final values = <String, Object?>{
+          'sync_id': recordId,
+          'name': name.trim(),
+          'code': code.trim().toUpperCase(),
+          'address': address,
+          'phone': phone,
+          'is_active': isActive,
+          'created_at': createdAt,
+          'updated_at': updatedAt,
+        };
+        final existing = await txn.query(
+          'warehouses',
+          columns: ['id'],
+          where: 'sync_id = ?',
+          whereArgs: [recordId],
+          limit: 1,
+        );
+        if (existing.isEmpty) {
+          await txn.insert('warehouses', values);
+        } else {
+          await txn.update('warehouses', values, where: 'sync_id = ?', whereArgs: [recordId]);
+        }
+        return;
+      }
+
       if (tableName == 'staff_members') {
         if (payload['sync_id'] != recordId) {
           throw const FormatException('Cloud staff identifier does not match its record ID.');
@@ -2048,6 +2127,7 @@ class AppDatabase {
       if (backupVersion == _databaseVersion) {
         const currentSyncTables = {
           'staff_members',
+          'warehouses',
           'sync_queue',
           'sync_conflict_resolutions',
           'sync_metadata',
