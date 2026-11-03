@@ -1612,6 +1612,130 @@ class AppDatabase {
         return;
       }
 
+      if (tableName == 'warehouse_transfers') {
+        if (isDeleted) {
+          throw const FormatException('Warehouse transfer history cannot be deleted from cloud sync.');
+        }
+        if (payload['sync_id'] != recordId) {
+          throw const FormatException('Cloud warehouse transfer identifier does not match its record ID.');
+        }
+        final existing = await txn.query(
+          'warehouse_transfers',
+          columns: ['id'],
+          where: 'sync_id = ?',
+          whereArgs: [recordId],
+          limit: 1,
+        );
+        if (existing.isNotEmpty) return;
+
+        final productSyncId = payload['product_sync_id'];
+        final sourceWarehouseSyncId = payload['source_warehouse_sync_id'];
+        final destinationWarehouseSyncId = payload['destination_warehouse_sync_id'];
+        final quantity = payload['quantity'];
+        final totalCost = payload['total_cost'];
+        final rawLayers = payload['layers'];
+        final sourceMovementSyncId = payload['source_movement_sync_id'];
+        final destinationMovementSyncId = payload['destination_movement_sync_id'];
+        final notes = payload['notes'];
+        final transferredAt = payload['transferred_at'];
+        final createdAt = payload['created_at'];
+        if (productSyncId is! String || productSyncId.trim().isEmpty ||
+            sourceWarehouseSyncId is! String || sourceWarehouseSyncId.trim().isEmpty ||
+            destinationWarehouseSyncId is! String || destinationWarehouseSyncId.trim().isEmpty ||
+            sourceWarehouseSyncId == destinationWarehouseSyncId ||
+            quantity is! num || !quantity.toDouble().isFinite || quantity <= 0 ||
+            totalCost is! num || !totalCost.toDouble().isFinite || totalCost < 0 ||
+            rawLayers is! List || rawLayers.isEmpty ||
+            sourceMovementSyncId is! String || sourceMovementSyncId.trim().isEmpty ||
+            destinationMovementSyncId is! String || destinationMovementSyncId.trim().isEmpty ||
+            sourceMovementSyncId == destinationMovementSyncId ||
+            (notes != null && notes is! String) ||
+            transferredAt is! String || transferredAt.trim().isEmpty ||
+            createdAt is! String || createdAt.trim().isEmpty) {
+          throw const FormatException('Cloud warehouse transfer contains invalid fields.');
+        }
+        final productRows = await txn.query(
+          'products',
+          columns: ['id'],
+          where: 'sync_id = ?',
+          whereArgs: [productSyncId.trim()],
+          limit: 1,
+        );
+        if (productRows.isEmpty) {
+          throw StateError('Warehouse transfer product is not available on this device yet.');
+        }
+        final layers = rawLayers
+            .map((item) => Map<String, dynamic>.from(item as Map))
+            .toList(growable: false);
+        final productId = productRows.single['id'] as int;
+        final sourceWarehouseRows = await txn.query(
+          'warehouses',
+          columns: ['name'],
+          where: 'sync_id = ?',
+          whereArgs: [sourceWarehouseSyncId],
+          limit: 1,
+        );
+        final destinationWarehouseRows = await txn.query(
+          'warehouses',
+          columns: ['name'],
+          where: 'sync_id = ?',
+          whereArgs: [destinationWarehouseSyncId],
+          limit: 1,
+        );
+        if (sourceWarehouseRows.isEmpty || destinationWarehouseRows.isEmpty) {
+          throw StateError('A warehouse referenced by the cloud transfer is not available yet.');
+        }
+
+        // Apply both sides of the transfer in this same SQLite transaction.
+        // FIFO mismatch fails closed, leaving the transfer unapplied and queued
+        // for investigation instead of silently changing stock valuation.
+        await InventoryCostService.applyRemoteWarehouseTransferLayers(
+          txn,
+          productId: productId,
+          sourceWarehouseSyncId: sourceWarehouseSyncId,
+          destinationWarehouseSyncId: destinationWarehouseSyncId,
+          layers: layers,
+          transferredAt: transferredAt,
+          expectedTotalCost: totalCost.toDouble(),
+        );
+        await txn.insert('warehouse_transfers', {
+          'sync_id': recordId,
+          'product_id': productId,
+          'source_warehouse_sync_id': sourceWarehouseSyncId,
+          'destination_warehouse_sync_id': destinationWarehouseSyncId,
+          'quantity': quantity.toDouble(),
+          'total_cost': totalCost.toDouble(),
+          'layers_json': jsonEncode(layers),
+          'source_movement_sync_id': sourceMovementSyncId,
+          'destination_movement_sync_id': destinationMovementSyncId,
+          'notes': notes,
+          'transferred_at': transferredAt,
+          'created_at': createdAt,
+        });
+        final reference = 'TRF-$recordId';
+        await txn.insert('stock_movements', {
+          'sync_id': sourceMovementSyncId,
+          'product_id': productId,
+          'warehouse_sync_id': sourceWarehouseSyncId,
+          'movement_type': 'adjustment',
+          'quantity_change': -quantity.toDouble(),
+          'reference': reference,
+          'notes': 'TRANSFER OUT • To: ${sourceWarehouseRows.single['name']} • ${notes ?? ''}',
+          'created_at': transferredAt,
+        });
+        await txn.insert('stock_movements', {
+          'sync_id': destinationMovementSyncId,
+          'product_id': productId,
+          'warehouse_sync_id': destinationWarehouseSyncId,
+          'movement_type': 'adjustment',
+          'quantity_change': quantity.toDouble(),
+          'reference': reference,
+          'notes': 'TRANSFER IN • From: ${destinationWarehouseRows.single['name']} • ${notes ?? ''}',
+          'created_at': transferredAt,
+        });
+        return;
+      }
+
       if (isDeleted) {
         await txn.delete(tableName, where: 'sync_id = ?', whereArgs: [recordId]);
         return;
