@@ -13,7 +13,7 @@ Future<Database> _openDb() async {
     cess REAL NOT NULL DEFAULT 0)''');
   await db.execute('''CREATE TABLE gst_rcm_payments (
     id INTEGER PRIMARY KEY, liability_id INTEGER NOT NULL,
-    payment_date TEXT NOT NULL, igst REAL NOT NULL DEFAULT 0,
+    payment_date TEXT NOT NULL, cash_ledger_reference TEXT, challan_reference TEXT, igst REAL NOT NULL DEFAULT 0,
     cgst REAL NOT NULL DEFAULT 0, sgst REAL NOT NULL DEFAULT 0,
     cess REAL NOT NULL DEFAULT 0)''');
   await db.execute('''CREATE TABLE gst_rcm_audit (
@@ -35,11 +35,11 @@ void main() {
         'igst': 0, 'cgst': 20, 'sgst': 20, 'cess': 0,
       });
       await db.insert('gst_rcm_payments', {
-        'id': 1, 'liability_id': 1, 'payment_date': '2026-11-10',
+        'id': 1, 'liability_id': 1, 'payment_date': '2026-11-10', 'cash_ledger_reference': 'CASH-1', 'challan_reference': 'CIN-1',
         'igst': 100, 'cgst': 25, 'sgst': 25, 'cess': 0,
       });
       await db.insert('gst_rcm_payments', {
-        'id': 2, 'liability_id': 2, 'payment_date': '2026-11-12',
+        'id': 2, 'liability_id': 2, 'payment_date': '2026-11-12', 'cash_ledger_reference': 'CASH-2', 'challan_reference': 'CIN-2',
         'igst': 0, 'cgst': 20, 'sgst': 20, 'cess': 0,
       });
       await db.insert('gst_rcm_audit', {'id': 1, 'return_period': '2026-11'});
@@ -64,7 +64,7 @@ void main() {
         'igst': 10, 'cgst': 0, 'sgst': 0, 'cess': 0,
       });
       await db.insert('gst_rcm_payments', {
-        'id': 1, 'liability_id': 1, 'payment_date': '2026-10-15',
+        'id': 1, 'liability_id': 1, 'payment_date': '2026-10-15', 'cash_ledger_reference': 'CASH-OLD', 'challan_reference': 'CIN-OLD',
         'igst': 12, 'cgst': 0, 'sgst': 0, 'cess': 0,
       });
       await db.insert('gst_rcm_liabilities', {
@@ -82,6 +82,24 @@ void main() {
       final all = await GstRcmReconciliation.load(db);
       expect(all['overpaid_count'], 1);
       expect(all['is_reconciled'], isFalse);
+    });
+
+
+    test('flags cash payments missing either supporting reference', () async {
+      final db = await _openDb();
+      addTearDown(db.close);
+      await db.insert('gst_rcm_liabilities', {
+        'id': 1, 'return_period': '2026-11', 'document_reference': 'RCM-1',
+        'igst': 18, 'cgst': 0, 'sgst': 0, 'cess': 0,
+      });
+      await db.insert('gst_rcm_payments', {
+        'id': 1, 'liability_id': 1, 'payment_date': '2026-11-10',
+        'cash_ledger_reference': '', 'challan_reference': 'CIN-1',
+        'igst': 18, 'cgst': 0, 'sgst': 0, 'cess': 0,
+      });
+      final result = await GstRcmReconciliation.load(db);
+      expect(result['missing_payment_reference_count'], 1);
+      expect(result['is_reconciled'], isFalse);
     });
 
     test('does not modify liability or payment records', () async {
