@@ -1049,6 +1049,12 @@ class _ReportsPageState extends State<ReportsPage> {
     final unvaluedCount = (data['unvalued_product_count'] as num?)?.toInt() ?? 0;
     final estimatedQuantity =
         (data['estimated_quantity'] as num?)?.toDouble() ?? 0;
+    final legacyMigratedQuantity =
+        (data['legacy_migrated_quantity'] as num?)?.toDouble() ?? 0;
+    final legacyMigratedValue =
+        (data['legacy_migrated_value'] as num?)?.toDouble() ?? 0;
+    final legacyMigratedProductCount =
+        (data['legacy_migrated_product_count'] as num?)?.toInt() ?? 0;
     return Card(
       child: Padding(
         padding: const EdgeInsets.all(16),
@@ -1068,6 +1074,17 @@ class _ReportsPageState extends State<ReportsPage> {
           const Divider(),
           Text('Products checked: ${data['product_count']}'),
           Text('Estimated FIFO quantity: ${estimatedQuantity.toStringAsFixed(3)}'),
+          if (legacyMigratedProductCount > 0) ...[
+            const Divider(),
+            Text('Legacy migrated stock — opening-balance review required',
+              style: TextStyle(color: Theme.of(context).colorScheme.error,
+                fontWeight: FontWeight.w600)),
+            Text('Products with legacy migration layers: $legacyMigratedProductCount'),
+            Text('Legacy migrated quantity: ${legacyMigratedQuantity.toStringAsFixed(3)}'),
+            Text('Estimated legacy migrated value: ${_money(legacyMigratedValue)}'),
+            Text('Migration created estimated FIFO layers but did not create opening-balance journals. Check existing records before any adjustment.',
+              style: Theme.of(context).textTheme.bodySmall),
+          ],
           if (mismatchCount > 0)
             Text('Products with stock / FIFO quantity mismatch: $mismatchCount • total quantity difference: ${((data['quantity_mismatch_total'] as num?)?.toDouble() ?? 0).toStringAsFixed(3)}',
               style: TextStyle(color: Theme.of(context).colorScheme.error)),
