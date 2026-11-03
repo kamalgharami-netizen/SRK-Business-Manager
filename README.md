@@ -28,6 +28,7 @@ The repository contains a working Flutter application foundation and feature mod
 - Stock movements and product quantity snapshots sync separately. The receiver does not replay movement deltas, to avoid double-counting during repeated pulls.
 - Cloud sync currently performs paged reconciliation of supported records; production-scale incremental sync and broader entity coverage remain pending.
 - Business profile fields, staff profiles and warehouse master records sync bidirectionally for business owners/admins. Warehouse names and codes are unique per local business database; deactivate records rather than deleting a warehouse. Warehouse master data is not yet a per-warehouse stock ledger or transfer system. Staff profile labels remain separate from cloud login accounts and role-based permissions in the Team & Access screen.
+- Database version 31 adds stable `warehouse_sync_id` reference columns and lookup indexes to invoices, stock movements and FIFO cost layers. Existing records retain a null warehouse reference; warehouse-specific invoice posting, FIFO consumption, stock balances and transfers are not enabled until the next implementation stage. The stable cloud ID avoids relying on device-local SQLite row IDs.
 - A team member must already have registered for a cloud account before an owner/admin can add that account to a business. The current flow does not send invitation emails.
 - The local backup/restore feature does not replace a tested off-device backup and disaster-recovery plan.
 
