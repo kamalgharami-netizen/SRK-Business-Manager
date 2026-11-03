@@ -48,9 +48,10 @@ class _StockControlPageState extends State<StockControlPage> {
   Future<void> _loadMovements() async {
     final db = await AppDatabase.instance.database;
     final rows = await db.rawQuery('''
-      SELECT m.*, p.name AS product_name, p.unit
+      SELECT m.*, p.name AS product_name, p.unit, w.name AS warehouse_name
       FROM stock_movements m
       JOIN products p ON p.id = m.product_id
+      LEFT JOIN warehouses w ON w.sync_id = m.warehouse_sync_id
       ORDER BY m.id DESC
       LIMIT 100
     ''');
@@ -787,6 +788,190 @@ class _StockControlPageState extends State<StockControlPage> {
     reason.dispose();
   }
 
+
+  Future<void> _transferStock() async {
+    final db = await AppDatabase.instance.database;
+    final products = await db.query(
+      'products',
+      where: 'is_service = 0 OR is_service IS NULL',
+      orderBy: 'name COLLATE NOCASE',
+    );
+    final warehouses = await db.query(
+      'warehouses',
+      columns: ['sync_id', 'name', 'code'],
+      where: 'is_active = 1',
+      orderBy: 'name COLLATE NOCASE',
+    );
+    if (!mounted) return;
+    if (products.isEmpty || warehouses.length < 2) {
+      _message('Add stock products and at least two active warehouses before transferring stock.');
+      return;
+    }
+
+    int? productId;
+    String? sourceWarehouseSyncId;
+    String? destinationWarehouseSyncId;
+    final quantity = TextEditingController();
+    final notes = TextEditingController();
+    final formKey = GlobalKey<FormState>();
+
+    final saved = await showDialog<bool>(
+      context: context,
+      builder: (dialogContext) => StatefulBuilder(
+        builder: (dialogContext, refresh) => AlertDialog(
+          title: const Text('Warehouse stock transfer'),
+          content: SizedBox(
+            width: 460,
+            child: Form(
+              key: formKey,
+              child: SingleChildScrollView(
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    DropdownButtonFormField<int>(
+                      initialValue: productId,
+                      decoration: const InputDecoration(labelText: 'Product *'),
+                      items: products.map((row) => DropdownMenuItem<int>(
+                        value: row['id'] as int,
+                        child: Text('${row['name']} • ${row['unit'] ?? ''}'),
+                      )).toList(),
+                      validator: (value) => value == null ? 'Select a product' : null,
+                      onChanged: (value) => refresh(() => productId = value),
+                    ),
+                    const SizedBox(height: 12),
+                    DropdownButtonFormField<String>(
+                      initialValue: sourceWarehouseSyncId,
+                      decoration: const InputDecoration(labelText: 'From warehouse *'),
+                      items: warehouses.map((row) => DropdownMenuItem<String>(
+                        value: row['sync_id'] as String,
+                        child: Text('${row['name']} • ${row['code']}'),
+                      )).toList(),
+                      validator: (value) => value == null
+                          ? 'Select the source warehouse'
+                          : value == destinationWarehouseSyncId
+                              ? 'Source and destination must differ'
+                              : null,
+                      onChanged: (value) => refresh(() => sourceWarehouseSyncId = value),
+                    ),
+                    const SizedBox(height: 12),
+                    DropdownButtonFormField<String>(
+                      initialValue: destinationWarehouseSyncId,
+                      decoration: const InputDecoration(labelText: 'To warehouse *'),
+                      items: warehouses.map((row) => DropdownMenuItem<String>(
+                        value: row['sync_id'] as String,
+                        child: Text('${row['name']} • ${row['code']}'),
+                      )).toList(),
+                      validator: (value) => value == null
+                          ? 'Select the destination warehouse'
+                          : value == sourceWarehouseSyncId
+                              ? 'Source and destination must differ'
+                              : null,
+                      onChanged: (value) => refresh(() => destinationWarehouseSyncId = value),
+                    ),
+                    const SizedBox(height: 12),
+                    TextFormField(
+                      controller: quantity,
+                      decoration: const InputDecoration(labelText: 'Transfer quantity *'),
+                      keyboardType: const TextInputType.numberWithOptions(decimal: true),
+                      validator: (value) {
+                        final parsed = double.tryParse(value ?? '');
+                        if (parsed == null || !parsed.isFinite || parsed <= 0) {
+                          return 'Enter a quantity greater than zero';
+                        }
+                        return null;
+                      },
+                    ),
+                    TextFormField(
+                      controller: notes,
+                      decoration: const InputDecoration(labelText: 'Notes (optional)'),
+                      maxLines: 2,
+                    ),
+                  ],
+                ),
+              ),
+            ),
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(dialogContext, false),
+              child: const Text('Cancel'),
+            ),
+            FilledButton(
+              onPressed: () {
+                if (formKey.currentState?.validate() ?? false) {
+                  Navigator.pop(dialogContext, true);
+                }
+              },
+              child: const Text('Transfer stock'),
+            ),
+          ],
+        ),
+      ),
+    );
+
+    if (saved == true &&
+        productId != null &&
+        sourceWarehouseSyncId != null &&
+        destinationWarehouseSyncId != null) {
+      try {
+        await db.transaction((txn) async {
+          final qty = double.parse(quantity.text.trim());
+          final now = DateTime.now();
+          final timestamp = now.toIso8601String();
+          final reference = 'TRF-${now.microsecondsSinceEpoch}';
+          final note = notes.text.trim();
+          final sourceName = warehouses.firstWhere(
+            (row) => row['sync_id'] == sourceWarehouseSyncId,
+          )['name'];
+          final destinationName = warehouses.firstWhere(
+            (row) => row['sync_id'] == destinationWarehouseSyncId,
+          )['name'];
+          final cost = await InventoryCostService.transferBetweenWarehouses(
+            txn,
+            productId: productId!,
+            sourceWarehouseSyncId: sourceWarehouseSyncId!,
+            destinationWarehouseSyncId: destinationWarehouseSyncId!,
+            quantity: qty,
+            transferredAt: timestamp,
+          );
+
+          await txn.insert('stock_movements', {
+            'sync_id': AppDatabase.instance.createSyncId(),
+            'product_id': productId,
+            'warehouse_sync_id': sourceWarehouseSyncId,
+            'movement_type': 'adjustment',
+            'quantity_change': -qty,
+            'reference': reference,
+            'notes': 'TRANSFER OUT • To: $destinationName • ${note.isEmpty ? 'FIFO value ₹${cost.toStringAsFixed(2)}' : note}',
+            'created_at': timestamp,
+          });
+          await txn.insert('stock_movements', {
+            'sync_id': AppDatabase.instance.createSyncId(),
+            'product_id': productId,
+            'warehouse_sync_id': destinationWarehouseSyncId,
+            'movement_type': 'adjustment',
+            'quantity_change': qty,
+            'reference': reference,
+            'notes': 'TRANSFER IN • From: $sourceName • ${note.isEmpty ? 'FIFO value ₹${cost.toStringAsFixed(2)}' : note}',
+            'created_at': timestamp,
+          });
+          // Transfer FIFO layers are currently local-first. Do not upload
+          // movement-only records until the matching cloud transfer entity
+          // can atomically reconstruct both sides on other devices.
+        });
+        await _syncIfConfigured();
+        _message('Stock transferred successfully. Business-wide stock quantity is unchanged.');
+        await _loadMovements();
+      } catch (error) {
+        _message('Could not transfer stock: $error');
+      }
+    }
+
+    quantity.dispose();
+    notes.dispose();
+  }
+
+
   void _message(String value) {
     if (!mounted) return;
     ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(value)));
@@ -815,6 +1000,11 @@ class _StockControlPageState extends State<StockControlPage> {
                       onPressed: _adjustStock,
                       icon: const Icon(Icons.tune),
                       label: const Text('Stock adjustment'),
+                    ),
+                    OutlinedButton.icon(
+                      onPressed: _transferStock,
+                      icon: const Icon(Icons.swap_horiz),
+                      label: const Text('Warehouse transfer'),
                     ),
                   ],
                 ),
@@ -864,7 +1054,7 @@ class _StockControlPageState extends State<StockControlPage> {
                         ),
                         title: Text(row['product_name'] as String),
                         subtitle: Text(
-                          '${row['movement_type']} • ${row['reference'] ?? ''} • ${row['notes'] ?? ''}',
+                          '${row['movement_type']} • ${row['warehouse_name'] ?? 'Unassigned'} • ${row['reference'] ?? ''} • ${row['notes'] ?? ''}',
                         ),
                         trailing: Text(
                           '${(row['quantity_change'] as num).toDouble() > 0 ? '+' : ''}${row['quantity_change']} ${row['unit']}',
