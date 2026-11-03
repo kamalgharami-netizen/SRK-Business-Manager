@@ -39,7 +39,7 @@ class _BusinessWorkspacePageState extends State<BusinessWorkspacePage> {
     if (ids.isEmpty) return [];
     final businesses = await client
         .from('businesses')
-        .select('id, name, legal_name, gstin, currency_code')
+        .select('id, name, legal_name, gstin, currency_code, phone, address, state_name')
         .inFilter('id', ids)
         .order('name');
     return businesses.map<Map<String, dynamic>>((business) {
