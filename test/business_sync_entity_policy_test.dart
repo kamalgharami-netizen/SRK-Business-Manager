@@ -21,6 +21,12 @@ void main() {
       expect(BusinessSyncEntityPolicy.supports('business_profile'), isTrue);
     });
 
+    test('keeps product data available before invoices and stock movements', () {
+      const order = BusinessSyncEntityPolicy.pullOrder;
+      expect(order.indexOf('products'), lessThan(order.indexOf('invoices')));
+      expect(order.indexOf('products'), lessThan(order.indexOf('stock_movements')));
+    });
+
     test('keeps payment dependencies ordered before allocations', () {
       const order = BusinessSyncEntityPolicy.pullOrder;
       expect(order.indexOf('invoices'), lessThan(order.indexOf('payments')));
