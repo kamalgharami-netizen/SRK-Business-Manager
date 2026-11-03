@@ -380,6 +380,7 @@ class InventoryCostService {
     required int productId,
     required double quantity,
     required String returnedAt,
+    String? warehouseSyncId,
   }) async {
     if (quantity <= 0 || !quantity.isFinite) {
       throw StateError('Sales return quantity must be positive.');
@@ -415,6 +416,7 @@ class InventoryCostService {
       if (!cost.isFinite) throw StateError('Calculated return cost is invalid.');
       final layerId = await txn.insert('inventory_cost_layers', {
         'product_id': productId,
+        if (warehouseSyncId != null) 'warehouse_sync_id': warehouseSyncId,
         'source_type': 'sales_return',
         'source_id': returnItemId,
         'received_at': returnedAt,
@@ -451,6 +453,7 @@ class InventoryCostService {
       if (!cost.isFinite) throw StateError('Calculated return cost is invalid.');
       final layerId = await txn.insert('inventory_cost_layers', {
         'product_id': productId,
+        if (warehouseSyncId != null) 'warehouse_sync_id': warehouseSyncId,
         'source_type': 'sales_return_estimate',
         'source_id': returnItemId,
         'received_at': returnedAt,
