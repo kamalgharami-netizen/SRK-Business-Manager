@@ -1,0 +1,55 @@
+import 'package:flutter_test/flutter_test.dart';
+import 'package:sqflite_common_ffi/sqflite_ffi.dart';
+import 'package:srk_business_manager/src/data/local/supplier_ledger_reconciliation.dart';
+
+void main() {
+  setUpAll(sqfliteFfiInit);
+
+  Future<Database> fixture() async {
+    final db = await databaseFactoryFfi.openDatabase(inMemoryDatabasePath);
+    await db.execute('CREATE TABLE parties(id INTEGER PRIMARY KEY, opening_balance REAL, balance_type TEXT)');
+    await db.execute('CREATE TABLE invoices(id INTEGER PRIMARY KEY, invoice_type TEXT, party_id INTEGER, invoice_date TEXT, grand_total REAL)');
+    await db.execute('CREATE TABLE payments(id INTEGER PRIMARY KEY, payment_type TEXT, invoice_id INTEGER, payment_date TEXT, amount REAL)');
+    await db.execute('CREATE TABLE payment_allocations(id INTEGER PRIMARY KEY, payment_id INTEGER, allocation_date TEXT, amount REAL)');
+    await db.execute('CREATE TABLE accounts(id INTEGER PRIMARY KEY, account_code TEXT)');
+    await db.execute('CREATE TABLE journal_entries(id INTEGER PRIMARY KEY, source_type TEXT, source_id INTEGER, entry_date TEXT, status TEXT)');
+    await db.execute('CREATE TABLE journal_lines(id INTEGER PRIMARY KEY, journal_entry_id INTEGER, account_id INTEGER, debit REAL, credit REAL)');
+    return db;
+  }
+
+  test('reconciles supplier opening balance, invoices, returns, payments and allocations', () async {
+    final db = await fixture();
+    addTearDown(db.close);
+    await db.insert('parties', {'id': 1, 'opening_balance': 100, 'balance_type': 'payable'});
+    await db.insert('invoices', {'id': 1, 'invoice_type': 'purchase', 'party_id': 1, 'invoice_date': '2026-01-01', 'grand_total': 500});
+    await db.insert('invoices', {'id': 2, 'invoice_type': 'purchase_return', 'party_id': 1, 'invoice_date': '2026-01-02', 'grand_total': 50});
+    await db.insert('payments', {'id': 1, 'payment_type': 'payment', 'invoice_id': 1, 'payment_date': '2026-01-03', 'amount': 100});
+    await db.insert('payments', {'id': 2, 'payment_type': 'payment', 'invoice_id': null, 'payment_date': '2026-01-04', 'amount': 30});
+    await db.insert('payment_allocations', {'id': 1, 'payment_id': 2, 'allocation_date': '2026-01-05', 'amount': 20});
+    await db.insert('accounts', {'id': 1, 'account_code': '2000'});
+    Future<void> addJournal(String source, int id, double debit, double credit) async {
+      final entry = await db.insert('journal_entries', {'source_type': source, 'source_id': id, 'entry_date': '2026-01-06', 'status': 'posted'});
+      await db.insert('journal_lines', {'journal_entry_id': entry, 'account_id': 1, 'debit': debit, 'credit': credit});
+    }
+    await addJournal('purchase_invoice', 1, 0, 500);
+    await addJournal('purchase_return', 2, 50, 0);
+    await addJournal('payment', 1, 100, 0);
+    await addJournal('advance_allocation', 1, 20, 0);
+    final result = await SupplierLedgerReconciliation.load(db);
+    expect(result['supplier_ledger_balance'], 430);
+    expect(result['control_account_balance'], 430);
+    expect(result['difference'], 0);
+    expect(result['is_reconciled'], true);
+  });
+
+  test('flags unassigned purchase and missing journal', () async {
+    final db = await fixture();
+    addTearDown(db.close);
+    await db.insert('invoices', {'id': 1, 'invoice_type': 'purchase', 'party_id': null, 'invoice_date': '2026-01-01', 'grand_total': 250});
+    final result = await SupplierLedgerReconciliation.load(db);
+    expect(result['unassigned_purchase_count'], 1);
+    expect(result['unassigned_purchase_total'], 250);
+    expect(result['missing_journal_count'], 1);
+    expect(result['is_reconciled'], false);
+  });
+}
