@@ -116,6 +116,11 @@ class _PurchasesPageState extends State<PurchasesPage> {
       where: 'is_service = 0 OR is_service IS NULL',
       orderBy: 'name COLLATE NOCASE',
     );
+    final warehouses = await db.query(
+      'warehouses',
+      where: 'is_active = 1',
+      orderBy: 'name COLLATE NOCASE',
+    );
     if (!mounted) return;
     if (suppliers.isEmpty) {
       ScaffoldMessenger.of(context).showSnackBar(
@@ -157,6 +162,9 @@ class _PurchasesPageState extends State<PurchasesPage> {
     var itcTreatment = Gstr3bItcTreatment.pendingReview;
     const itcTreatments = [Gstr3bItcTreatment.eligible, Gstr3bItcTreatment.ineligible, Gstr3bItcTreatment.pendingReview];
     int? supplierId;
+    String? selectedWarehouseSyncId = warehouses.length == 1
+        ? warehouses.single['sync_id'] as String
+        : null;
     final lines = <_PurchaseLine>[_PurchaseLine()];
     final notes = TextEditingController();
     final formKey = GlobalKey<FormState>();
@@ -203,6 +211,17 @@ class _PurchasesPageState extends State<PurchasesPage> {
                     mainAxisSize: MainAxisSize.min,
                     crossAxisAlignment: CrossAxisAlignment.stretch,
                     children: [
+                      if (warehouses.isNotEmpty)
+                        DropdownButtonFormField<String>(
+                          initialValue: selectedWarehouseSyncId,
+                          decoration: const InputDecoration(labelText: 'Receiving warehouse *'),
+                          validator: (value) => value == null ? 'Select a receiving warehouse' : null,
+                          items: warehouses.map((warehouse) => DropdownMenuItem<String>(
+                            value: warehouse['sync_id'] as String,
+                            child: Text('${warehouse['name']} (${warehouse['code']})'),
+                          )).toList(),
+                          onChanged: (value) => refreshDialog(() => selectedWarehouseSyncId = value),
+                        ),
                       DropdownButtonFormField<int>(
                         initialValue: supplierId,
                         decoration: const InputDecoration(labelText: 'Supplier *'),
@@ -407,6 +426,7 @@ class _PurchasesPageState extends State<PurchasesPage> {
             'invoice_number': invoiceNumber,
             'invoice_type': 'purchase',
             'party_id': supplierId,
+            'warehouse_sync_id': selectedWarehouseSyncId,
             'invoice_date': now.toIso8601String(),
             'subtotal': subtotal,
             'discount_total': discountTotal,
@@ -455,6 +475,7 @@ class _PurchasesPageState extends State<PurchasesPage> {
               quantity: (item['quantity'] as num).toDouble(),
               unitCost: inventoryUnitCost,
               receivedAt: now.toIso8601String(),
+              warehouseSyncId: selectedWarehouseSyncId,
             );
             await txn.rawUpdate(
               'UPDATE products SET current_stock = current_stock + ?, purchase_price = ?, updated_at = ? WHERE id = ?',
