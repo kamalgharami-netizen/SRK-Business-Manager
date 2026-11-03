@@ -161,7 +161,6 @@ class _PurchasesPageState extends State<PurchasesPage> {
       builder: (dialogContext) => StatefulBuilder(
         builder: (dialogContext, refreshDialog) {
           double subtotal = 0;
-          double discountTotal = 0;
           double taxTotal = 0;
           for (final line in lines) {
             final quantity = double.tryParse(line.quantity.text) ?? 0;
@@ -334,6 +333,7 @@ class _PurchasesPageState extends State<PurchasesPage> {
           final invoiceNumber =
               'PUR-${now.year}${now.month.toString().padLeft(2, '0')}${now.day.toString().padLeft(2, '0')}-${now.microsecondsSinceEpoch.toString().substring(8)}';
           double subtotal = 0;
+          double discountTotal = 0;
           double taxTotal = 0;
           double cgstTotal = 0;
           double sgstTotal = 0;
@@ -597,10 +597,6 @@ class _PurchasesPageState extends State<PurchasesPage> {
       line.dispose();
     }
     notes.dispose();
-    for (final line in lines) {
-      line.dispose();
-    }
-    notes.dispose();
     placeOfSupply.dispose();
     supplierInvoiceNumber.dispose();
     supplierInvoiceDate.dispose();
@@ -719,7 +715,6 @@ class _PurchasesPageState extends State<PurchasesPage> {
                 return null;
               },
               onChanged: (_) => onChanged(),
-            ),
             ),
           ],
         ),
