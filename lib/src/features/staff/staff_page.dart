@@ -43,9 +43,33 @@ class _StaffPageState extends State<StaffPage> {
     )));
     if (saved == true) {
       final db = await AppDatabase.instance.database;
-      final values = {'display_name': name.text.trim(), 'phone': phone.text.trim(), 'role': role};
-      if (member == null) { await db.insert('staff_members', values); }
-      else { await db.update('staff_members', values, where: 'id = ?', whereArgs: [member['id']]); }
+      await db.transaction((txn) async {
+        if (member == null) {
+          final syncId = AppDatabase.instance.createSyncId();
+          final id = await txn.insert('staff_members', {
+            'sync_id': syncId,
+            'display_name': name.text.trim(),
+            'phone': phone.text.trim(),
+            'role': role,
+          });
+          final rows = await txn.query('staff_members', where: 'id = ?', whereArgs: [id], limit: 1);
+          final payload = Map<String, dynamic>.from(rows.single)..remove('id');
+          await AppDatabase.instance.enqueueSyncOperation(
+            tableName: 'staff_members', recordId: syncId, operation: 'insert', payload: payload, executor: txn,
+          );
+        } else {
+          final syncId = member['sync_id'] as String?;
+          if (syncId == null || syncId.isEmpty) throw StateError('Staff profile is missing its cloud identifier.');
+          await txn.update('staff_members', {
+            'display_name': name.text.trim(), 'phone': phone.text.trim(), 'role': role,
+          }, where: 'id = ?', whereArgs: [member['id']]);
+          final rows = await txn.query('staff_members', where: 'id = ?', whereArgs: [member['id']], limit: 1);
+          final payload = Map<String, dynamic>.from(rows.single)..remove('id');
+          await AppDatabase.instance.enqueueSyncOperation(
+            tableName: 'staff_members', recordId: syncId, operation: 'update', payload: payload, executor: txn,
+          );
+        }
+      });
       await _load();
     }
     name.dispose(); phone.dispose();
@@ -59,7 +83,16 @@ class _StaffPageState extends State<StaffPage> {
       return;
     }
     final db = await AppDatabase.instance.database;
-    await db.update('staff_members', {'is_active': active ? 0 : 1}, where: 'id = ?', whereArgs: [member['id']]);
+    await db.transaction((txn) async {
+      final syncId = member['sync_id'] as String?;
+      if (syncId == null || syncId.isEmpty) throw StateError('Staff profile is missing its cloud identifier.');
+      await txn.update('staff_members', {'is_active': active ? 0 : 1}, where: 'id = ?', whereArgs: [member['id']]);
+      final rows = await txn.query('staff_members', where: 'id = ?', whereArgs: [member['id']], limit: 1);
+      final payload = Map<String, dynamic>.from(rows.single)..remove('id');
+      await AppDatabase.instance.enqueueSyncOperation(
+        tableName: 'staff_members', recordId: syncId, operation: 'update', payload: payload, executor: txn,
+      );
+    });
     await _load();
   }
   @override
