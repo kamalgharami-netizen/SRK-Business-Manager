@@ -254,6 +254,7 @@ class _SalesReturnsPageState extends State<SalesReturnsPage> {
           'invoice_number': number,
           'invoice_type': 'sales_return',
           'party_id': invoice['party_id'],
+          'warehouse_sync_id': invoice['warehouse_sync_id'],
           'invoice_date': now.toIso8601String(),
           'subtotal': subtotal,
           'tax_total': taxTotal,
@@ -293,6 +294,7 @@ class _SalesReturnsPageState extends State<SalesReturnsPage> {
             productId: productId,
             quantity: (item['quantity'] as num).toDouble(),
             returnedAt: now.toIso8601String(),
+            warehouseSyncId: invoice['warehouse_sync_id'] as String?,
           );
           await txn.rawUpdate(
             'UPDATE products SET current_stock = current_stock + ?, updated_at = ? WHERE id = ?',
@@ -301,6 +303,7 @@ class _SalesReturnsPageState extends State<SalesReturnsPage> {
           final movementId = await txn.insert('stock_movements', {
             'sync_id': AppDatabase.instance.createSyncId(),
             'product_id': productId,
+            'warehouse_sync_id': invoice['warehouse_sync_id'],
             'movement_type': 'sales_return',
             'quantity_change': item['quantity'],
             'reference': number,
