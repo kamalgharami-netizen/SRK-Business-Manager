@@ -97,7 +97,7 @@ class _PartyLedgerPageState extends State<PartyLedgerPage> {
       FROM payment_allocations a
       JOIN payments p ON p.id = a.payment_id
       JOIN invoices i ON i.id = a.invoice_id
-      WHERE p.party_id = ?
+      WHERE p.party_id = ? AND p.invoice_id IS NULL
       ORDER BY a.allocation_date, a.id
     ''', [id]);
     for (final allocation in allocations) {
@@ -109,6 +109,22 @@ class _PartyLedgerPageState extends State<PartyLedgerPage> {
         'kind': isCustomer ? 'customer_advance_allocation' : 'supplier_advance_allocation',
         'amount': ((allocation['amount'] as num?) ?? 0).toDouble(),
         'sort': (allocation['id'] as int) + 2000000000,
+      });
+    }
+    final debitNotes = await db.query(
+      'debit_notes',
+      where: "party_id = ? AND status = 'posted'",
+      whereArgs: [id],
+      orderBy: 'note_date, id',
+    );
+    for (final note in debitNotes) {
+      events.add({
+        'date': note['note_date'] as String,
+        'reference': note['debit_note_number'] as String,
+        'description': 'Sales debit note',
+        'kind': 'sales_debit_note',
+        'amount': ((note['grand_total'] as num?) ?? 0).toDouble(),
+        'sort': (note['id'] as int) + 3000000000,
       });
     }
     events.sort((a, b) {
@@ -133,6 +149,7 @@ class _PartyLedgerPageState extends State<PartyLedgerPage> {
       final amount = event['amount'] as double;
       switch (event['kind']) {
         case 'sale':
+        case 'sales_debit_note':
           receivable += amount;
         case 'sales_return':
         case 'receipt':
@@ -156,7 +173,7 @@ class _PartyLedgerPageState extends State<PartyLedgerPage> {
       rows.add({
         ...event,
         'receivable_change': switch (event['kind']) {
-          'sale' => amount,
+          'sale' || 'sales_debit_note' => amount,
           'sales_return' || 'receipt' => -amount,
           _ => 0.0,
         },
