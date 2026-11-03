@@ -21,6 +21,9 @@ class InventoryValuationReconciliation {
 
     var fifoValue = 0.0;
     var estimatedQuantity = 0.0;
+    var legacyMigratedQuantity = 0.0;
+    var legacyMigratedValue = 0.0;
+    var legacyMigratedProductCount = 0;
     var quantityMismatchCount = 0;
     var quantityMismatchTotal = 0.0;
     var unvaluedProductCount = 0;
@@ -29,12 +32,24 @@ class InventoryValuationReconciliation {
       final layerQuantity = (row['layer_quantity'] as num).toDouble();
       final value = (row['fifo_value'] as num).toDouble();
       final estimated = (row['estimated_quantity'] as num).toDouble();
-      if (![current, layerQuantity, value, estimated].every((v) => v.isFinite) ||
+      final legacyRows = await db.rawQuery('''
+        SELECT COALESCE(SUM(quantity_remaining), 0) AS quantity,
+          COALESCE(SUM(quantity_remaining * unit_cost), 0) AS value
+        FROM inventory_cost_layers
+        WHERE product_id = ? AND source_type = 'migration_estimate'
+          AND quantity_remaining > 0
+      ''', [row['id']]);
+      final legacyQuantity = (legacyRows.first['quantity'] as num).toDouble();
+      final legacyValue = (legacyRows.first['value'] as num).toDouble();
+      if (![current, layerQuantity, value, estimated, legacyQuantity, legacyValue].every((v) => v.isFinite) ||
           current < 0 || layerQuantity < 0 || value < 0 || estimated < 0) {
         throw StateError('Inventory valuation contains invalid quantities or costs.');
       }
       fifoValue += value;
       estimatedQuantity += estimated;
+      legacyMigratedQuantity += legacyQuantity;
+      legacyMigratedValue += legacyValue;
+      if (legacyQuantity > 0.000001) legacyMigratedProductCount++;
       if ((current - layerQuantity).abs() > 0.000001) {
         quantityMismatchCount++;
         quantityMismatchTotal += (current - layerQuantity).abs();
@@ -44,6 +59,7 @@ class InventoryValuationReconciliation {
       }
     }
     if (!fifoValue.isFinite || !estimatedQuantity.isFinite ||
+        !legacyMigratedQuantity.isFinite || !legacyMigratedValue.isFinite ||
         !quantityMismatchTotal.isFinite) {
       throw StateError('Inventory reconciliation totals are invalid.');
     }
@@ -65,6 +81,9 @@ class InventoryValuationReconciliation {
       'control_account_balance': controlBalance,
       'difference': difference,
       'estimated_quantity': estimatedQuantity,
+      'legacy_migrated_quantity': legacyMigratedQuantity,
+      'legacy_migrated_value': legacyMigratedValue,
+      'legacy_migrated_product_count': legacyMigratedProductCount,
       'quantity_mismatch_count': quantityMismatchCount,
       'quantity_mismatch_total': quantityMismatchTotal,
       'unvalued_product_count': unvaluedProductCount,
