@@ -1121,6 +1121,7 @@ class _ReportsPageState extends State<ReportsPage> {
     final reconciled = data['is_reconciled'] == true;
     final overpaid = (data['overpaid_count'] as num?)?.toInt() ?? 0;
     final unpaid = (data['unpaid_count'] as num?)?.toInt() ?? 0;
+    final missingReferences = (data['missing_payment_reference_count'] as num?)?.toInt() ?? 0;
     return Card(
       child: Padding(
         padding: const EdgeInsets.all(16),
@@ -1143,6 +1144,9 @@ class _ReportsPageState extends State<ReportsPage> {
               style: TextStyle(color: Theme.of(context).colorScheme.error)),
           if (overpaid > 0)
             Text('Liabilities with payments exceeding one or more tax heads: $overpaid',
+              style: TextStyle(color: Theme.of(context).colorScheme.error)),
+          if (missingReferences > 0)
+            Text('Cash payments missing cash-ledger or challan reference: $missingReferences',
               style: TextStyle(color: Theme.of(context).colorScheme.error)),
           Text('Payment records: ${data['payment_count'] ?? 0} • Audit events: ${data['audit_event_count'] ?? 0}'),
           const SizedBox(height: 8),
