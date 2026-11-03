@@ -38,6 +38,20 @@ class SupplierLedgerReconciliation {
     final allocations = (allocationRows.single['total'] as num).toDouble();
     final partyBalance = opening + purchases - returns - linkedPayments - allocations;
 
+    final advancePaymentRows = await db.rawQuery(
+      "SELECT COALESCE(SUM(amount),0) AS total FROM payments WHERE payment_type='payment' AND invoice_id IS NULL$paymentCutoff",
+      asOfDate == null ? [] : [asOfDate],
+    );
+    final advanceAllocationRows = await db.rawQuery("""
+      SELECT COALESCE(SUM(a.amount),0) AS total
+      FROM payment_allocations a
+      INNER JOIN payments p ON p.id=a.payment_id
+      WHERE p.payment_type='payment' AND p.invoice_id IS NULL$allocationCutoff
+    """, asOfDate == null ? [] : [asOfDate]);
+    final supplierAdvancesPaid = (advancePaymentRows.single['total'] as num).toDouble();
+    final supplierAdvancesAllocated = (advanceAllocationRows.single['total'] as num).toDouble();
+    final supplierAdvanceLedger = supplierAdvancesPaid - supplierAdvancesAllocated;
+
     final controlRows = await db.rawQuery("""
       SELECT COALESCE(SUM(jl.credit-jl.debit),0) AS balance
       FROM journal_lines jl
@@ -69,6 +83,16 @@ class SupplierLedgerReconciliation {
       WHERE je.id IS NULL $missingDateClause
     """, asOfDate == null ? [] : [asOfDate]);
 
+    final advanceControlRows = await db.rawQuery("""
+      SELECT COALESCE(SUM(jl.debit-jl.credit),0) AS balance
+      FROM journal_lines jl
+      INNER JOIN journal_entries je ON je.id=jl.journal_entry_id
+      INNER JOIN accounts a ON a.id=jl.account_id
+      WHERE a.account_code='1400' AND je.status='posted'$journalCutoff
+    """, asOfDate == null ? [] : [asOfDate]);
+    final supplierAdvanceControl = (advanceControlRows.single['balance'] as num).toDouble();
+    final supplierAdvanceDifference = supplierAdvanceLedger - supplierAdvanceControl;
+
     final difference = partyBalance - controlBalance;
     final unassignedCount = (unassignedRows.single['count'] as num).toInt();
     final missingCount = (missingRows.single['count'] as num).toInt();
@@ -85,6 +109,12 @@ class SupplierLedgerReconciliation {
       'unassigned_purchase_total': (unassignedRows.single['total'] as num).toDouble(),
       'missing_journal_count': missingCount,
       'missing_journal_amount': (missingRows.single['amount'] as num).toDouble(),
+      'supplier_advance_paid': supplierAdvancesPaid,
+      'supplier_advance_allocated': supplierAdvancesAllocated,
+      'supplier_advance_ledger_balance': supplierAdvanceLedger,
+      'supplier_advance_control_balance': supplierAdvanceControl,
+      'supplier_advance_difference': supplierAdvanceDifference,
+      'is_supplier_advance_reconciled': supplierAdvanceDifference.abs() <= 0.01,
       'is_reconciled': difference.abs() <= 0.01 && unassignedCount == 0 && missingCount == 0,
     };
   }
