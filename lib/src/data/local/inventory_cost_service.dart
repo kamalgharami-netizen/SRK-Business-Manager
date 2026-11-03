@@ -383,6 +383,101 @@ class InventoryCostService {
     return totalCost;
   }
 
+
+  /// Transfers FIFO stock between two warehouses without changing the
+  /// business-wide product quantity. Each destination layer preserves the
+  /// exact source-layer unit cost and estimated-cost flag.
+  static Future<double> transferBetweenWarehouses(
+    Transaction txn, {
+    required int productId,
+    required String sourceWarehouseSyncId,
+    required String destinationWarehouseSyncId,
+    required double quantity,
+    required String transferredAt,
+  }) async {
+    if (sourceWarehouseSyncId.trim().isEmpty ||
+        destinationWarehouseSyncId.trim().isEmpty ||
+        sourceWarehouseSyncId == destinationWarehouseSyncId) {
+      throw StateError('Select two different valid warehouses.');
+    }
+    if (!quantity.isFinite || quantity <= 0) {
+      throw StateError('Transfer quantity must be finite and greater than zero.');
+    }
+
+    final sourceWarehouse = await txn.query(
+      'warehouses',
+      columns: ['sync_id'],
+      where: 'sync_id = ? AND is_active = 1',
+      whereArgs: [sourceWarehouseSyncId],
+      limit: 1,
+    );
+    final destinationWarehouse = await txn.query(
+      'warehouses',
+      columns: ['sync_id'],
+      where: 'sync_id = ? AND is_active = 1',
+      whereArgs: [destinationWarehouseSyncId],
+      limit: 1,
+    );
+    if (sourceWarehouse.isEmpty || destinationWarehouse.isEmpty) {
+      throw StateError('Both source and destination warehouses must be active.');
+    }
+
+    final layers = await txn.query(
+      'inventory_cost_layers',
+      where: 'product_id = ? AND warehouse_sync_id = ? AND quantity_remaining > 0',
+      whereArgs: [productId, sourceWarehouseSyncId],
+      orderBy: 'received_at ASC, id ASC',
+    );
+    final available = layers.fold<double>(
+      0,
+      (sum, row) => sum + (row['quantity_remaining'] as num).toDouble(),
+    );
+    if (!available.isFinite || available + 0.0000001 < quantity) {
+      throw StateError(
+        'Insufficient stock in the source warehouse. Other-warehouse and unassigned stock cannot be transferred.',
+      );
+    }
+
+    var remaining = quantity;
+    var totalCost = 0.0;
+    for (final layer in layers) {
+      if (remaining <= 0.0000001) break;
+      final layerQuantity = (layer['quantity_remaining'] as num).toDouble();
+      final unitCost = (layer['unit_cost'] as num).toDouble();
+      if (!layerQuantity.isFinite || layerQuantity <= 0 ||
+          !unitCost.isFinite || unitCost < 0) {
+        throw StateError('A source FIFO layer contains invalid values.');
+      }
+      final moved = layerQuantity < remaining ? layerQuantity : remaining;
+      final layerCost = moved * unitCost;
+      if (!layerCost.isFinite) {
+        throw StateError('Calculated transfer inventory value is invalid.');
+      }
+      await txn.rawUpdate(
+        'UPDATE inventory_cost_layers SET quantity_remaining = quantity_remaining - ? WHERE id = ?',
+        [moved, layer['id']],
+      );
+      await txn.insert('inventory_cost_layers', {
+        'product_id': productId,
+        'warehouse_sync_id': destinationWarehouseSyncId,
+        'source_type': 'warehouse_transfer',
+        'source_id': null,
+        'received_at': transferredAt,
+        'quantity_received': moved,
+        'quantity_remaining': moved,
+        'unit_cost': unitCost,
+        'is_estimated': layer['is_estimated'] ?? 1,
+      });
+      totalCost += layerCost;
+      remaining -= moved;
+    }
+    if (remaining > 0.0000001) {
+      throw StateError('The source warehouse FIFO stock changed during transfer.');
+    }
+    return totalCost;
+  }
+
+
   /// Restores returned sale quantities into FIFO inventory using the exact
   /// cost allocations recorded against the original sale item.
   static Future<double> restoreSalesReturn(
