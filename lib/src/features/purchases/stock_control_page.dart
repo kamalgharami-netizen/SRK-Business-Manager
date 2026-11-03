@@ -265,6 +265,7 @@ class _StockControlPageState extends State<StockControlPage> {
           final returnItems = <Map<String, Object?>>[];
           final totalsByProduct = <int, double>{};
           double subtotal = 0;
+          double discountTotal = 0;
           double taxTotal = 0;
           double cgstTotal = 0;
           double sgstTotal = 0;
@@ -301,6 +302,7 @@ class _StockControlPageState extends State<StockControlPage> {
             }
             totalsByProduct[productId] = (totalsByProduct[productId] ?? 0) + qty;
             subtotal += taxable;
+            discountTotal += discount;
             taxTotal += tax;
             cgstTotal += cgst;
             sgstTotal += sgst;
@@ -366,6 +368,7 @@ class _StockControlPageState extends State<StockControlPage> {
             'party_id': original['party_id'],
             'invoice_date': now.toIso8601String(),
             'subtotal': subtotal,
+            'discount_total': discountTotal,
             'tax_total': taxTotal,
             'grand_total': subtotal + taxTotal,
             'amount_paid': 0,
@@ -522,7 +525,7 @@ class _StockControlPageState extends State<StockControlPage> {
                     contentPadding: EdgeInsets.zero,
                     title: Text(item['description']?.toString() ?? ''),
                     subtitle: Text(
-                      '${item['quantity']} ${item['unit']} × ₹${item['rate']}  |  GST ${item['gst_rate']}%',
+                      '${item['quantity']} ${item['unit']} × ₹${item['rate']}  |  Discount ₹${((item['discount'] as num?)?.toDouble() ?? 0).toStringAsFixed(2)}  |  GST ${item['gst_rate']}%',
                     ),
                     trailing: Text(
                       '₹${((item['line_total'] as num?)?.toDouble() ?? 0).toStringAsFixed(2)}',
@@ -530,7 +533,11 @@ class _StockControlPageState extends State<StockControlPage> {
                   ),
                 const Divider(),
                 _returnTotalRow(
-                  'Taxable subtotal',
+                  'Line discounts',
+                  (invoice['discount_total'] as num?)?.toDouble() ?? 0,
+                ),
+                _returnTotalRow(
+                  'Taxable subtotal (after discount)',
                   (invoice['subtotal'] as num?)?.toDouble() ?? 0,
                 ),
                 _returnTotalRow(
