@@ -14,7 +14,7 @@ void main() {
     });
 
     test('keeps payment dependencies ordered before allocations', () {
-      final order = BusinessSyncEntityPolicy.pullOrder;
+      const order = BusinessSyncEntityPolicy.pullOrder;
       expect(order.indexOf('invoices'), lessThan(order.indexOf('payments')));
       expect(order.indexOf('payments'), lessThan(order.indexOf('payment_allocations')));
     });
