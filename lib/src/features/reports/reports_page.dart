@@ -1050,14 +1050,14 @@ class _ReportsPageState extends State<ReportsPage> {
           _metric('Accounts Payable control (2000)', _money((data['control_account_balance'] as num?)?.toDouble() ?? 0), Icons.account_balance),
           _metric('Difference (sub-ledger − control)', _money(difference), Icons.compare_arrows),
           const Divider(),
-          Text('Opening supplier balances: ${_money(data['opening_balance'])}'),
-          Text('Purchases: ${_money(data['purchase_total'])}  •  Returns: ${_money(data['purchase_return_total'])}'),
-          Text('Invoice payments: ${_money(data['linked_payment_total'])}  •  Advance allocations: ${_money(data['advance_allocation_total'])}'),
+          Text('Opening supplier balances: ${_money((data['opening_balance'] as num?)?.toDouble() ?? 0)}'),
+          Text('Purchases: ${_money((data['purchase_total'] as num?)?.toDouble() ?? 0)}  •  Returns: ${_money((data['purchase_return_total'] as num?)?.toDouble() ?? 0)}'),
+          Text('Invoice payments: ${_money((data['linked_payment_total'] as num?)?.toDouble() ?? 0)}  •  Advance allocations: ${_money((data['advance_allocation_total'] as num?)?.toDouble() ?? 0)}'),
           if ((data['unassigned_purchase_count'] as num).toInt() > 0)
-            Text('Purchases without supplier: ${data['unassigned_purchase_count']} • ${_money(data['unassigned_purchase_total'])}',
+            Text('Purchases without supplier: ${data['unassigned_purchase_count']} • ${_money((data['unassigned_purchase_total'] as num?)?.toDouble() ?? 0)}',
               style: TextStyle(color: Theme.of(context).colorScheme.error)),
           if ((data['missing_journal_count'] as num).toInt() > 0)
-            Text('Transactions missing posted journal: ${data['missing_journal_count']} • ${_money(data['missing_journal_amount'])}',
+            Text('Transactions missing posted journal: ${data['missing_journal_count']} • ${_money((data['missing_journal_amount'] as num?)?.toDouble() ?? 0)}',
               style: TextStyle(color: Theme.of(context).colorScheme.error)),
           const SizedBox(height: 8),
           Text(reconciled
