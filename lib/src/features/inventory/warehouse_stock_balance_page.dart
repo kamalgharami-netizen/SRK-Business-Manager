@@ -157,14 +157,14 @@ class _WarehouseStockBalancePageState extends State<WarehouseStockBalancePage> {
             children: [
               Text(product['product_name'] as String? ?? ''),
               const SizedBox(height: 8),
-              Text('Unassigned available: ' + _quantity(product['quantity'])),
+              Text('Unassigned available: ${_quantity(product['quantity'])}'),
               const SizedBox(height: 12),
               DropdownButtonFormField<String>(
-                value: destination,
+                initialValue: destination,
                 decoration: const InputDecoration(labelText: 'Destination warehouse'),
                 items: warehouses.map((row) => DropdownMenuItem(
                   value: row['sync_id'] as String,
-                  child: Text(row['name'].toString() + ' (' + row['code'].toString() + ')'),
+                  child: Text('${row['name']} (${row['code']})'),
                 )).toList(),
                 onChanged: (value) {
                   if (value != null) setDialogState(() => destination = value);
@@ -242,7 +242,7 @@ class _WarehouseStockBalancePageState extends State<WarehouseStockBalancePage> {
           'warehouse_sync_id': warehouseSyncId,
           'movement_type': 'adjustment',
           'quantity_change': qty,
-          'reference': 'ALLOC-' + DateTime.now().microsecondsSinceEpoch.toString(),
+          'reference': 'ALLOC-${DateTime.now().microsecondsSinceEpoch}',
           'notes': 'Legacy/unassigned stock allocated to warehouse',
           'inventory_effect_json': jsonEncode({
             'direction': 'allocate',
@@ -256,7 +256,7 @@ class _WarehouseStockBalancePageState extends State<WarehouseStockBalancePage> {
       await _load();
       if (mounted) _showMessage('Legacy stock allocated successfully.');
     } catch (error) {
-      if (mounted) _showMessage('Could not allocate legacy stock: ' + error.toString());
+      if (mounted) _showMessage('Could not allocate legacy stock: $error');
     }
   }
 
@@ -446,8 +446,7 @@ class _WarehouseStockBalancePageState extends State<WarehouseStockBalancePage> {
                             children: _unassignedProducts.map((product) => ListTile(
                               title: Text(product['product_name'] as String? ?? ''),
                               subtitle: Text(
-                                'Available: ' + _quantity(product['quantity']) +
-                                ' • Value: ' + _money(product['stock_value']),
+                                'Available: ${_quantity(product['quantity'])} • Value: ${_money(product['stock_value'])}',
                               ),
                               trailing: IconButton(
                                 tooltip: 'Allocate to warehouse',
