@@ -11,6 +11,7 @@ import 'payment_reconciliation.dart';
 import 'inventory_cost_service.dart';
 import 'gst_gstr3b_itc.dart';
 import 'gst_gstr3b_itc_repository.dart';
+import '../sync/business_sync_entity_policy.dart';
 
 /// Local-first database shared by the Windows and Android applications.
 class AppDatabase {
@@ -1331,9 +1332,7 @@ class AppDatabase {
     required Map<String, dynamic> payload,
     required bool isDeleted,
   }) async {
-    if (tableName != 'parties' && tableName != 'products' &&
-        tableName != 'expenses' && tableName != 'invoices' && tableName != 'payments' &&
-        tableName != 'stock_movements') {
+    if (!BusinessSyncEntityPolicy.supports(tableName)) {
       throw ArgumentError.value(tableName, 'tableName');
     }
     final db = await database;
