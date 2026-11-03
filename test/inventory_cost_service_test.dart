@@ -716,6 +716,36 @@ void main() {
       expect(rows.single['quantity_remaining'], 3);
     });
 
+    test('local legacy allocation consumes only unassigned FIFO layers', () async {
+      final db = await openWarehouseDatabase();
+      addTearDown(db.close);
+      await db.insert('inventory_cost_layers', {
+        'product_id': 1, 'warehouse_sync_id': 'warehouse-A',
+        'source_type': 'purchase', 'received_at': '2026-11-01',
+        'quantity_received': 4, 'quantity_remaining': 4,
+        'unit_cost': 100, 'is_estimated': 0,
+      });
+      await db.insert('inventory_cost_layers', {
+        'product_id': 1, 'warehouse_sync_id': null,
+        'source_type': 'legacy_opening', 'received_at': '2026-11-02',
+        'quantity_received': 3, 'quantity_remaining': 3,
+        'unit_cost': 80, 'is_estimated': 1,
+      });
+      final consumed = <Map<String, Object?>>[];
+      await db.transaction((txn) => InventoryCostService.removeStockAtFifo(
+        txn,
+        productId: 1,
+        quantity: 2,
+        removedAt: '2026-11-03T12:00:00',
+        consumedLayers: consumed,
+        unassignedOnly: true,
+      ));
+      final rows = await db.query('inventory_cost_layers', orderBy: 'id');
+      expect(rows[0]['quantity_remaining'], 4);
+      expect(rows[1]['quantity_remaining'], 1);
+      expect(consumed.single['unit_cost'], 80);
+    });
+
     test('replays legacy stock allocation without changing total FIFO quantity', () async {
       final db = await openWarehouseDatabase();
       addTearDown(db.close);
