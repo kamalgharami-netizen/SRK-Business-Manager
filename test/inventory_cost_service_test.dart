@@ -537,6 +537,15 @@ void main() {
         )
       ''');
       await db.execute('''
+        CREATE TABLE warehouses (
+          id INTEGER PRIMARY KEY,
+          sync_id TEXT NOT NULL UNIQUE,
+          is_active INTEGER NOT NULL DEFAULT 1
+        )
+      ''');
+      await db.insert('warehouses', {'sync_id': 'warehouse-A'});
+      await db.insert('warehouses', {'sync_id': 'warehouse-B'});
+      await db.execute('''
         CREATE TABLE inventory_cost_layers (
           id INTEGER PRIMARY KEY AUTOINCREMENT,
           product_id INTEGER NOT NULL,
@@ -624,5 +633,88 @@ void main() {
       expect(rows[0]['quantity_remaining'], 7);
       expect(rows[1]['quantity_remaining'], 6);
     });
+    test('replays a cloud stock increase into the selected warehouse', () async {
+      final db = await openWarehouseDatabase();
+      addTearDown(db.close);
+      await db.transaction((txn) =>
+          InventoryCostService.applyRemoteStockAdjustmentEffect(
+            txn,
+            productId: 1,
+            warehouseSyncId: 'warehouse-A',
+            direction: 'increase',
+            quantity: 3,
+            layers: [
+              {'quantity': 3, 'unit_cost': 45, 'is_estimated': 1},
+            ],
+            adjustedAt: '2026-11-03T12:00:00',
+          ));
+      final rows = await db.query('inventory_cost_layers');
+      expect(rows.single['warehouse_sync_id'], 'warehouse-A');
+      expect(rows.single['quantity_remaining'], 3);
+      expect(rows.single['unit_cost'], 45);
+      expect(rows.single['is_estimated'], 1);
+    });
+
+    test('replays a cloud stock decrease against the exact FIFO layers', () async {
+      final db = await openWarehouseDatabase();
+      addTearDown(db.close);
+      await db.insert('inventory_cost_layers', {
+        'product_id': 1, 'warehouse_sync_id': 'warehouse-A',
+        'source_type': 'purchase', 'received_at': '2026-11-01',
+        'quantity_received': 2, 'quantity_remaining': 2,
+        'unit_cost': 100, 'is_estimated': 0,
+      });
+      await db.insert('inventory_cost_layers', {
+        'product_id': 1, 'warehouse_sync_id': 'warehouse-A',
+        'source_type': 'purchase', 'received_at': '2026-11-02',
+        'quantity_received': 4, 'quantity_remaining': 4,
+        'unit_cost': 120, 'is_estimated': 1,
+      });
+      await db.transaction((txn) =>
+          InventoryCostService.applyRemoteStockAdjustmentEffect(
+            txn,
+            productId: 1,
+            warehouseSyncId: 'warehouse-A',
+            direction: 'decrease',
+            quantity: 3,
+            layers: [
+              {'quantity': 2, 'unit_cost': 100, 'is_estimated': 0},
+              {'quantity': 1, 'unit_cost': 120, 'is_estimated': 1},
+            ],
+            adjustedAt: '2026-11-03T12:00:00',
+          ));
+      final rows = await db.query('inventory_cost_layers', orderBy: 'id');
+      expect(rows[0]['quantity_remaining'], 0);
+      expect(rows[1]['quantity_remaining'], 3);
+    });
+
+    test('rejects a cloud stock decrease with mismatched FIFO cost', () async {
+      final db = await openWarehouseDatabase();
+      addTearDown(db.close);
+      await db.insert('inventory_cost_layers', {
+        'product_id': 1, 'warehouse_sync_id': 'warehouse-A',
+        'source_type': 'purchase', 'received_at': '2026-11-01',
+        'quantity_received': 3, 'quantity_remaining': 3,
+        'unit_cost': 125, 'is_estimated': 0,
+      });
+      await expectLater(
+        db.transaction((txn) =>
+            InventoryCostService.applyRemoteStockAdjustmentEffect(
+              txn,
+              productId: 1,
+              warehouseSyncId: 'warehouse-A',
+              direction: 'decrease',
+              quantity: 2,
+              layers: [
+                {'quantity': 2, 'unit_cost': 100, 'is_estimated': 0},
+              ],
+              adjustedAt: '2026-11-03T12:00:00',
+            )),
+        throwsA(isA<StateError>()),
+      );
+      final rows = await db.query('inventory_cost_layers');
+      expect(rows.single['quantity_remaining'], 3);
+    });
+
   });
 }

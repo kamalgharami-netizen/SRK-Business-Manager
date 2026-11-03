@@ -732,11 +732,20 @@ class _StockControlPageState extends State<StockControlPage> {
             throw StateError('Stock cannot become negative.');
           }
           final now = DateTime.now();
+          final consumedLayers = <Map<String, Object?>>[];
+          late Map<String, Object?> inventoryEffect;
           double adjustmentCost;
           if (signedQty > 0) {
             final selected = products.firstWhere((row) => row['id'] == productId);
-            adjustmentCost = qty *
-                (selected['purchase_price'] as num).toDouble();
+            final unitCost = (selected['purchase_price'] as num).toDouble();
+            adjustmentCost = qty * unitCost;
+            inventoryEffect = {
+              'direction': 'increase',
+              'quantity': qty,
+              'layers': [
+                {'quantity': qty, 'unit_cost': unitCost, 'is_estimated': 1},
+              ],
+            };
             await InventoryCostService.addAdjustmentLayer(
               txn,
               productId: productId!,
@@ -751,7 +760,13 @@ class _StockControlPageState extends State<StockControlPage> {
               quantity: -signedQty,
               removedAt: now.toIso8601String(),
               warehouseSyncId: warehouseSyncId,
+              consumedLayers: consumedLayers,
             );
+            inventoryEffect = {
+              'direction': 'decrease',
+              'quantity': qty,
+              'layers': consumedLayers,
+            };
           }
           await txn.rawUpdate(
             'UPDATE products SET current_stock = current_stock + ?, updated_at = ? WHERE id = ?',
@@ -765,6 +780,7 @@ class _StockControlPageState extends State<StockControlPage> {
             'quantity_change': signedQty,
             'reference': 'ADJ-${now.microsecondsSinceEpoch}',
             'notes': reason.text.trim(),
+            'inventory_effect_json': jsonEncode(inventoryEffect),
             'created_at': now.toIso8601String(),
           });
           await AppDatabase.instance.enqueueProductSyncById(txn, productId!);
