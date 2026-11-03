@@ -32,6 +32,32 @@ class InventoryCostService {
   }
 
 
+  /// Records initial stock entered when a product is first created.
+  /// The layer is estimated from the product's entered purchase price.
+  static Future<void> receiveOpeningStock(
+    Transaction txn, {
+    required int productId,
+    required double quantity,
+    required double unitCost,
+    required String receivedAt,
+  }) async {
+    if (!quantity.isFinite || quantity < 0 ||
+        !unitCost.isFinite || unitCost < 0) {
+      throw StateError('Opening stock quantity and cost must be finite non-negative numbers.');
+    }
+    if (quantity == 0) return;
+    await txn.insert('inventory_cost_layers', {
+      'product_id': productId,
+      'source_type': 'opening_stock',
+      'source_id': productId,
+      'received_at': receivedAt,
+      'quantity_received': quantity,
+      'quantity_remaining': quantity,
+      'unit_cost': unitCost,
+      'is_estimated': 1,
+    });
+  }
+
   /// Calculates stock cost per unit after applying the purchase ITC decision.
   /// Recoverable or not-yet-reviewed GST stays outside inventory cost;
   /// finally ineligible GST is capitalised into stock cost.
