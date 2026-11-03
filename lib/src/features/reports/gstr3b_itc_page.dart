@@ -119,7 +119,14 @@ class _Gstr3bItcPageState extends State<Gstr3bItcPage> {
                     children: [
                       TextFormField(
                         controller: reference,
-                        decoration: const InputDecoration(labelText: 'Document / Adjustment Reference *'),
+                        decoration: InputDecoration(
+                          labelText: treatment == Gstr3bItcTreatment.reclaimedPreviousReversal
+                              ? 'Previous Reversal Reference *'
+                              : 'Document / Adjustment Reference *',
+                          helperText: treatment == Gstr3bItcTreatment.reclaimedPreviousReversal
+                              ? 'আগের return period-এ যে exact reference দিয়ে reversal entry করা হয়েছিল, সেটিই লিখুন।'
+                              : 'এই adjustment-এর source document/reference লিখুন।',
+                        ),
                         validator: (value) => (value ?? '').trim().isEmpty
                             ? 'Reference প্রয়োজন'
                             : null,
