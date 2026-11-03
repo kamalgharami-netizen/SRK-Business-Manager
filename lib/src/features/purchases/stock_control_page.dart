@@ -1,3 +1,5 @@
+import 'dart:convert';
+
 import 'package:flutter/material.dart';
 
 import '../../data/local/app_database.dart';
@@ -919,6 +921,9 @@ class _StockControlPageState extends State<StockControlPage> {
           final now = DateTime.now();
           final timestamp = now.toIso8601String();
           final reference = 'TRF-${now.microsecondsSinceEpoch}';
+          final transferSyncId = AppDatabase.instance.createSyncId();
+          final sourceMovementSyncId = AppDatabase.instance.createSyncId();
+          final destinationMovementSyncId = AppDatabase.instance.createSyncId();
           final note = notes.text.trim();
           final sourceName = warehouses.firstWhere(
             (row) => row['sync_id'] == sourceWarehouseSyncId,
@@ -936,7 +941,7 @@ class _StockControlPageState extends State<StockControlPage> {
           );
 
           await txn.insert('stock_movements', {
-            'sync_id': AppDatabase.instance.createSyncId(),
+            'sync_id': sourceMovementSyncId,
             'product_id': productId,
             'warehouse_sync_id': sourceWarehouseSyncId,
             'movement_type': 'adjustment',
@@ -946,7 +951,7 @@ class _StockControlPageState extends State<StockControlPage> {
             'created_at': timestamp,
           });
           await txn.insert('stock_movements', {
-            'sync_id': AppDatabase.instance.createSyncId(),
+            'sync_id': destinationMovementSyncId,
             'product_id': productId,
             'warehouse_sync_id': destinationWarehouseSyncId,
             'movement_type': 'adjustment',
@@ -955,9 +960,35 @@ class _StockControlPageState extends State<StockControlPage> {
             'notes': 'TRANSFER IN • From: $sourceName • ${note.isEmpty ? 'FIFO value ₹${cost.toStringAsFixed(2)}' : note}',
             'created_at': timestamp,
           });
-          // Transfer FIFO layers are currently local-first. Do not upload
-          // movement-only records until the matching cloud transfer entity
-          // can atomically reconstruct both sides on other devices.
+          final destinationLayers = await txn.query(
+            'inventory_cost_layers',
+            columns: ['quantity_received', 'unit_cost', 'is_estimated'],
+            where: 'product_id = ? AND warehouse_sync_id = ? AND source_type = ? AND received_at = ?',
+            whereArgs: [productId, destinationWarehouseSyncId, 'warehouse_transfer', timestamp],
+            orderBy: 'id ASC',
+          );
+          if (destinationLayers.isEmpty) {
+            throw StateError('Transferred FIFO layers could not be reloaded.');
+          }
+          final transferId = await txn.insert('warehouse_transfers', {
+            'sync_id': transferSyncId,
+            'product_id': productId,
+            'source_warehouse_sync_id': sourceWarehouseSyncId,
+            'destination_warehouse_sync_id': destinationWarehouseSyncId,
+            'quantity': qty,
+            'total_cost': cost,
+            'layers_json': jsonEncode(destinationLayers.map((row) => {
+              'quantity': row['quantity_received'],
+              'unit_cost': row['unit_cost'],
+              'is_estimated': row['is_estimated'],
+            }).toList()),
+            'source_movement_sync_id': sourceMovementSyncId,
+            'destination_movement_sync_id': destinationMovementSyncId,
+            'notes': note,
+            'transferred_at': timestamp,
+            'created_at': timestamp,
+          });
+          await AppDatabase.instance.enqueueWarehouseTransferSync(txn, transferId);
         });
         await _syncIfConfigured();
         _message('Stock transferred successfully. Business-wide stock quantity is unchanged.');

@@ -16,6 +16,7 @@ class BusinessSyncEntityPolicy {
     'payments',
     'payment_allocations',
     'stock_movements',
+    'warehouse_transfers',
   ];
 
   static bool supports(String entityType) => pullOrder.contains(entityType);

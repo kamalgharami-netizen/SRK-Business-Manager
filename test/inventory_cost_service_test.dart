@@ -434,6 +434,64 @@ void main() {
       );
     });
 
+    test('replays a cloud transfer against matching source FIFO layers', () async {
+      final db = await openTransferDatabase();
+      addTearDown(db.close);
+      await db.insert('inventory_cost_layers', {
+        'product_id': 1, 'warehouse_sync_id': 'warehouse-A',
+        'source_type': 'purchase', 'received_at': '2026-11-01',
+        'quantity_received': 3, 'quantity_remaining': 3,
+        'unit_cost': 100, 'is_estimated': 0,
+      });
+      final cost = await db.transaction((txn) =>
+          InventoryCostService.applyRemoteWarehouseTransferLayers(
+            txn,
+            productId: 1,
+            sourceWarehouseSyncId: 'warehouse-A',
+            destinationWarehouseSyncId: 'warehouse-B',
+            layers: [
+              {'quantity': 2, 'unit_cost': 100, 'is_estimated': 0},
+            ],
+            transferredAt: '2026-11-03T12:00:00',
+            expectedTotalCost: 200,
+          ));
+      final rows = await db.query('inventory_cost_layers', orderBy: 'id');
+      expect(cost, 200);
+      expect(rows[0]['quantity_remaining'], 1);
+      expect(rows[1]['warehouse_sync_id'], 'warehouse-B');
+      expect(rows[1]['quantity_remaining'], 2);
+      expect(rows[1]['unit_cost'], 100);
+    });
+
+    test('rejects a cloud transfer when source FIFO cost differs', () async {
+      final db = await openTransferDatabase();
+      addTearDown(db.close);
+      await db.insert('inventory_cost_layers', {
+        'product_id': 1, 'warehouse_sync_id': 'warehouse-A',
+        'source_type': 'purchase', 'received_at': '2026-11-01',
+        'quantity_received': 3, 'quantity_remaining': 3,
+        'unit_cost': 125, 'is_estimated': 0,
+      });
+      await expectLater(
+        db.transaction((txn) =>
+            InventoryCostService.applyRemoteWarehouseTransferLayers(
+              txn,
+              productId: 1,
+              sourceWarehouseSyncId: 'warehouse-A',
+              destinationWarehouseSyncId: 'warehouse-B',
+              layers: [
+                {'quantity': 2, 'unit_cost': 100, 'is_estimated': 0},
+              ],
+              transferredAt: '2026-11-03T12:00:00',
+              expectedTotalCost: 200,
+            )),
+        throwsA(isA<StateError>()),
+      );
+      final rows = await db.query('inventory_cost_layers', orderBy: 'id');
+      expect(rows.length, 1);
+      expect(rows.single['quantity_remaining'], 3);
+    });
+
     test('rejects source shortage without changing any FIFO layer', () async {
       final db = await openTransferDatabase();
       addTearDown(db.close);
