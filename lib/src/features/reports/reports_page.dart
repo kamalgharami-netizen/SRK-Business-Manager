@@ -6,6 +6,7 @@ import 'package:file_picker/file_picker.dart';
 import '../../data/local/app_database.dart';
 import '../../data/local/supplier_ledger_reconciliation.dart';
 import '../../data/local/customer_ledger_reconciliation.dart';
+import '../../data/local/inventory_valuation_reconciliation.dart';
 import '../../data/local/gst_return_readiness.dart';
 import '../../data/local/gst_gstr1_classification.dart';
 import '../../data/local/gst_gstr1_hsn_summary.dart';
@@ -42,6 +43,7 @@ class _ReportsPageState extends State<ReportsPage> {
   double _balanceEquity = 0;
   Map<String, Object?> _supplierReconciliation = const {};
   Map<String, Object?> _customerReconciliation = const {};
+  Map<String, Object?> _inventoryReconciliation = const {};
   DateTime? _startDate;
   DateTime? _endDate;
   bool _gstr1Checking = false;
@@ -449,6 +451,8 @@ class _ReportsPageState extends State<ReportsPage> {
       db,
       asOfDate: _endDate == null ? null : _date(_endDate!),
     );
+    final inventoryReconciliation =
+        await InventoryValuationReconciliation.load(db);
 
     final currentPeriodEarnings = profitIncome - profitExpense;
     if (!mounted) return;
@@ -484,6 +488,7 @@ class _ReportsPageState extends State<ReportsPage> {
       _balanceEquity = balanceEquity + currentPeriodEarnings;
       _supplierReconciliation = supplierReconciliation;
       _customerReconciliation = customerReconciliation;
+      _inventoryReconciliation = inventoryReconciliation;
       _loading = false;
     });
   }
@@ -1035,6 +1040,52 @@ class _ReportsPageState extends State<ReportsPage> {
   );
 
 
+  Widget _inventoryReconciliationCard() {
+    final data = _inventoryReconciliation;
+    if (data.isEmpty) return const SizedBox.shrink();
+    final reconciled = data['is_reconciled'] == true;
+    final difference = (data['difference'] as num?)?.toDouble() ?? 0;
+    final mismatchCount = (data['quantity_mismatch_count'] as num?)?.toInt() ?? 0;
+    final unvaluedCount = (data['unvalued_product_count'] as num?)?.toInt() ?? 0;
+    final estimatedQuantity =
+        (data['estimated_quantity'] as num?)?.toDouble() ?? 0;
+    return Card(
+      child: Padding(
+        padding: const EdgeInsets.all(16),
+        child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+          Row(children: [
+            const Icon(Icons.inventory_2_outlined),
+            const SizedBox(width: 8),
+            Expanded(child: Text('FIFO Inventory Valuation vs Inventory Control',
+              style: Theme.of(context).textTheme.titleMedium)),
+            Icon(reconciled ? Icons.check_circle : Icons.warning_amber_rounded,
+              color: reconciled ? Colors.green : Theme.of(context).colorScheme.error),
+          ]),
+          const SizedBox(height: 12),
+          _metric('Current FIFO stock valuation', _money((data['fifo_value'] as num?)?.toDouble() ?? 0), Icons.inventory),
+          _metric('Inventory control account (1200)', _money((data['control_account_balance'] as num?)?.toDouble() ?? 0), Icons.account_balance),
+          _metric('Difference (FIFO − control)', _money(difference), Icons.compare_arrows),
+          const Divider(),
+          Text('Products checked: ${data['product_count']}'),
+          Text('Estimated FIFO quantity: ${estimatedQuantity.toStringAsFixed(3)}'),
+          if (mismatchCount > 0)
+            Text('Products with stock / FIFO quantity mismatch: $mismatchCount • total quantity difference: ${((data['quantity_mismatch_total'] as num?)?.toDouble() ?? 0).toStringAsFixed(3)}',
+              style: TextStyle(color: Theme.of(context).colorScheme.error)),
+          if (unvaluedCount > 0)
+            Text('Products with stock but no remaining FIFO layer: $unvaluedCount',
+              style: TextStyle(color: Theme.of(context).colorScheme.error)),
+          const SizedBox(height: 8),
+          Text(reconciled
+            ? 'Current FIFO valuation matches the posted Inventory control balance within ₹0.01. No quantity mismatches found.'
+            : 'Review the control-account difference, estimated layers and stock quantity mismatches. No accounting entries were changed.',
+            style: Theme.of(context).textTheme.bodySmall),
+          Text('Current-state reconciliation; it is not a historical valuation for the selected report end date.',
+            style: Theme.of(context).textTheme.bodySmall),
+        ]),
+      ),
+    );
+  }
+
   Widget _customerReconciliationCard() {
     final data = _customerReconciliation;
     if (data.isEmpty) return const SizedBox.shrink();
@@ -1188,6 +1239,7 @@ class _ReportsPageState extends State<ReportsPage> {
                   : 'Period: ${_startDate == null ? 'Beginning' : _date(_startDate!)} to ${_endDate == null ? 'Latest' : _date(_endDate!)}',
             ),
           ],
+          if (title == 'Trial Balance') _inventoryReconciliationCard(),
           if (title == 'Trial Balance') _customerReconciliationCard(),
           if (title == 'Trial Balance') _supplierReconciliationCard(),
           if (title == 'GST Reports') ...[
