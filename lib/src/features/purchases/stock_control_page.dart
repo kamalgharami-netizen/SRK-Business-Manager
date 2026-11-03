@@ -920,6 +920,12 @@ class _StockControlPageState extends State<StockControlPage> {
           final timestamp = now.toIso8601String();
           final reference = 'TRF-${now.microsecondsSinceEpoch}';
           final note = notes.text.trim();
+          final sourceName = warehouses.firstWhere(
+            (row) => row['sync_id'] == sourceWarehouseSyncId,
+          )['name'];
+          final destinationName = warehouses.firstWhere(
+            (row) => row['sync_id'] == destinationWarehouseSyncId,
+          )['name'];
           final cost = await InventoryCostService.transferBetweenWarehouses(
             txn,
             productId: productId!,
@@ -936,7 +942,7 @@ class _StockControlPageState extends State<StockControlPage> {
             'movement_type': 'adjustment',
             'quantity_change': -qty,
             'reference': reference,
-            'notes': 'TRANSFER OUT • ${destinationWarehouseSyncId} • ${note.isEmpty ? 'FIFO value ₹${cost.toStringAsFixed(2)}' : note}',
+            'notes': 'TRANSFER OUT • To: ${destinationName} • ${note.isEmpty ? 'FIFO value ₹${cost.toStringAsFixed(2)}' : note}',
             'created_at': timestamp,
           });
           final incomingId = await txn.insert('stock_movements', {
@@ -946,11 +952,12 @@ class _StockControlPageState extends State<StockControlPage> {
             'movement_type': 'adjustment',
             'quantity_change': qty,
             'reference': reference,
-            'notes': 'TRANSFER IN • ${sourceWarehouseSyncId} • ${note.isEmpty ? 'FIFO value ₹${cost.toStringAsFixed(2)}' : note}',
+            'notes': 'TRANSFER IN • From: ${sourceName} • ${note.isEmpty ? 'FIFO value ₹${cost.toStringAsFixed(2)}' : note}',
             'created_at': timestamp,
           });
-          await AppDatabase.instance.enqueueStockMovementSync(txn, outgoingId);
-          await AppDatabase.instance.enqueueStockMovementSync(txn, incomingId);
+          // Transfer FIFO layers are currently local-first. Do not upload
+          // movement-only records until the matching cloud transfer entity
+          // can atomically reconstruct both sides on other devices.
         });
         await _syncIfConfigured();
         _message('Stock transferred successfully. Business-wide stock quantity is unchanged.');
