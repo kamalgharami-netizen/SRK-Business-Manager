@@ -8,7 +8,7 @@ Future<Database> _openDb() async {
   final db = await databaseFactoryFfi.openDatabase(inMemoryDatabasePath);
   await db.execute('CREATE TABLE products (id INTEGER PRIMARY KEY, current_stock REAL NOT NULL, is_service INTEGER)');
   await db.execute('''CREATE TABLE inventory_cost_layers (
-    id INTEGER PRIMARY KEY, product_id INTEGER NOT NULL,
+    id INTEGER PRIMARY KEY, product_id INTEGER NOT NULL, source_type TEXT,
     quantity_remaining REAL NOT NULL, unit_cost REAL NOT NULL,
     is_estimated INTEGER NOT NULL DEFAULT 0
   )''');
@@ -66,6 +66,26 @@ void main() {
       expect(result['quantity_mismatch_count'], 2);
       expect(result['unvalued_product_count'], 1);
       expect(result['is_reconciled'], isFalse);
+    });
+
+    test('identifies legacy migration estimates for opening-balance review', () async {
+      final db = await _openDb();
+      addTearDown(db.close);
+      await db.insert('products', {'id': 1, 'current_stock': 4, 'is_service': 0});
+      await db.insert('inventory_cost_layers', {
+        'product_id': 1, 'source_type': 'migration_estimate',
+        'quantity_remaining': 4, 'unit_cost': 15, 'is_estimated': 1,
+      });
+      await db.insert('inventory_cost_layers', {
+        'product_id': 1, 'source_type': 'opening_stock',
+        'quantity_remaining': 2, 'unit_cost': 10, 'is_estimated': 1,
+      });
+
+      final result = await InventoryValuationReconciliation.load(db);
+      expect(result['legacy_migrated_quantity'], 4);
+      expect(result['legacy_migrated_value'], 60);
+      expect(result['legacy_migrated_product_count'], 1);
+      expect(result['estimated_quantity'], 6);
     });
 
     test('ignores draft journals and service products', () async {
