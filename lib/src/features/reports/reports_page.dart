@@ -7,6 +7,7 @@ import '../../data/local/app_database.dart';
 import '../../data/local/supplier_ledger_reconciliation.dart';
 import '../../data/local/customer_ledger_reconciliation.dart';
 import '../../data/local/inventory_valuation_reconciliation.dart';
+import '../../data/local/gst_ledger_reconciliation.dart';
 import '../../data/local/gst_return_readiness.dart';
 import '../../data/local/gst_gstr1_classification.dart';
 import '../../data/local/gst_gstr1_hsn_summary.dart';
@@ -44,6 +45,7 @@ class _ReportsPageState extends State<ReportsPage> {
   Map<String, Object?> _supplierReconciliation = const {};
   Map<String, Object?> _customerReconciliation = const {};
   Map<String, Object?> _inventoryReconciliation = const {};
+  Map<String, Object?> _gstLedgerReconciliation = const {};
   DateTime? _startDate;
   DateTime? _endDate;
   bool _gstr1Checking = false;
@@ -453,6 +455,13 @@ class _ReportsPageState extends State<ReportsPage> {
     );
     final inventoryReconciliation =
         await InventoryValuationReconciliation.load(db);
+    final gstLedgerReconciliation = await GstLedgerReconciliation.load(
+      db,
+      startDate: widget.reportType == 'GST Reports' && _startDate != null
+          ? _date(_startDate!)
+          : null,
+      endDate: _endDate == null ? null : _date(_endDate!),
+    );
 
     final currentPeriodEarnings = profitIncome - profitExpense;
     if (!mounted) return;
@@ -489,6 +498,7 @@ class _ReportsPageState extends State<ReportsPage> {
       _supplierReconciliation = supplierReconciliation;
       _customerReconciliation = customerReconciliation;
       _inventoryReconciliation = inventoryReconciliation;
+      _gstLedgerReconciliation = gstLedgerReconciliation;
       _loading = false;
     });
   }
