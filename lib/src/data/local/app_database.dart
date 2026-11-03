@@ -18,7 +18,7 @@ class AppDatabase {
   AppDatabase._();
 
   static final AppDatabase instance = AppDatabase._();
-  static const int _databaseVersion = 31;
+  static const int _databaseVersion = 32;
   String? _databasePath;
   String? _activeBusinessId;
   String? _activeBusinessRole;
@@ -329,6 +329,9 @@ class AppDatabase {
           await db.execute('CREATE INDEX idx_invoices_warehouse ON invoices(warehouse_sync_id, invoice_date)');
           await db.execute('CREATE INDEX idx_stock_movements_warehouse_product ON stock_movements(warehouse_sync_id, product_id, created_at)');
           await db.execute('CREATE INDEX idx_inventory_layers_warehouse_fifo ON inventory_cost_layers(warehouse_sync_id, product_id, received_at, id)');
+        }
+        if (oldVersion < 32) {
+          await _createWarehouseTransfersSchema(db);
         }
         if (oldVersion < 29) {
           await db.execute('ALTER TABLE staff_members ADD COLUMN sync_id TEXT');
@@ -657,6 +660,31 @@ class AppDatabase {
     await _seedDefaultAccounts(db);
     await _createInventoryCostSchema(db);
     await _createDebitNoteSchema(db);
+    await _createWarehouseTransfersSchema(db);
+  }
+
+  Future<void> _createWarehouseTransfersSchema(DatabaseExecutor db) async {
+    await db.execute('''
+      CREATE TABLE warehouse_transfers (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        sync_id TEXT NOT NULL UNIQUE,
+        product_id INTEGER NOT NULL,
+        source_warehouse_sync_id TEXT NOT NULL,
+        destination_warehouse_sync_id TEXT NOT NULL,
+        quantity REAL NOT NULL CHECK (quantity > 0),
+        total_cost REAL NOT NULL CHECK (total_cost >= 0),
+        layers_json TEXT NOT NULL,
+        source_movement_sync_id TEXT NOT NULL UNIQUE,
+        destination_movement_sync_id TEXT NOT NULL UNIQUE,
+        notes TEXT,
+        transferred_at TEXT NOT NULL,
+        created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+        FOREIGN KEY (product_id) REFERENCES products(id) ON DELETE RESTRICT,
+        FOREIGN KEY (source_warehouse_sync_id) REFERENCES warehouses(sync_id) ON DELETE RESTRICT,
+        FOREIGN KEY (destination_warehouse_sync_id) REFERENCES warehouses(sync_id) ON DELETE RESTRICT
+      )
+    ''');
+    await db.execute('CREATE INDEX idx_warehouse_transfers_product_date ON warehouse_transfers(product_id, transferred_at)');
   }
 
   Future<void> _createDebitNoteSchema(DatabaseExecutor db) async {
