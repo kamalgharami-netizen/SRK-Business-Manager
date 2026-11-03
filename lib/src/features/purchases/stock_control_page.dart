@@ -947,7 +947,7 @@ class _StockControlPageState extends State<StockControlPage> {
             'movement_type': 'adjustment',
             'quantity_change': -qty,
             'reference': reference,
-            'notes': 'TRANSFER OUT • To: ${destinationName} • ${note.isEmpty ? 'FIFO value ₹${cost.toStringAsFixed(2)}' : note}',
+            'notes': 'TRANSFER OUT • To: $destinationName • ${note.isEmpty ? 'FIFO value ₹${cost.toStringAsFixed(2)}' : note}',
             'created_at': timestamp,
           });
           await txn.insert('stock_movements', {
@@ -957,7 +957,7 @@ class _StockControlPageState extends State<StockControlPage> {
             'movement_type': 'adjustment',
             'quantity_change': qty,
             'reference': reference,
-            'notes': 'TRANSFER IN • From: ${sourceName} • ${note.isEmpty ? 'FIFO value ₹${cost.toStringAsFixed(2)}' : note}',
+            'notes': 'TRANSFER IN • From: $sourceName • ${note.isEmpty ? 'FIFO value ₹${cost.toStringAsFixed(2)}' : note}',
             'created_at': timestamp,
           });
           final destinationLayers = await txn.query(
