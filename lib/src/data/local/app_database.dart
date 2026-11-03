@@ -1768,6 +1768,7 @@ class AppDatabase {
         final quantityChange = payload['quantity_change'];
         final reference = payload['reference'];
         final notes = payload['notes'];
+        final inventoryEffectJson = payload['inventory_effect_json'];
         final createdAt = payload['created_at'];
         if (productSyncId is! String || productSyncId.trim().isEmpty ||
             movementType is! String ||
@@ -1776,6 +1777,7 @@ class AppDatabase {
             quantityChange == 0 ||
             (reference != null && reference is! String) ||
             (notes != null && notes is! String) ||
+            (inventoryEffectJson != null && inventoryEffectJson is! String) ||
             createdAt is! String || createdAt.trim().isEmpty) {
           throw const FormatException('Cloud stock movement contains invalid fields.');
         }
@@ -1797,6 +1799,7 @@ class AppDatabase {
           'quantity_change': quantityChange.toDouble(),
           'reference': reference,
           'notes': notes,
+          'inventory_effect_json': inventoryEffectJson,
           'created_at': createdAt,
         };
         final existing = await txn.query(
@@ -1807,12 +1810,44 @@ class AppDatabase {
           limit: 1,
         );
         if (existing.isEmpty) {
+          if (inventoryEffectJson is String) {
+            if (movementType != 'adjustment') {
+              throw const FormatException('Only stock adjustments may carry FIFO inventory effects.');
+            }
+            final decodedEffect = jsonDecode(inventoryEffectJson);
+            if (decodedEffect is! Map) {
+              throw const FormatException('Cloud stock adjustment FIFO effect is malformed.');
+            }
+            final effect = Map<String, dynamic>.from(decodedEffect);
+            final direction = effect['direction'];
+            final effectQuantity = effect['quantity'];
+            final rawLayers = effect['layers'];
+            if (direction is! String ||
+                effectQuantity is! num ||
+                !effectQuantity.toDouble().isFinite ||
+                (effectQuantity.toDouble() - quantityChange.toDouble().abs()).abs() > 0.000001 ||
+                rawLayers is! List) {
+              throw const FormatException('Cloud stock adjustment FIFO effect does not match its movement.');
+            }
+            final layers = rawLayers
+                .map((item) => Map<String, dynamic>.from(item as Map))
+                .toList(growable: false);
+            await InventoryCostService.applyRemoteStockAdjustmentEffect(
+              txn,
+              productId: productRows.first['id'] as int,
+              warehouseSyncId: warehouseSyncId as String?,
+              direction: direction,
+              quantity: effectQuantity.toDouble(),
+              layers: layers,
+              adjustedAt: createdAt,
+            );
+          }
           await txn.insert('stock_movements', values);
         } else {
           await txn.update('stock_movements', values, where: 'sync_id = ?', whereArgs: [recordId]);
         }
-        // Quantity is synced as a separate product snapshot. Do not apply the
-        // movement delta here, or repeated full pulls would double-count stock.
+        // Product quantity is synced separately. FIFO effects are replayed only
+        // on first insert, in this transaction, so repeated pulls stay idempotent.
         return;
       }
 
