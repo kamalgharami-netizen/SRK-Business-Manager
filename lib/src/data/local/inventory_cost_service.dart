@@ -13,6 +13,7 @@ class InventoryCostService {
     required double quantity,
     required double unitCost,
     required String receivedAt,
+    String? warehouseSyncId,
   }) async {
     if (!quantity.isFinite || !unitCost.isFinite ||
         quantity <= 0 || unitCost < 0) {
@@ -20,6 +21,7 @@ class InventoryCostService {
     }
     await txn.insert('inventory_cost_layers', {
       'product_id': productId,
+      if (warehouseSyncId != null) 'warehouse_sync_id': warehouseSyncId,
       'source_type': 'purchase',
       'source_id': invoiceId,
       'source_item_id': purchaseItemId,
@@ -40,6 +42,7 @@ class InventoryCostService {
     required double quantity,
     required double unitCost,
     required String receivedAt,
+    String? warehouseSyncId,
   }) async {
     if (!quantity.isFinite || quantity < 0 ||
         !unitCost.isFinite || unitCost < 0) {
@@ -48,6 +51,7 @@ class InventoryCostService {
     if (quantity == 0) return;
     await txn.insert('inventory_cost_layers', {
       'product_id': productId,
+      if (warehouseSyncId != null) 'warehouse_sync_id': warehouseSyncId,
       'source_type': 'opening_stock',
       'source_id': productId,
       'received_at': receivedAt,
@@ -127,6 +131,7 @@ class InventoryCostService {
     required int productId,
     required double quantity,
     required String soldAt,
+    String? warehouseSyncId,
   }) async {
     if (!quantity.isFinite || quantity <= 0) {
       throw StateError('Sale quantity must be a finite positive number.');
@@ -135,8 +140,10 @@ class InventoryCostService {
     var totalCost = 0.0;
     final layers = await txn.query(
       'inventory_cost_layers',
-      where: 'product_id = ? AND quantity_remaining > 0',
-      whereArgs: [productId],
+      where: warehouseSyncId == null
+          ? 'product_id = ? AND quantity_remaining > 0'
+          : 'product_id = ? AND warehouse_sync_id = ? AND quantity_remaining > 0',
+      whereArgs: warehouseSyncId == null ? [productId] : [productId, warehouseSyncId],
       orderBy: 'received_at ASC, id ASC',
     );
     for (final layer in layers) {
@@ -181,6 +188,7 @@ class InventoryCostService {
       }
       final layerId = await txn.insert('inventory_cost_layers', {
         'product_id': productId,
+        if (warehouseSyncId != null) 'warehouse_sync_id': warehouseSyncId,
         'source_type': 'legacy_fallback',
         'source_id': null,
         'received_at': soldAt,
