@@ -1,5 +1,4 @@
 import 'package:flutter/material.dart';
-import 'package:sqflite/sqflite.dart' show ConflictAlgorithm;
 import 'package:supabase_flutter/supabase_flutter.dart';
 
 import '../dashboard/dashboard_page.dart';
@@ -63,10 +62,17 @@ class _BusinessWorkspacePageState extends State<BusinessWorkspacePage> {
     await Supabase.instance.client.auth.signOut();
   }
 
-  /// Seeds the device-local settings from the authoritative company record.
-  /// Existing locally edited values are retained; only missing keys are filled.
+  /// Refreshes this device from the authoritative cloud profile. A pending
+  /// local profile edit always wins until its queued upload is resolved.
   Future<void> _seedCompanyProfile(Map<String, dynamic> business) async {
     final database = AppDatabase.instance;
+    final businessId = business['id'] as String;
+    if (await database.hasPendingSyncOperation(
+      tableName: 'business_profile',
+      recordId: businessId,
+    )) {
+      return;
+    }
     final db = await database.database;
     final profile = <String, String>{
       'company_name': (business['name'] as String? ?? '').trim(),
@@ -77,19 +83,11 @@ class _BusinessWorkspacePageState extends State<BusinessWorkspacePage> {
     };
     await db.transaction((txn) async {
       for (final entry in profile.entries) {
-        final existing = await txn.query(
+        await txn.insert(
           'app_settings',
-          columns: ['setting_key'],
-          where: 'setting_key = ?',
-          whereArgs: [entry.key],
-          limit: 1,
+          {'setting_key': entry.key, 'setting_value': entry.value},
+          conflictAlgorithm: ConflictAlgorithm.replace,
         );
-        if (existing.isEmpty) {
-          await txn.insert('app_settings', {
-            'setting_key': entry.key,
-            'setting_value': entry.value,
-          }, conflictAlgorithm: ConflictAlgorithm.ignore);
-        }
       }
     });
   }
