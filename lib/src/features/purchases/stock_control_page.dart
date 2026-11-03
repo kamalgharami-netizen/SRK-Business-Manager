@@ -366,6 +366,7 @@ class _StockControlPageState extends State<StockControlPage> {
             'invoice_type': 'purchase_return',
             'parent_invoice_id': invoiceId,
             'party_id': original['party_id'],
+            'warehouse_sync_id': original['warehouse_sync_id'],
             'invoice_date': now.toIso8601String(),
             'subtotal': subtotal,
             'discount_total': discountTotal,
@@ -415,6 +416,7 @@ class _StockControlPageState extends State<StockControlPage> {
             final movementId = await txn.insert('stock_movements', {
               'sync_id': AppDatabase.instance.createSyncId(),
               'product_id': productId,
+              'warehouse_sync_id': original['warehouse_sync_id'],
               'movement_type': 'purchase_return',
               'quantity_change': -qty,
               'reference': returnNumber,
