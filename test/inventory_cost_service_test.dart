@@ -329,6 +329,145 @@ void main() {
   });
 
 
+
+  group('Warehouse FIFO stock transfers', () {
+    Future<Database> openTransferDatabase() async {
+      sqfliteFfiInit();
+      final db = await databaseFactoryFfi.openDatabase(inMemoryDatabasePath);
+      await db.execute('''
+        CREATE TABLE products (
+          id INTEGER PRIMARY KEY,
+          purchase_price REAL NOT NULL
+        )
+      ''');
+      await db.execute('''
+        CREATE TABLE warehouses (
+          id INTEGER PRIMARY KEY,
+          sync_id TEXT NOT NULL UNIQUE,
+          is_active INTEGER NOT NULL DEFAULT 1
+        )
+      ''');
+      await db.execute('''
+        CREATE TABLE inventory_cost_layers (
+          id INTEGER PRIMARY KEY AUTOINCREMENT,
+          product_id INTEGER NOT NULL,
+          warehouse_sync_id TEXT,
+          source_type TEXT NOT NULL,
+          source_id INTEGER,
+          received_at TEXT NOT NULL,
+          quantity_received REAL NOT NULL,
+          quantity_remaining REAL NOT NULL,
+          unit_cost REAL NOT NULL,
+          is_estimated INTEGER NOT NULL DEFAULT 0
+        )
+      ''');
+      await db.insert('products', {'id': 1, 'purchase_price': 50});
+      await db.insert('warehouses', {'sync_id': 'warehouse-A'});
+      await db.insert('warehouses', {'sync_id': 'warehouse-B'});
+      return db;
+    }
+
+    test('moves FIFO quantities and preserves each source layer cost', () async {
+      final db = await openTransferDatabase();
+      addTearDown(db.close);
+      await db.insert('inventory_cost_layers', {
+        'product_id': 1, 'warehouse_sync_id': 'warehouse-A',
+        'source_type': 'purchase', 'received_at': '2026-11-01',
+        'quantity_received': 2, 'quantity_remaining': 2,
+        'unit_cost': 100, 'is_estimated': 0,
+      });
+      await db.insert('inventory_cost_layers', {
+        'product_id': 1, 'warehouse_sync_id': 'warehouse-A',
+        'source_type': 'purchase', 'received_at': '2026-11-02',
+        'quantity_received': 5, 'quantity_remaining': 5,
+        'unit_cost': 125, 'is_estimated': 1,
+      });
+      final cost = await db.transaction((txn) =>
+          InventoryCostService.transferBetweenWarehouses(
+            txn,
+            productId: 1,
+            sourceWarehouseSyncId: 'warehouse-A',
+            destinationWarehouseSyncId: 'warehouse-B',
+            quantity: 4,
+            transferredAt: '2026-11-03T12:00:00',
+          ));
+      final rows = await db.query('inventory_cost_layers', orderBy: 'id');
+      expect(cost, 450);
+      expect(rows[0]['quantity_remaining'], 0);
+      expect(rows[1]['quantity_remaining'], 3);
+      expect(rows[2]['warehouse_sync_id'], 'warehouse-B');
+      expect(rows[2]['quantity_remaining'], 2);
+      expect(rows[2]['unit_cost'], 100);
+      expect(rows[2]['is_estimated'], 0);
+      expect(rows[3]['warehouse_sync_id'], 'warehouse-B');
+      expect(rows[3]['quantity_remaining'], 2);
+      expect(rows[3]['unit_cost'], 125);
+      expect(rows[3]['is_estimated'], 1);
+    });
+
+    test('rejects same warehouse and inactive warehouse transfers', () async {
+      final db = await openTransferDatabase();
+      addTearDown(db.close);
+      await expectLater(
+        db.transaction((txn) => InventoryCostService.transferBetweenWarehouses(
+          txn,
+          productId: 1,
+          sourceWarehouseSyncId: 'warehouse-A',
+          destinationWarehouseSyncId: 'warehouse-A',
+          quantity: 1,
+          transferredAt: '2026-11-03T12:00:00',
+        )),
+        throwsA(isA<StateError>()),
+      );
+      await db.update('warehouses', {'is_active': 0},
+          where: 'sync_id = ?', whereArgs: ['warehouse-B']);
+      await expectLater(
+        db.transaction((txn) => InventoryCostService.transferBetweenWarehouses(
+          txn,
+          productId: 1,
+          sourceWarehouseSyncId: 'warehouse-A',
+          destinationWarehouseSyncId: 'warehouse-B',
+          quantity: 1,
+          transferredAt: '2026-11-03T12:00:00',
+        )),
+        throwsA(isA<StateError>()),
+      );
+    });
+
+    test('rejects source shortage without changing any FIFO layer', () async {
+      final db = await openTransferDatabase();
+      addTearDown(db.close);
+      await db.insert('inventory_cost_layers', {
+        'product_id': 1, 'warehouse_sync_id': 'warehouse-A',
+        'source_type': 'purchase', 'received_at': '2026-11-01',
+        'quantity_received': 2, 'quantity_remaining': 2,
+        'unit_cost': 100, 'is_estimated': 0,
+      });
+      await db.insert('inventory_cost_layers', {
+        'product_id': 1, 'warehouse_sync_id': null,
+        'source_type': 'legacy', 'received_at': '2026-11-01',
+        'quantity_received': 8, 'quantity_remaining': 8,
+        'unit_cost': 80, 'is_estimated': 1,
+      });
+      await expectLater(
+        db.transaction((txn) => InventoryCostService.transferBetweenWarehouses(
+          txn,
+          productId: 1,
+          sourceWarehouseSyncId: 'warehouse-A',
+          destinationWarehouseSyncId: 'warehouse-B',
+          quantity: 3,
+          transferredAt: '2026-11-03T12:00:00',
+        )),
+        throwsA(isA<StateError>()),
+      );
+      final rows = await db.query('inventory_cost_layers', orderBy: 'id');
+      expect(rows.length, 2);
+      expect(rows[0]['quantity_remaining'], 2);
+      expect(rows[1]['quantity_remaining'], 8);
+    });
+  });
+
+
   group('Warehouse-scoped stock adjustments', () {
     Future<Database> openWarehouseDatabase() async {
       sqfliteFfiInit();
