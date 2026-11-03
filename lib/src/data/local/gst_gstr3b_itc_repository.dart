@@ -112,7 +112,7 @@ class Gstr2bCsvImporter {
       if (row.length != headers.length) {
         throw FormatException('CSV row ${i + 1} has ${row.length} columns; expected ${headers.length}.');
       }
-      records.add(Gstr2bImportRecord(
+      final record = Gstr2bImportRecord(
         supplierGstin: value(row, 'supplier_gstin'),
         invoiceNumber: value(row, 'invoice_number'),
         invoiceDate: value(row, 'invoice_date'),
@@ -123,7 +123,24 @@ class Gstr2bCsvImporter {
         sgst: amount(row, 'sgst'),
         cess: amount(row, 'cess'),
         sourceReference: indexes.containsKey('source_reference') ? value(row, 'source_reference') : null,
-      ));
+      );
+      final rowIssues = Gstr3bItcAssessmentValidator.validate(
+        supplierGstin: record.supplierGstin,
+        supplierInvoiceNumber: record.invoiceNumber,
+        supplierInvoiceDate: record.invoiceDate,
+        returnPeriod: record.returnPeriod,
+        taxableValue: record.taxableValue,
+        tax: Gstr3bTaxAmounts(
+          igst: record.igst,
+          cgst: record.cgst,
+          sgst: record.sgst,
+          cess: record.cess,
+        ),
+      );
+      if (rowIssues.isNotEmpty) {
+        throw FormatException('CSV row ${i + 1}: ${rowIssues.join(' ')}');
+      }
+      records.add(record);
     }
     if (records.isEmpty) throw const FormatException('CSV contains no GSTR-2B invoice rows.');
     return List.unmodifiable(records);
