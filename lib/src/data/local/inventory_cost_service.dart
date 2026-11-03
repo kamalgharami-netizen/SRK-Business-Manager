@@ -224,6 +224,7 @@ class InventoryCostService {
     required int productId,
     required double quantity,
     required String adjustedAt,
+    String? warehouseSyncId,
   }) async {
     if (quantity <= 0 || !quantity.isFinite) {
       throw StateError('Adjustment quantity must be positive.');
@@ -240,6 +241,7 @@ class InventoryCostService {
     if (!cost.isFinite || cost < 0) throw StateError('Product purchase price is invalid.');
     await txn.insert('inventory_cost_layers', {
       'product_id': productId,
+      if (warehouseSyncId != null) 'warehouse_sync_id': warehouseSyncId,
       'source_type': 'stock_adjustment',
       'source_id': null,
       'received_at': adjustedAt,
@@ -256,6 +258,7 @@ class InventoryCostService {
     required int productId,
     required double quantity,
     required String removedAt,
+    String? warehouseSyncId,
   }) async {
     if (quantity <= 0 || !quantity.isFinite) {
       throw StateError('Removal quantity must be positive.');
@@ -264,8 +267,12 @@ class InventoryCostService {
     var totalCost = 0.0;
     final layers = await txn.query(
       'inventory_cost_layers',
-      where: 'product_id = ? AND quantity_remaining > 0',
-      whereArgs: [productId],
+      where: warehouseSyncId == null
+          ? 'product_id = ? AND quantity_remaining > 0'
+          : 'product_id = ? AND warehouse_sync_id = ? AND quantity_remaining > 0',
+      whereArgs: warehouseSyncId == null
+          ? [productId]
+          : [productId, warehouseSyncId],
       orderBy: 'received_at ASC, id ASC',
     );
     for (final layer in layers) {
@@ -286,6 +293,11 @@ class InventoryCostService {
       );
       totalCost += used * unitCost;
       remaining -= used;
+    }
+    if (remaining > 0.0000001 && warehouseSyncId != null) {
+      throw StateError(
+        'Insufficient stock in the selected warehouse. Unassigned or other-warehouse stock cannot be used for this adjustment.',
+      );
     }
     if (remaining > 0.0000001) {
       final rows = await txn.query(
