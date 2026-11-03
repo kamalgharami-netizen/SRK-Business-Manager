@@ -34,7 +34,7 @@ Future<Database> _openAccountingDatabase() async {
       credit REAL NOT NULL DEFAULT 0
     )
   ''');
-  for (final code in ['1000', '1010', '1100', '1200', '1300', '1310', '1400', '2000', '2100', '2200', '4000', '5000', '5200']) {
+  for (final code in ['1000', '1010', '1100', '1200', '1300', '1310', '1400', '2000', '2100', '2200', '3200', '4000', '5000', '5200']) {
     await db.insert('accounts', {'account_code': code, 'is_active': 1});
   }
   return db;
@@ -42,6 +42,32 @@ Future<Database> _openAccountingDatabase() async {
 
 void main() {
   group('AccountingService journal validation', () {
+    test('posts opening inventory against opening balance equity', () async {
+      final db = await _openAccountingDatabase();
+      addTearDown(db.close);
+
+      await db.transaction((txn) => AccountingService.postOpeningInventory(
+            txn,
+            productId: 7,
+            productName: 'Opening item',
+            date: '2026-11-03',
+            inventoryValue: 250,
+          ));
+
+      final entries = await db.query('journal_entries');
+      final rows = await db.rawQuery('''
+        SELECT a.account_code, jl.debit, jl.credit
+        FROM journal_lines jl JOIN accounts a ON a.id = jl.account_id
+        ORDER BY jl.id
+      ''');
+      expect(entries.single['source_type'], 'opening_inventory');
+      expect(entries.single['source_id'], 7);
+      expect(entries.single['status'], 'posted');
+      expect(rows.map((row) => row['account_code']), ['1200', '3200']);
+      expect(rows[0]['debit'], 250);
+      expect(rows[1]['credit'], 250);
+    });
+
     test('posts a balanced sales invoice including FIFO cost', () async {
       final db = await _openAccountingDatabase();
       addTearDown(db.close);
