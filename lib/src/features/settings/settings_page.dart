@@ -65,7 +65,17 @@ class _SettingsPageState extends State<SettingsPage> {
       );
       return;
     }
-    final db = await AppDatabase.instance.database;
+    final database = AppDatabase.instance;
+    final businessId = database.activeBusinessId;
+    if (businessId != null && !database.canWriteCloudEntity('business_profile')) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('Only the business owner or admin can change the shared business profile.'),
+        ),
+      );
+      return;
+    }
+    final db = await database.database;
     final values = {
       'company_name': _name.text.trim(),
       'company_phone': _phone.text.trim(),
@@ -81,10 +91,25 @@ class _SettingsPageState extends State<SettingsPage> {
           conflictAlgorithm: ConflictAlgorithm.replace,
         );
       }
+      if (businessId != null) {
+        await database.enqueueSyncOperation(
+          tableName: 'business_profile',
+          recordId: businessId,
+          operation: 'update',
+          payload: {'sync_id': businessId, ...values},
+          executor: txn,
+        );
+      }
     });
     if (!mounted) return;
     ScaffoldMessenger.of(context).showSnackBar(
-      const SnackBar(content: Text('Business profile saved on this device.')),
+      SnackBar(
+        content: Text(
+          businessId == null
+              ? 'Business profile saved on this device.'
+              : 'Business profile saved and queued for cloud sync.',
+        ),
+      ),
     );
   }
 
