@@ -18,7 +18,7 @@ class AppDatabase {
   AppDatabase._();
 
   static final AppDatabase instance = AppDatabase._();
-  static const int _databaseVersion = 32;
+  static const int _databaseVersion = 33;
   String? _databasePath;
   String? _activeBusinessId;
   String? _activeBusinessRole;
@@ -332,6 +332,9 @@ class AppDatabase {
         }
         if (oldVersion < 32) {
           await _createWarehouseTransfersSchema(db);
+        }
+        if (oldVersion < 33) {
+          await db.execute('ALTER TABLE stock_movements ADD COLUMN inventory_effect_json TEXT');
         }
         if (oldVersion < 29) {
           await db.execute('ALTER TABLE staff_members ADD COLUMN sync_id TEXT');
@@ -648,6 +651,7 @@ class AppDatabase {
       quantity_change REAL NOT NULL,
       reference TEXT,
       notes TEXT,
+      inventory_effect_json TEXT,
       created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
       FOREIGN KEY (product_id) REFERENCES products(id) ON DELETE RESTRICT
     )''');
