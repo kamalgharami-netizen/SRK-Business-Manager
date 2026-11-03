@@ -1050,6 +1050,63 @@ class _ReportsPageState extends State<ReportsPage> {
   );
 
 
+  Widget _gstLedgerReconciliationCard() {
+    final data = _gstLedgerReconciliation;
+    if (data.isEmpty) return const SizedBox.shrink();
+    final reconciled = data['is_reconciled'] == true;
+    final missingJournals = (data['missing_journal_count'] as num?)?.toInt() ?? 0;
+    final missingAssessments =
+        (data['missing_assessment_count'] as num?)?.toInt() ?? 0;
+    return Card(
+      child: Padding(
+        padding: const EdgeInsets.all(16),
+        child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+          Row(children: [
+            const Icon(Icons.account_balance),
+            const SizedBox(width: 8),
+            Expanded(child: Text('GST Ledger vs GST Control Accounts',
+              style: Theme.of(context).textTheme.titleMedium)),
+            Icon(reconciled ? Icons.check_circle : Icons.warning_amber_rounded,
+              color: reconciled ? Colors.green : Theme.of(context).colorScheme.error),
+          ]),
+          const SizedBox(height: 12),
+          _metric('Output GST expected from sales / returns / debit notes',
+            _money((data['output_gst_expected'] as num?)?.toDouble() ?? 0), Icons.south),
+          _metric('Output GST control account (2100)',
+            _money((data['output_gst_control'] as num?)?.toDouble() ?? 0), Icons.account_balance_wallet),
+          _metric('Output GST difference',
+            _money((data['output_gst_difference'] as num?)?.toDouble() ?? 0), Icons.compare_arrows),
+          const Divider(),
+          _metric('Eligible Input GST expected (purchases less returns)',
+            _money((data['eligible_itc_expected'] as num?)?.toDouble() ?? 0), Icons.south_west),
+          _metric('Eligible Input GST control (1300)',
+            _money((data['eligible_itc_control'] as num?)?.toDouble() ?? 0), Icons.account_balance),
+          _metric('Eligible ITC difference',
+            _money((data['eligible_itc_difference'] as num?)?.toDouble() ?? 0), Icons.compare_arrows),
+          const Divider(),
+          _metric('Pending ITC expected',
+            _money((data['pending_itc_expected'] as num?)?.toDouble() ?? 0), Icons.pending_actions),
+          _metric('Pending ITC control (1310)',
+            _money((data['pending_itc_control'] as num?)?.toDouble() ?? 0), Icons.account_balance),
+          _metric('Pending ITC difference',
+            _money((data['pending_itc_difference'] as num?)?.toDouble() ?? 0), Icons.compare_arrows),
+          if (missingJournals > 0)
+            Text('Transactions without posted journal: $missingJournals • GST amount: ${_money((data['missing_journal_tax'] as num?)?.toDouble() ?? 0)}',
+              style: TextStyle(color: Theme.of(context).colorScheme.error)),
+          if (missingAssessments > 0)
+            Text('Purchase invoices without ITC assessment: $missingAssessments',
+              style: TextStyle(color: Theme.of(context).colorScheme.error)),
+          const SizedBox(height: 8),
+          Text(reconciled
+            ? 'GST source documents and posted GST control accounts match within ₹0.01. Read-only check.'
+            : 'Review differences, missing journals and missing ITC assessments. No accounting entries were changed.',
+            style: Theme.of(context).textTheme.bodySmall),
+          const Text('This check compares locally recorded GST totals; it does not verify GSTR-2B, GSTN portal balances or tax return filing.'),
+        ]),
+      ),
+    );
+  }
+
   Widget _inventoryReconciliationCard() {
     final data = _inventoryReconciliation;
     if (data.isEmpty) return const SizedBox.shrink();
@@ -1266,6 +1323,8 @@ class _ReportsPageState extends State<ReportsPage> {
                   : 'Period: ${_startDate == null ? 'Beginning' : _date(_startDate!)} to ${_endDate == null ? 'Latest' : _date(_endDate!)}',
             ),
           ],
+          if (title == 'Trial Balance' || title == 'GST Reports')
+            _gstLedgerReconciliationCard(),
           if (title == 'Trial Balance') _inventoryReconciliationCard(),
           if (title == 'Trial Balance') _customerReconciliationCard(),
           if (title == 'Trial Balance') _supplierReconciliationCard(),
