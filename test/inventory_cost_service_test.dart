@@ -3,6 +3,72 @@ import 'package:sqflite_common_ffi/sqflite_ffi.dart';
 import 'package:srk_business_manager/src/data/local/inventory_cost_service.dart';
 
 void main() {
+  group('Opening stock FIFO valuation', () {
+    test('records opening stock as an estimated FIFO layer', () async {
+      sqfliteFfiInit();
+      final db = await databaseFactoryFfi.openDatabase(inMemoryDatabasePath);
+      addTearDown(db.close);
+      await db.execute('''
+        CREATE TABLE inventory_cost_layers (
+          id INTEGER PRIMARY KEY AUTOINCREMENT,
+          product_id INTEGER NOT NULL,
+          source_type TEXT NOT NULL,
+          source_id INTEGER,
+          received_at TEXT NOT NULL,
+          quantity_received REAL NOT NULL,
+          quantity_remaining REAL NOT NULL,
+          unit_cost REAL NOT NULL,
+          is_estimated INTEGER NOT NULL DEFAULT 0
+        )
+      ''');
+
+      await db.transaction((txn) => InventoryCostService.receiveOpeningStock(
+            txn,
+            productId: 9,
+            quantity: 4,
+            unitCost: 75,
+            receivedAt: '2026-11-03T09:00:00',
+          ));
+
+      final rows = await db.query('inventory_cost_layers');
+      expect(rows, hasLength(1));
+      expect(rows.single['source_type'], 'opening_stock');
+      expect(rows.single['source_id'], 9);
+      expect(rows.single['quantity_received'], 4);
+      expect(rows.single['quantity_remaining'], 4);
+      expect(rows.single['unit_cost'], 75);
+      expect(rows.single['is_estimated'], 1);
+    });
+
+    test('does not create a layer for zero opening stock', () async {
+      sqfliteFfiInit();
+      final db = await databaseFactoryFfi.openDatabase(inMemoryDatabasePath);
+      addTearDown(db.close);
+      await db.execute('''
+        CREATE TABLE inventory_cost_layers (
+          id INTEGER PRIMARY KEY AUTOINCREMENT,
+          product_id INTEGER NOT NULL,
+          source_type TEXT NOT NULL,
+          source_id INTEGER,
+          received_at TEXT NOT NULL,
+          quantity_received REAL NOT NULL,
+          quantity_remaining REAL NOT NULL,
+          unit_cost REAL NOT NULL,
+          is_estimated INTEGER NOT NULL DEFAULT 0
+        )
+      ''');
+
+      await db.transaction((txn) => InventoryCostService.receiveOpeningStock(
+            txn,
+            productId: 9,
+            quantity: 0,
+            unitCost: 75,
+            receivedAt: '2026-11-03T09:00:00',
+          ));
+      expect(await db.query('inventory_cost_layers'), isEmpty);
+    });
+  });
+
   group('Purchase inventory cost and ITC treatment', () {
     test('keeps eligible GST outside FIFO inventory unit cost', () {
       expect(
