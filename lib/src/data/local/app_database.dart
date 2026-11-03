@@ -1441,12 +1441,48 @@ class AppDatabase {
       }
 
       if (tableName == 'stock_movements') {
-        final productSyncId = payload['product_sync_id'] as String?;
-        if (productSyncId == null || productSyncId.isEmpty) throw const FormatException('Stock movement product link is missing.');
-        final productRows = await txn.query('products', columns: ['id'], where: 'sync_id = ?', whereArgs: [productSyncId], limit: 1);
-        if (productRows.isEmpty) throw StateError('Stock movement product is not available on this device yet.');
-        final existing = await txn.query('stock_movements', columns: ['id'], where: 'sync_id = ?', whereArgs: [recordId], limit: 1);
-        final values = Map<String, dynamic>.from(payload)..remove('id')..remove('product_sync_id')..['product_id'] = productRows.first['id'] as int..['sync_id'] = recordId;
+        final productSyncId = payload['product_sync_id'];
+        final movementType = payload['movement_type'];
+        final quantityChange = payload['quantity_change'];
+        final reference = payload['reference'];
+        final notes = payload['notes'];
+        final createdAt = payload['created_at'];
+        if (productSyncId is! String || productSyncId.trim().isEmpty ||
+            movementType is! String ||
+            !{'purchase_return', 'sales_return', 'adjustment'}.contains(movementType) ||
+            quantityChange is! num || !quantityChange.toDouble().isFinite ||
+            quantityChange == 0 ||
+            (reference != null && reference is! String) ||
+            (notes != null && notes is! String) ||
+            createdAt is! String || createdAt.trim().isEmpty) {
+          throw const FormatException('Cloud stock movement contains invalid fields.');
+        }
+        final productRows = await txn.query(
+          'products',
+          columns: ['id'],
+          where: 'sync_id = ?',
+          whereArgs: [productSyncId.trim()],
+          limit: 1,
+        );
+        if (productRows.isEmpty) {
+          throw StateError('Stock movement product is not available on this device yet.');
+        }
+        final values = <String, Object?>{
+          'sync_id': recordId,
+          'product_id': productRows.first['id'] as int,
+          'movement_type': movementType,
+          'quantity_change': quantityChange.toDouble(),
+          'reference': reference,
+          'notes': notes,
+          'created_at': createdAt,
+        };
+        final existing = await txn.query(
+          'stock_movements',
+          columns: ['id'],
+          where: 'sync_id = ?',
+          whereArgs: [recordId],
+          limit: 1,
+        );
         if (existing.isEmpty) {
           await txn.insert('stock_movements', values);
         } else {
