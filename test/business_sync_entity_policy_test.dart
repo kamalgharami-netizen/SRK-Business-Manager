@@ -49,6 +49,61 @@ void main() {
       expect(order.indexOf('payments'), lessThan(order.indexOf('payment_allocations')));
     });
 
+    test('allows owner and admin to write every supported cloud entity', () {
+      for (final role in ['owner', 'admin']) {
+        for (final entity in BusinessSyncEntityPolicy.pullOrder) {
+          expect(
+            BusinessSyncEntityPolicy.canWrite(role, entity),
+            isTrue,
+            reason: '$role should write $entity',
+          );
+        }
+      }
+    });
+
+    test('limits accountant to accounting and stock movement entities', () {
+      const allowed = {
+        'parties', 'products', 'expenses', 'invoices', 'payments',
+        'payment_allocations', 'stock_movements',
+      };
+      for (final entity in BusinessSyncEntityPolicy.pullOrder) {
+        expect(
+          BusinessSyncEntityPolicy.canWrite('accountant', entity),
+          allowed.contains(entity),
+          reason: 'accountant permission for $entity',
+        );
+      }
+    });
+
+    test('limits sales to sales and payment entities, excluding warehouse transfers', () {
+      const allowed = {
+        'parties', 'products', 'invoices', 'payments', 'payment_allocations',
+      };
+      for (final entity in BusinessSyncEntityPolicy.pullOrder) {
+        expect(
+          BusinessSyncEntityPolicy.canWrite('sales', entity),
+          allowed.contains(entity),
+          reason: 'sales permission for $entity',
+        );
+      }
+      expect(
+        BusinessSyncEntityPolicy.canWrite('sales', 'warehouse_transfers'),
+        isFalse,
+      );
+    });
+
+    test('viewer and unknown roles cannot write cloud entities', () {
+      for (final entity in BusinessSyncEntityPolicy.pullOrder) {
+        expect(BusinessSyncEntityPolicy.canWrite('viewer', entity), isFalse);
+        expect(BusinessSyncEntityPolicy.canWrite('unknown', entity), isFalse);
+      }
+    });
+
+    test('role matching is case and whitespace tolerant', () {
+      expect(BusinessSyncEntityPolicy.canWrite(' OWNER ', 'warehouse_transfers'), isTrue);
+      expect(BusinessSyncEntityPolicy.canWrite(' Sales ', 'warehouse_transfers'), isFalse);
+    });
+
     test('rejects unknown or local-only entities', () {
       for (final entity in ['journal_entries', 'gst_itc_adjustments', 'unknown']) {
         expect(BusinessSyncEntityPolicy.supports(entity), isFalse, reason: entity);

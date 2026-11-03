@@ -79,24 +79,8 @@ class AppDatabase {
   bool canWriteCloudEntity(String entityType) {
     if (_activeBusinessId == null) return true;
     if (!_cloudRoleResolved || _activeBusinessRole == null) return false;
-    switch (_activeBusinessRole) {
-      case 'owner':
-      case 'admin':
-        return true;
-      case 'accountant':
-        return const {
-          'parties', 'products', 'expenses', 'invoices', 'payments',
-          'payment_allocations', 'stock_movements',
-        }.contains(entityType);
-      case 'sales':
-        return const {'parties', 'products', 'invoices', 'payments', 'payment_allocations'}
-            .contains(entityType);
-      case 'viewer':
-      default:
-        return false;
-    }
+    return BusinessSyncEntityPolicy.canWrite(_activeBusinessRole!, entityType);
   }
-
   Future<Database> get database async {
     if (_database != null) return _database!;
 
