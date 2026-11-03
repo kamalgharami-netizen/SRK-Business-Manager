@@ -259,6 +259,7 @@ class InventoryCostService {
     required double quantity,
     required String removedAt,
     String? warehouseSyncId,
+    List<Map<String, Object?>>? consumedLayers,
   }) async {
     if (quantity <= 0 || !quantity.isFinite) {
       throw StateError('Removal quantity must be positive.');
@@ -291,6 +292,11 @@ class InventoryCostService {
         'UPDATE inventory_cost_layers SET quantity_remaining = quantity_remaining - ? WHERE id = ?',
         [used, layer['id']],
       );
+      consumedLayers?.add({
+        'quantity': used,
+        'unit_cost': unitCost,
+        'is_estimated': (layer['is_estimated'] as num?)?.toInt() ?? 0,
+      });
       totalCost += used * unitCost;
       remaining -= used;
     }
@@ -323,6 +329,116 @@ class InventoryCostService {
       totalCost += remaining * cost;
     }
     return totalCost;
+  }
+
+
+
+  /// Replays a cloud stock adjustment's FIFO effect exactly once with its
+  /// movement record. A cost/quantity mismatch is rejected rather than
+  /// silently producing a different inventory valuation.
+  static Future<void> applyRemoteStockAdjustmentEffect(
+    Transaction txn, {
+    required int productId,
+    required String? warehouseSyncId,
+    required String direction,
+    required double quantity,
+    required List<Map<String, dynamic>> layers,
+    required String adjustedAt,
+  }) async {
+    if ((direction != 'increase' && direction != 'decrease') ||
+        !quantity.isFinite || quantity <= 0) {
+      throw const FormatException('Cloud stock adjustment effect is invalid.');
+    }
+    if (warehouseSyncId != null) {
+      final warehouses = await txn.query(
+        'warehouses',
+        columns: ['sync_id'],
+        where: 'sync_id = ?',
+        whereArgs: [warehouseSyncId],
+        limit: 1,
+      );
+      if (warehouses.isEmpty) {
+        throw StateError('Stock adjustment warehouse is not available on this device yet.');
+      }
+    }
+    var effectQuantity = 0.0;
+    for (final allocation in layers) {
+      final qty = allocation['quantity'];
+      final cost = allocation['unit_cost'];
+      final estimated = allocation['is_estimated'];
+      if (qty is! num || !qty.toDouble().isFinite || qty <= 0 ||
+          cost is! num || !cost.toDouble().isFinite || cost < 0 ||
+          estimated is! int || (estimated != 0 && estimated != 1)) {
+        throw const FormatException('Cloud stock adjustment FIFO allocation is invalid.');
+      }
+      effectQuantity += qty.toDouble();
+    }
+    if (direction == 'increase' &&
+        (effectQuantity - quantity).abs() > 0.000001) {
+      throw const FormatException('Cloud stock increase FIFO quantity does not reconcile.');
+    }
+    if (direction == 'decrease' &&
+        (effectQuantity > quantity + 0.000001 ||
+            (warehouseSyncId != null &&
+                (effectQuantity - quantity).abs() > 0.000001))) {
+      throw const FormatException('Cloud stock decrease FIFO quantity does not reconcile.');
+    }
+
+    if (direction == 'increase') {
+      for (final allocation in layers) {
+        await txn.insert('inventory_cost_layers', {
+          'product_id': productId,
+          'warehouse_sync_id': warehouseSyncId,
+          'source_type': 'stock_adjustment',
+          'source_id': null,
+          'received_at': adjustedAt,
+          'quantity_received': (allocation['quantity'] as num).toDouble(),
+          'quantity_remaining': (allocation['quantity'] as num).toDouble(),
+          'unit_cost': (allocation['unit_cost'] as num).toDouble(),
+          'is_estimated': allocation['is_estimated'] as int,
+        });
+      }
+      return;
+    }
+
+    final sourceLayers = await txn.query(
+      'inventory_cost_layers',
+      where: warehouseSyncId == null
+          ? 'product_id = ? AND quantity_remaining > 0'
+          : 'product_id = ? AND warehouse_sync_id = ? AND quantity_remaining > 0',
+      whereArgs: warehouseSyncId == null
+          ? [productId]
+          : [productId, warehouseSyncId],
+      orderBy: 'received_at ASC, id ASC',
+    );
+    var sourceIndex = 0;
+    for (final allocation in layers) {
+      var remaining = (allocation['quantity'] as num).toDouble();
+      final unitCost = (allocation['unit_cost'] as num).toDouble();
+      final estimated = allocation['is_estimated'] as int;
+      while (remaining > 0.0000001) {
+        if (sourceIndex >= sourceLayers.length) {
+          throw StateError('Cloud stock decrease exceeds the available FIFO stock.');
+        }
+        final source = sourceLayers[sourceIndex];
+        final available = (source['quantity_remaining'] as num).toDouble();
+        final sourceCost = (source['unit_cost'] as num).toDouble();
+        final sourceEstimated = (source['is_estimated'] as num?)?.toInt() ?? 0;
+        if (!available.isFinite || available <= 0 ||
+            !sourceCost.isFinite || sourceCost < 0 ||
+            (sourceCost - unitCost).abs() > 0.000001 ||
+            sourceEstimated != estimated) {
+          throw StateError('Cloud stock adjustment FIFO does not match this device.');
+        }
+        final used = available < remaining ? available : remaining;
+        await txn.rawUpdate(
+          'UPDATE inventory_cost_layers SET quantity_remaining = quantity_remaining - ? WHERE id = ?',
+          [used, source['id']],
+        );
+        remaining -= used;
+        if (available - used <= 0.0000001) sourceIndex++;
+      }
+    }
   }
 
 
