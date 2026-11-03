@@ -5,6 +5,7 @@ import 'package:flutter/material.dart';
 import 'package:sqflite/sqflite.dart' show ConflictAlgorithm;
 
 import '../../data/local/app_database.dart';
+import '../../data/sync/business_sync_service.dart';
 import '../../data/indian_states.dart';
 
 class SettingsPage extends StatefulWidget {
@@ -101,15 +102,21 @@ class _SettingsPageState extends State<SettingsPage> {
         );
       }
     });
+    var saveMessage = 'Business profile saved on this device.';
+    if (businessId != null) {
+      saveMessage = 'Business profile saved locally; cloud sync is pending.';
+      try {
+        final result = await BusinessSyncService(businessId: businessId).syncNow();
+        if (result.uploadFailures == 0) {
+          saveMessage = 'Business profile saved and synchronised with the cloud.';
+        }
+      } catch (_) {
+        // The durable local queue is retained for the next sync attempt.
+      }
+    }
     if (!mounted) return;
     ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(
-        content: Text(
-          businessId == null
-              ? 'Business profile saved on this device.'
-              : 'Business profile saved and queued for cloud sync.',
-        ),
-      ),
+      SnackBar(content: Text(saveMessage)),
     );
   }
 
@@ -312,10 +319,9 @@ class _SettingsPageState extends State<SettingsPage> {
                   ],
                   const SizedBox(height: 24),
                   const Text(
-                    'Cloud sync for supported business records is managed from Backup & Sync. '
-                    'Company profile settings are currently stored on this device '
-                    'and are not synchronised. Staff profiles are local; cloud '
-                    'team access is managed separately.',
+                    'Business profile changes are synchronised to the cloud for business owners and admins. '
+                    'Other supported business records are managed from Backup & Sync. '
+                    'Staff profiles are local; cloud team access is managed separately.',
                   ),
                 ],
               ),
