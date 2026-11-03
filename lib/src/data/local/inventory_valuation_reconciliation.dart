@@ -11,7 +11,11 @@ class InventoryValuationReconciliation {
         COALESCE(SUM(l.quantity_remaining), 0) AS layer_quantity,
         COALESCE(SUM(l.quantity_remaining * l.unit_cost), 0) AS fifo_value,
         COALESCE(SUM(CASE WHEN l.is_estimated = 1
-          THEN l.quantity_remaining ELSE 0 END), 0) AS estimated_quantity
+          THEN l.quantity_remaining ELSE 0 END), 0) AS estimated_quantity,
+        COALESCE(SUM(CASE WHEN l.source_type = 'migration_estimate'
+          THEN l.quantity_remaining ELSE 0 END), 0) AS legacy_migrated_quantity,
+        COALESCE(SUM(CASE WHEN l.source_type = 'migration_estimate'
+          THEN l.quantity_remaining * l.unit_cost ELSE 0 END), 0) AS legacy_migrated_value
       FROM products p
       LEFT JOIN inventory_cost_layers l
         ON l.product_id = p.id AND l.quantity_remaining > 0
@@ -32,15 +36,10 @@ class InventoryValuationReconciliation {
       final layerQuantity = (row['layer_quantity'] as num).toDouble();
       final value = (row['fifo_value'] as num).toDouble();
       final estimated = (row['estimated_quantity'] as num).toDouble();
-      final legacyRows = await db.rawQuery('''
-        SELECT COALESCE(SUM(quantity_remaining), 0) AS quantity,
-          COALESCE(SUM(quantity_remaining * unit_cost), 0) AS value
-        FROM inventory_cost_layers
-        WHERE product_id = ? AND source_type = 'migration_estimate'
-          AND quantity_remaining > 0
-      ''', [row['id']]);
-      final legacyQuantity = (legacyRows.first['quantity'] as num).toDouble();
-      final legacyValue = (legacyRows.first['value'] as num).toDouble();
+      final legacyQuantity =
+          (row['legacy_migrated_quantity'] as num).toDouble();
+      final legacyValue =
+          (row['legacy_migrated_value'] as num).toDouble();
       if (![current, layerQuantity, value, estimated, legacyQuantity, legacyValue].every((v) => v.isFinite) ||
           current < 0 || layerQuantity < 0 || value < 0 || estimated < 0) {
         throw StateError('Inventory valuation contains invalid quantities or costs.');
