@@ -73,6 +73,53 @@ void main() {
     });
   });
 
+  group('GSTR-3B previous reversal reclaim validation', () {
+    test('accepts reclaim within the previous unclaimed amount by tax head', () {
+      expect(
+        Gstr3bItcReclaimValidator.validate(
+          documentReference: 'REV-2026-09-01',
+          requested: const Gstr3bTaxAmounts(igst: 60, cgst: 20),
+          previouslyReversed: const Gstr3bTaxAmounts(igst: 100, cgst: 50),
+          alreadyReclaimed: const Gstr3bTaxAmounts(igst: 30, cgst: 10),
+        ),
+        isEmpty,
+      );
+    });
+
+    test('rejects reclaim above the remaining amount for each tax head', () {
+      final issues = Gstr3bItcReclaimValidator.validate(
+        documentReference: 'REV-2026-09-01',
+        requested: const Gstr3bTaxAmounts(igst: 71, cgst: 41),
+        previouslyReversed: const Gstr3bTaxAmounts(igst: 100, cgst: 50),
+        alreadyReclaimed: const Gstr3bTaxAmounts(igst: 30, cgst: 10),
+      );
+      expect(issues, contains('Reclaim igst exceeds the unclaimed previous reversal amount.'));
+      expect(issues, contains('Reclaim cgst exceeds the unclaimed previous reversal amount.'));
+    });
+
+    test('requires a source reference, valid history and a positive reclaim', () {
+      final issues = Gstr3bItcReclaimValidator.validate(
+        documentReference: ' ',
+        requested: const Gstr3bTaxAmounts(),
+        previouslyReversed: const Gstr3bTaxAmounts(igst: double.infinity),
+        alreadyReclaimed: const Gstr3bTaxAmounts(),
+      );
+      expect(issues, contains('Previous reversal document reference is required.'));
+      expect(issues, contains('Reclaim must contain at least one positive, valid tax amount.'));
+      expect(issues, contains('Previous reversal history contains invalid tax amounts.'));
+    });
+
+    test('does not allow a reclaim without an earlier reversal', () {
+      final issues = Gstr3bItcReclaimValidator.validate(
+        documentReference: 'REV-NOT-FOUND',
+        requested: const Gstr3bTaxAmounts(igst: 1),
+        previouslyReversed: const Gstr3bTaxAmounts(),
+        alreadyReclaimed: const Gstr3bTaxAmounts(),
+      );
+      expect(issues, contains('Reclaim igst exceeds the unclaimed previous reversal amount.'));
+    });
+  });
+
   group('RCM liability and cash payment validation', () {
     test('accepts a valid RCM liability', () {
       expect(Gstr3bRcmValidator.validateLiability(
