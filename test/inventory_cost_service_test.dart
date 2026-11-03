@@ -69,6 +69,43 @@ void main() {
     });
   });
 
+  group('Warehouse-aware FIFO receiving', () {
+    test('stores a stable warehouse sync ID on a purchase cost layer', () async {
+      sqfliteFfiInit();
+      final db = await databaseFactoryFfi.openDatabase(inMemoryDatabasePath);
+      addTearDown(db.close);
+      await db.execute('''
+        CREATE TABLE inventory_cost_layers (
+          id INTEGER PRIMARY KEY AUTOINCREMENT,
+          product_id INTEGER NOT NULL,
+          warehouse_sync_id TEXT,
+          source_type TEXT NOT NULL,
+          source_id INTEGER,
+          source_item_id INTEGER,
+          received_at TEXT NOT NULL,
+          quantity_received REAL NOT NULL,
+          quantity_remaining REAL NOT NULL,
+          unit_cost REAL NOT NULL,
+          is_estimated INTEGER NOT NULL DEFAULT 0
+        )
+      ''');
+      await db.transaction((txn) => InventoryCostService.receivePurchase(
+            txn,
+            productId: 9,
+            invoiceId: 101,
+            purchaseItemId: 1001,
+            quantity: 3,
+            unitCost: 125,
+            receivedAt: '2026-11-03T10:00:00',
+            warehouseSyncId: 'warehouse-main-sync-id',
+          ));
+      final rows = await db.query('inventory_cost_layers');
+      expect(rows, hasLength(1));
+      expect(rows.single['warehouse_sync_id'], 'warehouse-main-sync-id');
+      expect(rows.single['quantity_remaining'], 3);
+    });
+  });
+
   group('Purchase inventory cost and ITC treatment', () {
     test('keeps eligible GST outside FIFO inventory unit cost', () {
       expect(
