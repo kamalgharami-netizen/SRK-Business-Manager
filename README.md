@@ -13,10 +13,10 @@ The repository contains a working Flutter application foundation and feature mod
 - Double-entry journal posting, chart of accounts, trial balance, profit & loss and balance sheet
 - Centralised GST line calculation with paise rounding, intra-state CGST/SGST and inter-state IGST allocation, HSN/SAC and place-of-supply fields
 - GSTR-1 preflight validation in GST Reports for selected-period outward sales invoices, supplier/recipient GSTIN format, invoice dates and duplicates, place of supply, line items, HSN/SAC warnings and taxable/tax values; this is a preparation aid only, not a GSTN upload file or filing-ready return
-- Staff profile management (local profiles) and cloud business-user access roles
+- Staff profile management with owner/admin-only two-way cloud sync, separate from cloud login accounts and business-user access roles
 - Local database backup and restore with business-identity validation
 - Durable offline sync queue, retry scheduling, optimistic cloud revision checks and a conflict-resolution screen
-- Two-way cloud sync for the business profile (owner/admin only), parties, products, expenses, invoices (including purchase/sales invoices and returns), payments, payment allocations and stock movements
+- Two-way cloud sync for the business profile and staff profiles (owner/admin only), parties, products, expenses, invoices (including purchase/sales invoices and returns), payments, payment allocations and stock movements
 - Linked receipt/payment reconciliation on cloud download, with party/invoice type validation, invoice paid-balance reconciliation that avoids duplicate counting, and idempotent journal posting
 
 **This is not yet a finished production accounting or statutory GST product.** Do not rely on it for live bookkeeping, GST returns/filing, statutory submissions or tax compliance until the remaining accounting, GST, sync, security and device-level acceptance tests have been completed.
@@ -67,6 +67,7 @@ Create a dedicated Supabase project for SRK Business Manager. In the Supabase SQ
 9. `supabase/migrations/0009_payment_allocations_sync.sql`
 10. `supabase/migrations/0010_payment_allocation_role_permissions.sql`
 11. `supabase/migrations/0011_business_profile_sync.sql`
+12. `supabase/migrations/0012_staff_profile_sync.sql`
 
 In GitHub, open **Settings → Secrets and variables → Actions** and add these repository secrets:
 
@@ -112,7 +113,7 @@ Check **Actions → SRK Business Manager - Cloud Build** for the latest run and 
 
 1. Complete real-device cross-device payment allocation and party-ledger reconciliation tests, including linked and unlinked receipts/payments, concurrent edits, and conflict recovery. The current sync handler validates linked parties/invoices, reconciles invoice paid snapshots against synced allocations, and avoids duplicate payment journal posting; real-device acceptance remains pending.
 2. Complete GST statutory reporting and independently validate GSTR-1 / GSTR-3B exports against the current official GSTN offline-tool schema and rules. The GST Reports screen now includes a GSTR-1 preflight check for core outward invoice data, but it does not yet create a GSTN upload JSON file. GSTR-3B preparation still needs GSTR-2B data, eligible/ineligible ITC, reversals and reverse-charge information.
-3. Add cloud sync for remaining business data, including staff profiles where appropriate, warehouses and other inventory records. Business profile fields are already included in owner/admin cloud sync.
+3. Add cloud sync for remaining business data, including warehouses and other inventory records. Business profile fields and staff profiles are already included in owner/admin cloud sync.
 4. Improve incremental sync, large-dataset performance, conflict recovery and end-to-end multi-device tests.
 5. Complete role/permission tests, audit trails, security review and backup/restore disaster-recovery tests.
 6. Expand automated tests for invoice workflows, purchase workflows, GST edge cases, reports, database migrations and Windows/Android device behavior.
