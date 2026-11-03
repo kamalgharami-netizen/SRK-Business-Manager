@@ -65,6 +65,11 @@ class _InvoicesPageState extends State<InvoicesPage> {
       where: 'is_service = 0 OR is_service IS NULL',
       orderBy: 'name COLLATE NOCASE',
     );
+    final warehouses = await db.query(
+      'warehouses',
+      where: 'is_active = 1',
+      orderBy: 'name COLLATE NOCASE',
+    );
     if (!mounted) return;
     if (products.isEmpty) {
       ScaffoldMessenger.of(context).showSnackBar(
@@ -95,6 +100,9 @@ class _InvoicesPageState extends State<InvoicesPage> {
     final placeOfSupply = TextEditingController(text: businessState);
     final formKey = GlobalKey<FormState>();
     int? selectedPartyId;
+    String? selectedWarehouseSyncId = warehouses.length == 1
+        ? warehouses.single['sync_id'] as String
+        : null;
     final lines = <_InvoiceLine>[_InvoiceLine()];
     final notes = TextEditingController();
 
@@ -134,6 +142,17 @@ class _InvoicesPageState extends State<InvoicesPage> {
                     mainAxisSize: MainAxisSize.min,
                     crossAxisAlignment: CrossAxisAlignment.stretch,
                     children: [
+                      if (warehouses.isNotEmpty)
+                        DropdownButtonFormField<String>(
+                          initialValue: selectedWarehouseSyncId,
+                          decoration: const InputDecoration(labelText: 'Dispatch warehouse *'),
+                          validator: (value) => value == null ? 'Select a dispatch warehouse' : null,
+                          items: warehouses.map((warehouse) => DropdownMenuItem<String>(
+                            value: warehouse['sync_id'] as String,
+                            child: Text('${warehouse['name']} (${warehouse['code']})'),
+                          )).toList(),
+                          onChanged: (value) => refreshDialog(() => selectedWarehouseSyncId = value),
+                        ),
                       DropdownButtonFormField<int>(
                         initialValue: selectedPartyId,
                         decoration: const InputDecoration(labelText: 'Customer (optional)'),
@@ -292,6 +311,7 @@ class _InvoicesPageState extends State<InvoicesPage> {
             'invoice_number': invoiceNumber,
             'invoice_type': 'sale',
             'party_id': selectedPartyId,
+            'warehouse_sync_id': selectedWarehouseSyncId,
             'invoice_date': now.toIso8601String(),
             'subtotal': subtotal,
             'tax_total': taxTotal,
@@ -307,15 +327,31 @@ class _InvoicesPageState extends State<InvoicesPage> {
           });
 
           var totalCogs = 0.0;
+          final warehouseDemandByProduct = <int, double>{};
           for (final item in prepared) {
             item['sync_id'] = AppDatabase.instance.createSyncId();
             final invoiceItemId = await txn.insert('invoice_items', {'invoice_id': invoiceId, ...item});
+            final itemProductId = item['product_id'] as int;
+            final itemQuantity = (item['quantity'] as num).toDouble();
+            if (selectedWarehouseSyncId != null) {
+              final requested = (warehouseDemandByProduct[itemProductId] ?? 0) + itemQuantity;
+              warehouseDemandByProduct[itemProductId] = requested;
+              final availableRows = await txn.rawQuery(
+                'SELECT COALESCE(SUM(quantity_remaining), 0) AS available FROM inventory_cost_layers WHERE product_id = ? AND warehouse_sync_id = ?',
+                [itemProductId, selectedWarehouseSyncId],
+              );
+              final available = (availableRows.single['available'] as num).toDouble();
+              if (requested > available + 0.0000001) {
+                throw StateError('Insufficient stock in the selected warehouse for ${item['description']}. Available: $available');
+              }
+            }
             totalCogs += await InventoryCostService.consumeForSale(
               txn,
               invoiceItemId: invoiceItemId,
-              productId: item['product_id'] as int,
-              quantity: (item['quantity'] as num).toDouble(),
+              productId: itemProductId,
+              quantity: itemQuantity,
               soldAt: now.toIso8601String(),
+              warehouseSyncId: selectedWarehouseSyncId,
             );
             await txn.rawUpdate(
               'UPDATE products SET current_stock = current_stock - ?, updated_at = ? WHERE id = ?',
