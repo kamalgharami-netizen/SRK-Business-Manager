@@ -1357,6 +1357,49 @@ class AppDatabase {
     }
     final db = await database;
     await db.transaction((txn) async {
+      if (tableName == 'staff_members') {
+        if (payload['sync_id'] != recordId) {
+          throw const FormatException('Cloud staff identifier does not match its record ID.');
+        }
+        if (isDeleted) {
+          await txn.delete('staff_members', where: 'sync_id = ?', whereArgs: [recordId]);
+          return;
+        }
+        final displayName = payload['display_name'];
+        final role = payload['role'];
+        final phone = payload['phone'];
+        final isActive = payload['is_active'];
+        final createdAt = payload['created_at'];
+        if (displayName is! String || displayName.trim().isEmpty ||
+            role is! String || !{'owner', 'manager', 'cashier', 'staff'}.contains(role) ||
+            (phone != null && phone is! String) ||
+            isActive is! int || (isActive != 0 && isActive != 1) ||
+            createdAt is! String) {
+          throw const FormatException('Cloud staff profile contains invalid fields.');
+        }
+        final values = <String, Object?>{
+          'sync_id': recordId,
+          'display_name': displayName.trim(),
+          'role': role,
+          'phone': phone,
+          'is_active': isActive,
+          'created_at': createdAt,
+        };
+        final existing = await txn.query(
+          'staff_members',
+          columns: ['id'],
+          where: 'sync_id = ?',
+          whereArgs: [recordId],
+          limit: 1,
+        );
+        if (existing.isEmpty) {
+          await txn.insert('staff_members', values);
+        } else {
+          await txn.update('staff_members', values, where: 'sync_id = ?', whereArgs: [recordId]);
+        }
+        return;
+      }
+
       if (tableName == 'business_profile') {
         if (_activeBusinessId == null ||
             recordId != _activeBusinessId ||
