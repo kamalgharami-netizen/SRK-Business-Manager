@@ -8,6 +8,7 @@ import '../../data/local/supplier_ledger_reconciliation.dart';
 import '../../data/local/customer_ledger_reconciliation.dart';
 import '../../data/local/inventory_valuation_reconciliation.dart';
 import '../../data/local/gst_ledger_reconciliation.dart';
+import '../../data/local/gst_rcm_reconciliation.dart';
 import '../../data/local/gst_return_readiness.dart';
 import '../../data/local/gst_gstr1_classification.dart';
 import '../../data/local/gst_gstr1_hsn_summary.dart';
@@ -46,6 +47,7 @@ class _ReportsPageState extends State<ReportsPage> {
   Map<String, Object?> _customerReconciliation = const {};
   Map<String, Object?> _inventoryReconciliation = const {};
   Map<String, Object?> _gstLedgerReconciliation = const {};
+  Map<String, Object?> _gstRcmReconciliation = const {};
   DateTime? _startDate;
   DateTime? _endDate;
   bool _gstr1Checking = false;
@@ -455,6 +457,11 @@ class _ReportsPageState extends State<ReportsPage> {
     );
     final inventoryReconciliation =
         await InventoryValuationReconciliation.load(db);
+    final gstRcmReconciliation = await GstRcmReconciliation.load(
+      db,
+      startDate: _startDate == null ? null : _date(_startDate!),
+      endDate: _endDate == null ? null : _date(_endDate!),
+    );
     final gstLedgerReconciliation = await GstLedgerReconciliation.load(
       db,
       startDate: widget.reportType == 'GST Reports' && _startDate != null
@@ -499,6 +506,7 @@ class _ReportsPageState extends State<ReportsPage> {
       _customerReconciliation = customerReconciliation;
       _inventoryReconciliation = inventoryReconciliation;
       _gstLedgerReconciliation = gstLedgerReconciliation;
+      _gstRcmReconciliation = gstRcmReconciliation;
       _loading = false;
     });
   }
@@ -1107,6 +1115,43 @@ class _ReportsPageState extends State<ReportsPage> {
     );
   }
 
+  Widget _gstRcmReconciliationCard() {
+    final data = _gstRcmReconciliation;
+    if (data.isEmpty) return const SizedBox.shrink();
+    final reconciled = data['is_reconciled'] == true;
+    final overpaid = (data['overpaid_count'] as num?)?.toInt() ?? 0;
+    final unpaid = (data['unpaid_count'] as num?)?.toInt() ?? 0;
+    return Card(
+      child: Padding(
+        padding: const EdgeInsets.all(16),
+        child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+          Row(children: [
+            const Icon(Icons.receipt_long),
+            const SizedBox(width: 8),
+            Expanded(child: Text('Reverse Charge (RCM) Liability & Payment Reconciliation',
+              style: Theme.of(context).textTheme.titleMedium)),
+            Icon(reconciled ? Icons.check_circle : Icons.warning_amber_rounded,
+              color: reconciled ? Colors.green : Theme.of(context).colorScheme.error),
+          ]),
+          const SizedBox(height: 12),
+          _metric('Recorded RCM liabilities', '${data['liability_count'] ?? 0}', Icons.description),
+          _metric('Total RCM tax liability', _money((data['liability_total'] as num?)?.toDouble() ?? 0), Icons.account_balance),
+          _metric('Challan / cash-ledger payments recorded', _money((data['paid_total'] as num?)?.toDouble() ?? 0), Icons.payments),
+          _metric('Outstanding RCM liability', _money((data['outstanding_total'] as num?)?.toDouble() ?? 0), Icons.pending_actions),
+          if (unpaid > 0)
+            Text('Liabilities with outstanding tax: $unpaid',
+              style: TextStyle(color: Theme.of(context).colorScheme.error)),
+          if (overpaid > 0)
+            Text('Liabilities with payments exceeding one or more tax heads: $overpaid',
+              style: TextStyle(color: Theme.of(context).colorScheme.error)),
+          Text('Payment records: ${data['payment_count'] ?? 0} • Audit events: ${data['audit_event_count'] ?? 0}'),
+          const SizedBox(height: 8),
+          const Text('Read-only comparison of locally entered RCM liability and challan references. It does not verify the GSTN electronic cash ledger, challan status or filed returns. No journal entries are created.'),
+        ]),
+      ),
+    );
+  }
+
   Widget _inventoryReconciliationCard() {
     final data = _inventoryReconciliation;
     if (data.isEmpty) return const SizedBox.shrink();
@@ -1323,8 +1368,10 @@ class _ReportsPageState extends State<ReportsPage> {
                   : 'Period: ${_startDate == null ? 'Beginning' : _date(_startDate!)} to ${_endDate == null ? 'Latest' : _date(_endDate!)}',
             ),
           ],
-          if (title == 'Trial Balance' || title == 'GST Reports')
+          if (title == 'Trial Balance' || title == 'GST Reports') ...[
             _gstLedgerReconciliationCard(),
+            _gstRcmReconciliationCard(),
+          ],
           if (title == 'Trial Balance') _inventoryReconciliationCard(),
           if (title == 'Trial Balance') _customerReconciliationCard(),
           if (title == 'Trial Balance') _supplierReconciliationCard(),
