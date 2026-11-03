@@ -13,6 +13,10 @@ void main() {
       expect(BusinessSyncEntityPolicy.supports('payment_allocations'), isTrue);
     });
 
+    test('includes business profile as a supported cloud entity', () {
+      expect(BusinessSyncEntityPolicy.supports('business_profile'), isTrue);
+    });
+
     test('keeps payment dependencies ordered before allocations', () {
       const order = BusinessSyncEntityPolicy.pullOrder;
       expect(order.indexOf('invoices'), lessThan(order.indexOf('payments')));
