@@ -218,6 +218,56 @@ class Gstr2bCsvImporter {
   }
 }
 
+class Gstr3bItcReclaimValidator {
+  Gstr3bItcReclaimValidator._();
+
+  /// A reclaim must not exceed the unclaimed amount of an earlier reversal
+  /// with the same source reference, calculated separately for each tax head.
+  static List<String> validate({
+    required String documentReference,
+    required Gstr3bTaxAmounts requested,
+    required Gstr3bTaxAmounts previouslyReversed,
+    required Gstr3bTaxAmounts alreadyReclaimed,
+  }) {
+    final issues = <String>[];
+    if (documentReference.trim().isEmpty) {
+      issues.add('Previous reversal document reference is required.');
+    }
+    if (!requested.isValid || requested.isZero) {
+      issues.add('Reclaim must contain at least one positive, valid tax amount.');
+    }
+    if (!previouslyReversed.isValid || !alreadyReclaimed.isValid) {
+      issues.add('Previous reversal history contains invalid tax amounts.');
+      return List.unmodifiable(issues);
+    }
+    for (final head in const ['igst', 'cgst', 'sgst', 'cess']) {
+      final amount = switch (head) {
+        'igst' => requested.igst,
+        'cgst' => requested.cgst,
+        'sgst' => requested.sgst,
+        _ => requested.cess,
+      };
+      final reversed = switch (head) {
+        'igst' => previouslyReversed.igst,
+        'cgst' => previouslyReversed.cgst,
+        'sgst' => previouslyReversed.sgst,
+        _ => previouslyReversed.cess,
+      };
+      final reclaimed = switch (head) {
+        'igst' => alreadyReclaimed.igst,
+        'cgst' => alreadyReclaimed.cgst,
+        'sgst' => alreadyReclaimed.sgst,
+        _ => alreadyReclaimed.cess,
+      };
+      final available = (reversed - reclaimed).clamp(0.0, double.maxFinite);
+      if (amount > available + 0.01) {
+        issues.add('Reclaim $head exceeds the unclaimed previous reversal amount.');
+      }
+    }
+    return List.unmodifiable(issues);
+  }
+}
+
 class Gstr3bItcRepository {
   Gstr3bItcRepository._();
 
@@ -391,6 +441,68 @@ class Gstr3bItcRepository {
       throw const FormatException('ITC adjustment details are incomplete or invalid.');
     }
     final db = await AppDatabase.instance.database;
+    if (treatment == Gstr3bItcTreatment.reclaimedPreviousReversal) {
+      return db.transaction((txn) async {
+        final history = await txn.rawQuery('''
+          SELECT
+            COALESCE(SUM(CASE WHEN treatment IN (?, ?) THEN igst ELSE 0 END), 0) AS reversed_igst,
+            COALESCE(SUM(CASE WHEN treatment IN (?, ?) THEN cgst ELSE 0 END), 0) AS reversed_cgst,
+            COALESCE(SUM(CASE WHEN treatment IN (?, ?) THEN sgst ELSE 0 END), 0) AS reversed_sgst,
+            COALESCE(SUM(CASE WHEN treatment IN (?, ?) THEN cess ELSE 0 END), 0) AS reversed_cess,
+            COALESCE(SUM(CASE WHEN treatment = ? THEN igst ELSE 0 END), 0) AS reclaimed_igst,
+            COALESCE(SUM(CASE WHEN treatment = ? THEN cgst ELSE 0 END), 0) AS reclaimed_cgst,
+            COALESCE(SUM(CASE WHEN treatment = ? THEN sgst ELSE 0 END), 0) AS reclaimed_sgst,
+            COALESCE(SUM(CASE WHEN treatment = ? THEN cess ELSE 0 END), 0) AS reclaimed_cess
+          FROM gst_itc_adjustments
+          WHERE trim(document_reference) = ? AND return_period < ?
+        ''', [
+          Gstr3bItcTreatment.reversalRules38_42_43And17_5.name,
+          Gstr3bItcTreatment.reversalOther.name,
+          Gstr3bItcTreatment.reversalRules38_42_43And17_5.name,
+          Gstr3bItcTreatment.reversalOther.name,
+          Gstr3bItcTreatment.reversalRules38_42_43And17_5.name,
+          Gstr3bItcTreatment.reversalOther.name,
+          Gstr3bItcTreatment.reversalRules38_42_43And17_5.name,
+          Gstr3bItcTreatment.reversalOther.name,
+          Gstr3bItcTreatment.reclaimedPreviousReversal.name,
+          Gstr3bItcTreatment.reclaimedPreviousReversal.name,
+          Gstr3bItcTreatment.reclaimedPreviousReversal.name,
+          Gstr3bItcTreatment.reclaimedPreviousReversal.name,
+          documentReference.trim(),
+          returnPeriod,
+        ]);
+        final row = history.single;
+        final previousReversed = Gstr3bTaxAmounts(
+          igst: (row['reversed_igst'] as num).toDouble(),
+          cgst: (row['reversed_cgst'] as num).toDouble(),
+          sgst: (row['reversed_sgst'] as num).toDouble(),
+          cess: (row['reversed_cess'] as num).toDouble(),
+        );
+        final alreadyReclaimed = Gstr3bTaxAmounts(
+          igst: (row['reclaimed_igst'] as num).toDouble(),
+          cgst: (row['reclaimed_cgst'] as num).toDouble(),
+          sgst: (row['reclaimed_sgst'] as num).toDouble(),
+          cess: (row['reclaimed_cess'] as num).toDouble(),
+        );
+        final issues = Gstr3bItcReclaimValidator.validate(
+          documentReference: documentReference,
+          requested: tax,
+          previouslyReversed: previousReversed,
+          alreadyReclaimed: alreadyReclaimed,
+        );
+        if (issues.isNotEmpty) throw FormatException(issues.join(' '));
+        return txn.insert('gst_itc_adjustments', {
+          'document_reference': documentReference.trim(),
+          'return_period': returnPeriod,
+          'treatment': treatment.name,
+          'igst': tax.igst, 'cgst': tax.cgst,
+          'sgst': tax.sgst, 'cess': tax.cess, 'notes': notes,
+        });
+      });
+    }
+    if (tax.isZero) {
+      throw const FormatException('ITC adjustment must contain at least one positive tax amount.');
+    }
     return db.insert('gst_itc_adjustments', {
       'document_reference': documentReference.trim(), 'return_period': returnPeriod,
       'treatment': treatment.name, 'igst': tax.igst, 'cgst': tax.cgst,
