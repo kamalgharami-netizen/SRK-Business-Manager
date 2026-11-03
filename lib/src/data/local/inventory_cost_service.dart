@@ -345,7 +345,7 @@ class InventoryCostService {
     required List<Map<String, dynamic>> layers,
     required String adjustedAt,
   }) async {
-    if ((direction != 'increase' && direction != 'decrease') ||
+    if (!{'increase', 'decrease', 'allocate'}.contains(direction) ||
         !quantity.isFinite || quantity <= 0) {
       throw const FormatException('Cloud stock adjustment effect is invalid.');
     }
@@ -373,9 +373,9 @@ class InventoryCostService {
       }
       effectQuantity += qty.toDouble();
     }
-    if (direction == 'increase' &&
+    if ((direction == 'increase' || direction == 'allocate') &&
         (effectQuantity - quantity).abs() > 0.000001) {
-      throw const FormatException('Cloud stock increase FIFO quantity does not reconcile.');
+      throw const FormatException('Cloud stock increase/allocation FIFO quantity does not reconcile.');
     }
     if (direction == 'decrease' &&
         (effectQuantity > quantity + 0.000001 ||
