@@ -2037,6 +2037,28 @@ class AppDatabase {
       if (!names.containsAll(requiredTables)) {
         throw const FormatException('Backup is missing required application tables');
       }
+      final backupVersion = await validationDb.getVersion();
+      if (backupVersion > _databaseVersion) {
+        throw FormatException(
+          'Backup schema version $backupVersion is newer than this app supports ($_databaseVersion). Update the app before restoring it.',
+        );
+      }
+      // A current-version backup must include the complete local sync foundation.
+      // Older backups remain eligible for the normal onUpgrade migration path.
+      if (backupVersion == _databaseVersion) {
+        const currentSyncTables = {
+          'staff_members',
+          'sync_queue',
+          'sync_conflict_resolutions',
+          'sync_metadata',
+          'payment_allocations',
+        };
+        if (!names.containsAll(currentSyncTables)) {
+          throw const FormatException(
+            'Current-version backup is missing required sync tables.',
+          );
+        }
+      }
       final scopeRows = await validationDb.query(
         'app_settings',
         columns: ['setting_value'],
