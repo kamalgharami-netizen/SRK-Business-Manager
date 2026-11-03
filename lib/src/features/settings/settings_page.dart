@@ -3,6 +3,7 @@ import 'dart:io';
 import 'package:file_picker/file_picker.dart';
 import 'package:flutter/material.dart';
 import 'package:sqflite/sqflite.dart' show ConflictAlgorithm;
+import 'package:supabase_flutter/supabase_flutter.dart';
 
 import '../../data/local/app_database.dart';
 import '../../data/sync/business_sync_service.dart';
@@ -104,14 +105,29 @@ class _SettingsPageState extends State<SettingsPage> {
     });
     var saveMessage = 'Business profile saved on this device.';
     if (businessId != null) {
-      saveMessage = 'Business profile saved locally; cloud sync is pending.';
+      saveMessage = 'Saved locally. Cloud profile update is pending.';
       try {
-        final result = await BusinessSyncService(businessId: businessId).syncNow();
-        if (result.uploadFailures == 0) {
-          saveMessage = 'Business profile saved and synchronised with the cloud.';
+        // The businesses row is the authoritative company profile shown
+        // in the workspace picker and onboarding flow.
+        await Supabase.instance.client.from('businesses').update({
+          'name': values['company_name'],
+          'phone': values['company_phone'],
+          'address': values['company_address'],
+          'gstin': gstin.isEmpty ? null : gstin,
+          'state_name': selectedState.isEmpty ? null : selectedState,
+          'state_code': gstin.isEmpty ? null : gstin.substring(0, 2),
+        }).eq('id', businessId);
+        saveMessage = 'Business profile updated in the cloud.';
+        try {
+          final result = await BusinessSyncService(businessId: businessId).syncNow();
+          if (result.uploadFailures > 0) {
+            saveMessage = 'Cloud company profile updated. Device sync queue still has pending items.';
+          }
+        } catch (_) {
+          saveMessage = 'Cloud company profile updated. Other offline records remain queued for sync.';
         }
       } catch (_) {
-        // The durable local queue is retained for the next sync attempt.
+        // Keep the local edit and durable queue; a later retry is required.
       }
     }
     if (!mounted) return;
