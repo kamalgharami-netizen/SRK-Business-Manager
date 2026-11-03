@@ -62,6 +62,10 @@ class GstRcmReconciliation {
     var overpaidCount = 0;
     var unpaidCount = 0;
     var fullyPaidCount = 0;
+    final missingReferences = payments.where((payment) =>
+      (payment['cash_ledger_reference'] as String? ?? '').trim().isEmpty ||
+      (payment['challan_reference'] as String? ?? '').trim().isEmpty,
+    ).length;
     for (final liability in liabilities) {
       final id = liability['id'] as int;
       final paid = paidByLiability[id] ?? const <String, double>{};
@@ -118,7 +122,8 @@ class GstRcmReconciliation {
       'unpaid_count': unpaidCount,
       'fully_paid_count': fullyPaidCount,
       'audit_event_count': (auditRows.single['count'] as num).toInt(),
-      'is_reconciled': allFinite && overpaidCount == 0 &&
+      'missing_payment_reference_count': missingReferences,
+      'is_reconciled': allFinite && overpaidCount == 0 && missingReferences == 0 &&
           (difference).abs() <= 0.01,
     };
   }
