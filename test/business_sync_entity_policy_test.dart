@@ -38,5 +38,11 @@ void main() {
         expect(BusinessSyncEntityPolicy.supports(entity), isFalse, reason: entity);
       }
     });
+
+    test('pulls products before invoices and stock movements', () {
+      const order = BusinessSyncEntityPolicy.pullOrder;
+      expect(order.indexOf('products'), lessThan(order.indexOf('invoices')));
+      expect(order.indexOf('products'), lessThan(order.indexOf('stock_movements')));
+    });
   });
 }
