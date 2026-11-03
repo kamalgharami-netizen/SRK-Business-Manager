@@ -315,13 +315,12 @@ class AppDatabase {
             final payload = Map<String, dynamic>.from(row)
               ..remove('id')
               ..['sync_id'] = syncId;
-            await enqueueSyncOperation(
-              tableName: 'staff_members',
-              recordId: syncId,
-              operation: 'insert',
-              payload: payload,
-              executor: db,
-            );
+            await db.insert('sync_queue', {
+              'table_name': 'staff_members',
+              'record_id': syncId,
+              'operation': 'insert',
+              'payload': jsonEncode(payload),
+            });
           }
         }
         if (oldVersion < 26) {
