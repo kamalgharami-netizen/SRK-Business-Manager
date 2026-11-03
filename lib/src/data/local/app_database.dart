@@ -18,7 +18,7 @@ class AppDatabase {
   AppDatabase._();
 
   static final AppDatabase instance = AppDatabase._();
-  static const int _databaseVersion = 30;
+  static const int _databaseVersion = 31;
   String? _databasePath;
   String? _activeBusinessId;
   String? _activeBusinessRole;
@@ -321,6 +321,15 @@ class AppDatabase {
           )''');
           await db.execute('CREATE INDEX idx_warehouses_active ON warehouses(is_active, name)');
         }
+        if (oldVersion < 31) {
+          // Use stable cloud IDs rather than device-local warehouse row IDs.
+          await db.execute('ALTER TABLE invoices ADD COLUMN warehouse_sync_id TEXT');
+          await db.execute('ALTER TABLE stock_movements ADD COLUMN warehouse_sync_id TEXT');
+          await db.execute('ALTER TABLE inventory_cost_layers ADD COLUMN warehouse_sync_id TEXT');
+          await db.execute('CREATE INDEX idx_invoices_warehouse ON invoices(warehouse_sync_id, invoice_date)');
+          await db.execute('CREATE INDEX idx_stock_movements_warehouse_product ON stock_movements(warehouse_sync_id, product_id, created_at)');
+          await db.execute('CREATE INDEX idx_inventory_layers_warehouse_fifo ON inventory_cost_layers(warehouse_sync_id, product_id, received_at, id)');
+        }
         if (oldVersion < 29) {
           await db.execute('ALTER TABLE staff_members ADD COLUMN sync_id TEXT');
           await _backfillSyncIds(db, 'staff_members');
@@ -472,6 +481,7 @@ class AppDatabase {
         invoice_type TEXT NOT NULL DEFAULT 'sale'
           CHECK (invoice_type IN ('sale','estimate','purchase','sales_return','purchase_return')),
         party_id INTEGER,
+        warehouse_sync_id TEXT,
         invoice_date TEXT NOT NULL,
         due_date TEXT,
         subtotal REAL NOT NULL DEFAULT 0,
@@ -611,6 +621,7 @@ class AppDatabase {
     await db.execute('CREATE INDEX idx_expenses_sync_id ON expenses(sync_id)');
     await db.execute('CREATE INDEX idx_sync_queue_created ON sync_queue(created_at)');
     await db.execute('CREATE INDEX idx_invoices_parent ON invoices(parent_invoice_id)');
+    await db.execute('CREATE INDEX idx_invoices_warehouse ON invoices(warehouse_sync_id, invoice_date)');
     await db.execute('''CREATE TABLE warehouses (
       id INTEGER PRIMARY KEY AUTOINCREMENT,
       sync_id TEXT NOT NULL UNIQUE,
@@ -629,6 +640,7 @@ class AppDatabase {
       id INTEGER PRIMARY KEY AUTOINCREMENT,
       sync_id TEXT UNIQUE,
       product_id INTEGER NOT NULL,
+      warehouse_sync_id TEXT,
       movement_type TEXT NOT NULL CHECK (movement_type IN ('purchase_return','sales_return','adjustment')),
       quantity_change REAL NOT NULL,
       reference TEXT,
@@ -637,6 +649,7 @@ class AppDatabase {
       FOREIGN KEY (product_id) REFERENCES products(id) ON DELETE RESTRICT
     )''');
     await db.execute('CREATE INDEX idx_stock_movements_product ON stock_movements(product_id)');
+    await db.execute('CREATE INDEX idx_stock_movements_warehouse_product ON stock_movements(warehouse_sync_id, product_id, created_at)');
     await db.execute('CREATE INDEX idx_stock_movements_sync_id ON stock_movements(sync_id)');
     await _createGstr3bItcSchema(db);
     await _createPaymentAllocationsSchema(db);
@@ -1075,6 +1088,7 @@ class AppDatabase {
       CREATE TABLE inventory_cost_layers (
         id INTEGER PRIMARY KEY AUTOINCREMENT,
         product_id INTEGER NOT NULL,
+        warehouse_sync_id TEXT,
         source_type TEXT NOT NULL,
         source_id INTEGER,
         source_item_id INTEGER,
@@ -1101,6 +1115,7 @@ class AppDatabase {
       )
     ''');
     await db.execute('CREATE INDEX idx_inventory_layers_fifo ON inventory_cost_layers(product_id, received_at, id)');
+    await db.execute('CREATE INDEX idx_inventory_layers_warehouse_fifo ON inventory_cost_layers(warehouse_sync_id, product_id, received_at, id)');
     await db.execute('CREATE INDEX idx_invoice_item_costs_item ON invoice_item_costs(invoice_item_id)');
   }
 
