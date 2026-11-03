@@ -66,6 +66,7 @@ Create a dedicated Supabase project for SRK Business Manager. In the Supabase SQ
 8. `supabase/migrations/0008_team_access_and_permissions.sql`
 9. `supabase/migrations/0009_payment_allocations_sync.sql`
 10. `supabase/migrations/0010_payment_allocation_role_permissions.sql`
+11. `supabase/migrations/0011_business_profile_sync.sql`
 
 In GitHub, open **Settings → Secrets and variables → Actions** and add these repository secrets:
 
