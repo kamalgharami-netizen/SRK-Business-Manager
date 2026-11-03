@@ -2,9 +2,8 @@ import 'dart:convert';
 
 import 'package:flutter/material.dart';
 
-import '../../data/local/inventory_cost_service.dart';
-
 import '../../data/local/app_database.dart';
+import '../../data/local/inventory_cost_service.dart';
 
 class WarehouseStockBalancePage extends StatefulWidget {
   const WarehouseStockBalancePage({super.key});
@@ -619,6 +618,7 @@ class _WarehouseStockBalancePageState extends State<WarehouseStockBalancePage> {
           quantity: qty,
           removedAt: now,
           consumedLayers: layers,
+          unassignedOnly: true,
         );
         for (final layer in layers) {
           await txn.insert('inventory_cost_layers', {
