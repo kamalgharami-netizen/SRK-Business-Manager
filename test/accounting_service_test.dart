@@ -408,7 +408,7 @@ void main() {
               mode: 'cash',
               amount: double.infinity,
             )),
-        throwsA(isA<StateError>()),
+        throwsArgumentError,
       );
       expect(await db.query('journal_entries'), isEmpty);
     });
@@ -427,7 +427,7 @@ void main() {
               mode: 'cash',
               amount: -50,
             )),
-        throwsA(isA<StateError>()),
+        throwsArgumentError,
       );
 
       expect(await db.query('journal_entries'), isEmpty);
@@ -592,6 +592,72 @@ void main() {
       await post();
       await expectLater(post(), throwsA(isA<StateError>()));
       expect(await db.query('journal_entries'), hasLength(1));
+    });
+
+    test('rejects unsupported expense payment modes', () async {
+      final db = await _openAccountingDatabase();
+      addTearDown(db.close);
+
+      await expectLater(
+        db.transaction((txn) => AccountingService.postExpense(
+          txn,
+          expenseId: 80,
+          date: '2026-11-04',
+          category: 'Office',
+          description: 'Unsupported mode',
+          mode: 'crypto',
+          amount: 100,
+        )),
+        throwsArgumentError,
+      );
+      expect(await db.query('journal_entries'), isEmpty);
+      expect(await db.query('journal_lines'), isEmpty);
+    });
+
+    test('rejects zero, negative and non-finite expense amounts', () async {
+      final db = await _openAccountingDatabase();
+      addTearDown(db.close);
+
+      Future<void> post(double amount) => db.transaction((txn) =>
+        AccountingService.postExpense(
+          txn,
+          expenseId: 81,
+          date: '2026-11-04',
+          category: 'Office',
+          description: 'Invalid amount',
+          mode: 'cash',
+          amount: amount,
+        ));
+
+      await expectLater(post(0), throwsArgumentError);
+      await expectLater(post(-1), throwsArgumentError);
+      await expectLater(post(double.infinity), throwsArgumentError);
+      await expectLater(post(double.nan), throwsArgumentError);
+      expect(await db.query('journal_entries'), isEmpty);
+      expect(await db.query('journal_lines'), isEmpty);
+    });
+
+    test('normalizes supported expense payment modes', () async {
+      final db = await _openAccountingDatabase();
+      addTearDown(db.close);
+
+      await db.transaction((txn) => AccountingService.postExpense(
+        txn,
+        expenseId: 82,
+        date: '2026-11-04',
+        category: 'Office',
+        description: 'Bank expense',
+        mode: ' BANK ',
+        amount: 125,
+      ));
+      final rows = await db.rawQuery('''
+        SELECT accounts.account_code, journal_lines.debit, journal_lines.credit
+        FROM journal_lines JOIN accounts ON accounts.id = journal_lines.account_id
+        ORDER BY journal_lines.id
+      ''');
+      expect(rows.map((row) => row['account_code']), ['5200', '1010']);
+      expect(rows[0]['debit'], 125);
+      expect(rows[1]['credit'], 125);
     });
   });
 }

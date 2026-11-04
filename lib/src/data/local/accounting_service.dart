@@ -255,7 +255,15 @@ class AccountingService {
   }
 
   static Future<void> postExpense(Transaction txn, {required int expenseId, required String date, required String category, required String description, required String mode, required double amount}) async {
-    final cashCode = mode.toLowerCase() == 'cash' ? '1000' : '1010';
+    if (!amount.isFinite || amount <= 0) {
+      throw ArgumentError.value(amount, 'amount');
+    }
+    const supportedModes = {'cash', 'upi', 'bank', 'card', 'cheque'};
+    final normalizedMode = mode.trim().toLowerCase();
+    if (!supportedModes.contains(normalizedMode)) {
+      throw ArgumentError.value(mode, 'mode');
+    }
+    final cashCode = normalizedMode == 'cash' ? '1000' : '1010';
     await _post(txn, sourceType: 'expense', sourceId: expenseId, date: date, memo: '$category: $description', lines: [
       {'code': '5200', 'debit': amount, 'credit': 0.0, 'description': category},
       {'code': cashCode, 'debit': 0.0, 'credit': amount, 'description': 'Expense paid'},
