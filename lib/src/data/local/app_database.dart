@@ -15,7 +15,8 @@ import '../sync/business_sync_entity_policy.dart';
 
 /// Local-first database shared by the Windows and Android applications.
 class AppDatabase {
-  AppDatabase._({this._databasePathOverride});
+  AppDatabase._([String? databasePathOverride])
+      : _databasePathOverride = databasePathOverride;
 
   /// Creates an isolated file-backed database for integration tests.
   /// Production code must use [AppDatabase.instance].
@@ -23,7 +24,7 @@ class AppDatabase {
     if (databasePath.trim().isEmpty) {
       throw ArgumentError.value(databasePath, 'databasePath');
     }
-    return AppDatabase._(databasePathOverride: databasePath);
+    return AppDatabase._(databasePath);
   }
 
   static final AppDatabase instance = AppDatabase._();
@@ -101,7 +102,7 @@ class AppDatabase {
 
     final String databasePath;
     if (_databasePathOverride != null) {
-      databasePath = _databasePathOverride!;
+      databasePath = _databasePathOverride;
     } else {
       final documents = await getApplicationDocumentsDirectory();
       databasePath = _activeBusinessId == null
