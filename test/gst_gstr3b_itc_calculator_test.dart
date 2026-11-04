@@ -120,6 +120,32 @@ void main() {
       expect(summary.canPrepareDraft, isFalse);
     });
 
+    test('blocks draft preparation when separate eligible categories overflow Table 4(A)', () {
+      final summary = Gstr3bItcCalculator.summarize([
+        const Gstr3bItcEntry(
+          documentReference: 'GOODS-LARGE',
+          category: Gstr3bItcCategory.importGoods,
+          treatment: Gstr3bItcTreatment.eligible,
+          tax: Gstr3bTaxAmounts(igst: 1e308),
+        ),
+        const Gstr3bItcEntry(
+          documentReference: 'OTHER-LARGE',
+          category: Gstr3bItcCategory.other,
+          treatment: Gstr3bItcTreatment.eligible,
+          tax: Gstr3bTaxAmounts(igst: 1e308),
+        ),
+      ]);
+
+      expect(summary.importGoods.igst.isFinite, isTrue);
+      expect(summary.other.igst.isFinite, isTrue);
+      expect(summary.totalAvailable.igst.isInfinite, isTrue);
+      expect(
+        summary.issues,
+        contains('ITC totals exceed the supported numeric range; review the source amounts.'),
+      );
+      expect(summary.canPrepareDraft, isFalse);
+    });
+
     test('reports aggregate overflow instead of producing an apparently valid total', () {
       final summary = Gstr3bItcCalculator.summarize([
         const Gstr3bItcEntry(
