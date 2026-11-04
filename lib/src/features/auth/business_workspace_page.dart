@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:sqflite/sqflite.dart' show ConflictAlgorithm;
 import 'package:supabase_flutter/supabase_flutter.dart';
 
 import '../dashboard/dashboard_page.dart';
@@ -38,7 +39,7 @@ class _BusinessWorkspacePageState extends State<BusinessWorkspacePage> {
     if (ids.isEmpty) return [];
     final businesses = await client
         .from('businesses')
-        .select('id, name, legal_name, gstin, currency_code')
+        .select('id, name, legal_name, gstin, currency_code, phone, address, state_name')
         .inFilter('id', ids)
         .order('name');
     return businesses.map<Map<String, dynamic>>((business) {
@@ -60,6 +61,36 @@ class _BusinessWorkspacePageState extends State<BusinessWorkspacePage> {
 
   Future<void> _signOut() async {
     await Supabase.instance.client.auth.signOut();
+  }
+
+  /// Refreshes this device from the authoritative cloud profile. A pending
+  /// local profile edit always wins until its queued upload is resolved.
+  Future<void> _seedCompanyProfile(Map<String, dynamic> business) async {
+    final database = AppDatabase.instance;
+    final businessId = business['id'] as String;
+    if (await database.hasPendingSyncOperation(
+      tableName: 'business_profile',
+      recordId: businessId,
+    )) {
+      return;
+    }
+    final db = await database.database;
+    final profile = <String, String>{
+      'company_name': (business['name'] as String? ?? '').trim(),
+      'company_phone': (business['phone'] as String? ?? '').trim(),
+      'company_address': (business['address'] as String? ?? '').trim(),
+      'company_gstin': (business['gstin'] as String? ?? '').trim().toUpperCase(),
+      'company_state': (business['state_name'] as String? ?? '').trim(),
+    };
+    await db.transaction((txn) async {
+      for (final entry in profile.entries) {
+        await txn.insert(
+          'app_settings',
+          {'setting_key': entry.key, 'setting_value': entry.value},
+          conflictAlgorithm: ConflictAlgorithm.replace,
+        );
+      }
+    });
   }
 
   Future<void> _openBusiness(Map<String, dynamic> business) async {
@@ -136,6 +167,8 @@ class _BusinessWorkspacePageState extends State<BusinessWorkspacePage> {
           );
         }
       }
+      // Load registration details into this business's local settings once.
+      await _seedCompanyProfile(business);
       if (!mounted) return;
       await Navigator.of(context).push(
         MaterialPageRoute<void>(
