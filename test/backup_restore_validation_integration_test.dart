@@ -32,7 +32,6 @@ void main() {
     final active = await appDatabase.database;
     await active.insert('parties', {
       'name': 'Keep this party',
-      'party_type': 'customer',
     });
 
     final invalidBackup = File('${temporaryDirectory.path}/truncated.db');
