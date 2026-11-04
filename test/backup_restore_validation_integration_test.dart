@@ -7,6 +7,7 @@ import 'package:sqflite_common_ffi/sqflite_ffi.dart';
 import 'package:srk_business_manager/src/data/local/app_database.dart';
 
 void main() {
+  TestWidgetsFlutterBinding.ensureInitialized();
   late Directory temporaryDirectory;
   late String activeDatabasePath;
 
