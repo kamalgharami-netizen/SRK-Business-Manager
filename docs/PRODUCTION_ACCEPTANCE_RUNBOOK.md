@@ -62,13 +62,14 @@ Use two physical devices or a physical device plus a separate Windows installati
 
 ## 5. GST statutory validation
 
-The current GSTR-1 preflight and GSTR-2B CSV row validation are preparation controls, not proof of GSTN filing compliance.
+The current GSTR-1 invoice-classification CSV and HSN/SAC CSV are spreadsheet-friendly management/review reports. They are **not** GSTN upload JSON and must never be labelled as filing-ready exports. The GSTR-1 preflight is also a preparation control, not proof of GSTN filing compliance. GST Portal guidance describes preparing GSTR-1 online or uploading JSON prepared through the official offline tools: [GST Portal - Creation of Outward Supplies Return in GSTR-1](https://tutorial.gst.gov.in/userguide/returns/Creation_of_Outward_Supplies_Return_in_GSTR-1.htm).
 
-1. Obtain the current official GSTN offline-tool/schema version and applicable instructions for the return period being tested.
+1. On the GST Portal, obtain the current official Returns Offline Tool and its bundled instructions/schema for the exact return period being tested. Record the download date, displayed tool version, schema/template version (if separately stated), and source URL in the acceptance evidence. Do not infer the version from third-party download pages or copy an unverified third-party JSON schema into the app.
 2. Prepare representative cases: B2B, B2C large/small, credit/debit notes, exports/SEZ, advances, amendments, nil/exempt/non-GST, e-commerce and HSN summary as applicable.
 3. Validate invoice-level taxable values and tax components, place of supply, GSTIN, return period, document numbering, rounding, and ITC eligibility/reversals/RCM.
-4. Compare generated reports/files against the official offline tool and its validation results. Resolve every error/warning and record the tool version and sample dataset.
-5. Do not file live returns from this app until an independent GST practitioner review and successful official-tool validation are recorded.
+4. Until a dedicated GSTN JSON exporter has been implemented and independently tested, use the app's CSV files only as review/import inputs for the official offline utility where that utility supports the relevant template. Do not upload these management CSV files as JSON.
+5. If/when a GSTN JSON exporter is implemented, compare its output against the official offline tool and its validation results. Resolve every error/warning and retain the exact sanitized sample JSON, tool/schema version, validation result, and sample dataset in the acceptance evidence. Do not store taxpayer credentials or live taxpayer data in the repository.
+6. Do not file live returns from this app until an independent GST practitioner review and successful official-tool validation are recorded.
 
 **Pass condition:** the exact supported output passes the current official GSTN tool/schema validation for the relevant return period. Unsupported return categories must remain clearly identified as unsupported.
 
