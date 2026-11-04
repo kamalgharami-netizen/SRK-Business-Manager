@@ -1,5 +1,6 @@
 import 'dart:io';
 
+import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:sqflite_common_ffi/sqflite_ffi.dart';
 
@@ -22,6 +23,59 @@ void main() {
     if (await temporaryDirectory.exists()) {
       await temporaryDirectory.delete(recursive: true);
     }
+  });
+
+  test('restores a valid backup, preserves safety copy, and allows new writes', () async {
+    const pathProviderChannel = MethodChannel('plugins.flutter.io/path_provider');
+    pathProviderChannel.setMockMethodCallHandler((call) async {
+      if (call.method == 'getApplicationDocumentsDirectory') {
+        return temporaryDirectory.path;
+      }
+      throw MissingPluginException('Unsupported path provider method: ${call.method}');
+    });
+
+    final appDatabase = AppDatabase.forTesting(
+      databasePath: activeDatabasePath,
+    );
+    final active = await appDatabase.database;
+    await active.insert('parties', {
+      'name': 'Original active party',
+      'party_type': 'customer',
+    });
+    await appDatabase.close();
+
+    final backupPath = '${temporaryDirectory.path}/valid-backup.db';
+    await File(activeDatabasePath).copy(backupPath);
+
+    final changedActive = await appDatabase.database;
+    await changedActive.insert('parties', {
+      'name': 'Party to be replaced',
+      'party_type': 'supplier',
+    });
+    await appDatabase.close();
+
+    final safetyCopyPath = await appDatabase.restoreBackup(backupPath);
+    expect(await File(safetyCopyPath).exists(), isTrue);
+
+    final restored = await appDatabase.database;
+    final parties = await restored.query('parties', orderBy: 'id ASC');
+    expect(parties.map((row) => row['name']), ['Original active party']);
+
+    await restored.insert('parties', {
+      'name': 'Write after restore',
+      'party_type': 'customer',
+    });
+    await appDatabase.close();
+
+    final reopened = await appDatabase.database;
+    final reopenedParties = await reopened.query('parties', orderBy: 'id ASC');
+    expect(reopenedParties.map((row) => row['name']), [
+      'Original active party',
+      'Write after restore',
+    ]);
+    expect(await reopened.rawQuery('PRAGMA integrity_check'), isNotEmpty);
+    await appDatabase.close();
+    pathProviderChannel.setMockMethodCallHandler(null);
   });
 
   test('rejects a truncated/non-SQLite backup without changing active data',
