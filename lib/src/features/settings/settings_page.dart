@@ -116,7 +116,7 @@ class _SettingsPageState extends State<SettingsPage> {
           'gstin': gstin.isEmpty ? null : gstin,
           'state_name': selectedState.isEmpty ? null : selectedState,
           'state_code': gstin.isEmpty ? null : gstin.substring(0, 2),
-        }).eq('id', businessId);
+        }).eq('id', businessId).select('id').single();
         saveMessage = 'Business profile updated in the cloud.';
         try {
           final result = await BusinessSyncService(businessId: businessId).syncNow();
