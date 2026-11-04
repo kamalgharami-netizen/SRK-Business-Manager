@@ -110,6 +110,43 @@ void main() {
       expect(await db.query('journal_entries'), beforeEntries);
     });
 
+    test('excludes ineligible purchases and their returns from eligible and pending ITC', () async {
+      final db = await _openDb();
+      addTearDown(db.close);
+      await db.insert('accounts', {'id': 4, 'account_code': '5000'});
+      await db.insert('invoices', {
+        'id': 10, 'invoice_type': 'purchase',
+        'invoice_date': '2026-11-01', 'tax_total': 18,
+      });
+      await db.insert('purchase_itc_assessments', {
+        'purchase_invoice_id': 10, 'treatment': 'ineligible',
+      });
+      await db.insert('invoices', {
+        'id': 11, 'invoice_type': 'purchase_return',
+        'invoice_date': '2026-11-02', 'tax_total': 6,
+        'parent_invoice_id': 10,
+      });
+      // Both source documents have posted journals, but neither amount belongs
+      // in eligible ITC (1300) or pending ITC (1310).
+      await _journal(
+        db, id: 10, source: 'purchase_invoice', sourceId: 10,
+        date: '2026-11-01', accountId: 4, debit: 18,
+      );
+      await _journal(
+        db, id: 11, source: 'purchase_return', sourceId: 11,
+        date: '2026-11-02', accountId: 4, credit: 6,
+      );
+
+      final result = await GstLedgerReconciliation.load(db);
+      expect(result['eligible_itc_expected'], 0);
+      expect(result['eligible_itc_control'], 0);
+      expect(result['pending_itc_expected'], 0);
+      expect(result['pending_itc_control'], 0);
+      expect(result['missing_assessment_count'], 0);
+      expect(result['missing_journal_count'], 0);
+      expect(result['is_reconciled'], isTrue);
+    });
+
     test('applies the selected report date range to documents and journals', () async {
       final db = await _openDb();
       addTearDown(db.close);
