@@ -78,10 +78,8 @@ void main() {
       ),
     );
 
-    // A rejected restore must leave the active database open and usable.
     final active = await appDatabase.database;
-    expect(await active.rawQuery('PRAGMA integrity_check'),
-        isNotEmpty);
+    expect(await active.rawQuery('PRAGMA integrity_check'), isNotEmpty);
     await appDatabase.close();
   });
 
@@ -96,6 +94,80 @@ void main() {
       throwsA(isA<StateError>()),
     );
 
+    await appDatabase.close();
+  });
+
+  test('rejects a backup from a different business without changing active data',
+      () async {
+    final appDatabase = AppDatabase.forTesting(
+      databasePath: activeDatabasePath,
+    );
+    final active = await appDatabase.database;
+    await active.insert('parties', {
+      'name': 'Local business party',
+      'party_type': 'customer',
+    });
+    await appDatabase.close();
+
+    final foreignBackupPath =
+        '${temporaryDirectory.path}/foreign-business.db';
+    await File(activeDatabasePath).copy(foreignBackupPath);
+    final foreignBackup =
+        await databaseFactory.openDatabase(foreignBackupPath);
+    await foreignBackup.update(
+      'app_settings',
+      {'setting_value': '11111111-1111-4111-8111-111111111111'},
+      where: 'setting_key = ?',
+      whereArgs: ['database_scope'],
+    );
+    await foreignBackup.close();
+
+    await expectLater(
+      appDatabase.restoreBackup(foreignBackupPath),
+      throwsA(isA<FormatException>().having(
+        (error) => error.message,
+        'message',
+        contains('different business'),
+      )),
+    );
+
+    final reopened = await appDatabase.database;
+    final parties = await reopened.query('parties');
+    expect(parties, hasLength(1));
+    expect(parties.single['name'], 'Local business party');
+    await appDatabase.close();
+  });
+
+  test('rejects a backup created by a newer database schema', () async {
+    final appDatabase = AppDatabase.forTesting(
+      databasePath: activeDatabasePath,
+    );
+    final active = await appDatabase.database;
+    await active.insert('parties', {
+      'name': 'Keep current schema data',
+      'party_type': 'customer',
+    });
+    await appDatabase.close();
+
+    final newerBackupPath = '${temporaryDirectory.path}/newer-schema.db';
+    await File(activeDatabasePath).copy(newerBackupPath);
+    final newerBackup = await databaseFactory.openDatabase(newerBackupPath);
+    await newerBackup.setVersion(35);
+    await newerBackup.close();
+
+    await expectLater(
+      appDatabase.restoreBackup(newerBackupPath),
+      throwsA(isA<FormatException>().having(
+        (error) => error.message,
+        'message',
+        contains('newer than this app supports'),
+      )),
+    );
+
+    final reopened = await appDatabase.database;
+    final parties = await reopened.query('parties');
+    expect(parties, hasLength(1));
+    expect(parties.single['name'], 'Keep current schema data');
     await appDatabase.close();
   });
 }
