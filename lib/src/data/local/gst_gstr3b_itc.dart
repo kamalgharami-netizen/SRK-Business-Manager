@@ -207,28 +207,17 @@ class Gstr3bItcCalculator {
       }
     }
 
-    final summary = Gstr3bItcSummary(
-      importGoods: importGoods,
-      importServices: importServices,
-      reverseCharge: reverseCharge,
-      inputServiceDistributor: inputServiceDistributor,
-      other: other,
-      reversalRules: reversalRules,
-      reversalOther: reversalOther,
-      ineligible: ineligible,
-      reclaimedPreviousReversal: reclaimed,
-      pendingReviewCount: pending,
-      issues: List.unmodifiable(issues),
-    );
-
     // Validate both source buckets and the derived Table 4 totals. Individually
     // finite categories can still overflow when combined into 4(A), 4(B), or
     // 4(C), which must never be presented as a draft-ready result.
+    final totalAvailable = importGoods + importServices + reverseCharge +
+        inputServiceDistributor + other;
+    final totalReversed = reversalRules + reversalOther;
+    final netItc = totalAvailable - totalReversed;
     final aggregateAmounts = [
       importGoods, importServices, reverseCharge, inputServiceDistributor,
       other, reversalRules, reversalOther, ineligible, reclaimed,
-      summary.totalAvailable, summary.totalReversed, summary.netItc,
-      summary.negativeNetItcLiability,
+      totalAvailable, totalReversed, netItc,
     ];
     if (aggregateAmounts.any((amount) =>
         !amount.igst.isFinite || !amount.cgst.isFinite ||
