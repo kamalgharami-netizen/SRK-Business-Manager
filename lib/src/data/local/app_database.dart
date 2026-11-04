@@ -1367,6 +1367,8 @@ class AppDatabase {
   /// Conflict records must be resolved explicitly and cannot use this shortcut.
   Future<int> retrySyncOperationNow(int id) async {
     final db = await database;
+    // Guard the update itself as well as the read: a sync conflict may be
+    // recorded by another task between these operations.
     final rows = await db.query(
       'sync_queue',
       columns: ['last_error'],
@@ -1379,12 +1381,16 @@ class AppDatabase {
     if (error.contains('SYNC_CONFLICT')) {
       throw StateError('Resolve the cloud conflict instead of retrying it automatically.');
     }
-    return db.update(
+    final updated = await db.update(
       'sync_queue',
       {'retry_count': 0, 'last_error': null, 'next_retry_at': null},
-      where: 'id = ?',
-      whereArgs: [id],
+      where: 'id = ? AND (last_error IS NULL OR last_error NOT LIKE ?)',
+      whereArgs: [id, '%SYNC_CONFLICT%'],
     );
+    if (updated == 0) {
+      throw StateError('The sync operation changed or was removed. Refresh the queue and try again.');
+    }
+    return updated;
   }
 
   /// Makes one delayed operation eligible after an explicit conflict decision.

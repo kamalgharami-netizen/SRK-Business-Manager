@@ -65,9 +65,14 @@ class _SyncStatusPageState extends State<SyncStatusPage> {
   Future<void> _retryOperation(Map<String, dynamic> item) async {
     final businessId = AppDatabase.instance.activeBusinessId;
     if (!widget.cloudConfigured || businessId == null || _syncing) return;
+    // Lock the screen before awaiting SQLite so repeated taps cannot start
+    // overlapping retries for the same or different queue records.
+    setState(() => _syncing = true);
     try {
-      await AppDatabase.instance.retrySyncOperationNow(item['id'] as int);
-      setState(() => _syncing = true);
+      final updated = await AppDatabase.instance.retrySyncOperationNow(item['id'] as int);
+      if (updated == 0) {
+        throw StateError('This queued operation no longer exists. Refresh the queue.');
+      }
       final result = await BusinessSyncService(businessId: businessId).syncNow();
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
