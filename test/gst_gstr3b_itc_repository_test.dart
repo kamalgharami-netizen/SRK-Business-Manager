@@ -303,6 +303,42 @@ void main() {
       );
     });
 
+    test('does not match when either invoice date is invalid', () {
+      for (final invalidDate in ['not-a-date', '2026-02-30', '']) {
+        expect(
+          Gstr2bReconciliationMatcher.matches(
+            statement: Gstr2bImportRecord(
+              supplierGstin: '27AAPFU0939F1ZV',
+              invoiceNumber: 'INV-100',
+              invoiceDate: invalidDate,
+              returnPeriod: '2026-10',
+              taxableValue: 100,
+              igst: 18,
+            ),
+            supplierGstin: '27AAPFU0939F1ZV',
+            invoiceNumber: 'INV-100',
+            invoiceDate: invalidDate,
+            returnPeriod: '2026-10',
+            taxableValue: 100,
+            tax: const Gstr3bTaxAmounts(igst: 18),
+          ),
+          isFalse,
+        );
+      }
+      expect(
+        Gstr2bReconciliationMatcher.matches(
+          statement: statement,
+          supplierGstin: '27AAPFU0939F1ZV',
+          invoiceNumber: 'INV-100',
+          invoiceDate: 'not-a-date',
+          returnPeriod: '2026-10',
+          taxableValue: 100,
+          tax: const Gstr3bTaxAmounts(igst: 18),
+        ),
+        isFalse,
+      );
+    });
+
     test('does not match when the tax amount differs', () {
       expect(
         Gstr2bReconciliationMatcher.matches(

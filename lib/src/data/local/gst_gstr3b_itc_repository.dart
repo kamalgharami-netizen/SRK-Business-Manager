@@ -62,16 +62,20 @@ class Gstr2bReconciliationMatcher {
     required String invoiceNumber, required String invoiceDate,
     required String returnPeriod, required double taxableValue,
     required Gstr3bTaxAmounts tax,
-  }) =>
-      statement.supplierGstin.trim().toUpperCase() == supplierGstin.trim().toUpperCase() &&
-      statement.invoiceNumber.trim().toUpperCase() == invoiceNumber.trim().toUpperCase() &&
-      _dateOnly(statement.invoiceDate) == _dateOnly(invoiceDate) &&
-      statement.returnPeriod == returnPeriod &&
-      (statement.taxableValue - taxableValue).abs() <= 0.01 &&
-      (statement.igst - tax.igst).abs() <= 0.01 &&
-      (statement.cgst - tax.cgst).abs() <= 0.01 &&
-      (statement.sgst - tax.sgst).abs() <= 0.01 &&
-      (statement.cess - tax.cess).abs() <= 0.01;
+  }) {
+    final statementDate = _dateOnly(statement.invoiceDate);
+    final purchaseDate = _dateOnly(invoiceDate);
+    if (statementDate == null || purchaseDate == null) return false;
+    return statement.supplierGstin.trim().toUpperCase() == supplierGstin.trim().toUpperCase() &&
+        statement.invoiceNumber.trim().toUpperCase() == invoiceNumber.trim().toUpperCase() &&
+        statementDate == purchaseDate &&
+        statement.returnPeriod == returnPeriod &&
+        (statement.taxableValue - taxableValue).abs() <= 0.01 &&
+        (statement.igst - tax.igst).abs() <= 0.01 &&
+        (statement.cgst - tax.cgst).abs() <= 0.01 &&
+        (statement.sgst - tax.sgst).abs() <= 0.01 &&
+        (statement.cess - tax.cess).abs() <= 0.01;
+  }
 }
 
 class Gstr2bCsvImporter {
