@@ -119,7 +119,13 @@ void main() {
     expect(await warehouseName(deviceA), 'Updated Warehouse');
     expect(await deviceA.getSyncRevision(entityType: entity, recordId: id), secondRevision);
 
-    // Device B already has that exact revision: replay must not apply twice.
+    // Device B independently pulls the same newer cloud revision.
+    final bSecondPull = await pull(deviceB, editedOnB);
+    expect(bSecondPull.applied, 1);
+    expect(await warehouseName(deviceB), 'Updated Warehouse');
+    expect(await deviceB.getSyncRevision(entityType: entity, recordId: id), secondRevision);
+
+    // Replaying that exact revision on B must not apply it twice.
     final bReplay = await pull(deviceB, editedOnB);
     expect(bReplay.applied, 0);
     expect(bReplay.failures, 0);
