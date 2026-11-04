@@ -408,7 +408,7 @@ void main() {
               mode: 'cash',
               amount: double.infinity,
             )),
-        throwsA(isA<StateError>()),
+        throwsArgumentError,
       );
       expect(await db.query('journal_entries'), isEmpty);
     });
@@ -427,7 +427,7 @@ void main() {
               mode: 'cash',
               amount: -50,
             )),
-        throwsA(isA<StateError>()),
+        throwsArgumentError,
       );
 
       expect(await db.query('journal_entries'), isEmpty);
