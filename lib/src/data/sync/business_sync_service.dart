@@ -249,6 +249,15 @@ class BusinessSyncService {
             );
             if (hasLocalPendingChange) continue;
 
+            final remoteRevision = row['updated_at'] as String;
+            final localRevision = await database.getSyncRevision(
+              entityType: entityType,
+              recordId: recordId,
+            );
+            // The pull remains a full paged reconciliation, but unchanged
+            // cloud rows no longer trigger SQLite writes on every sync.
+            if (localRevision == remoteRevision) continue;
+
             final payload = Map<String, dynamic>.from(
               row['payload'] as Map,
             );
@@ -258,7 +267,11 @@ class BusinessSyncService {
               payload: payload,
               isDeleted: row['is_deleted'] as bool? ?? false,
             );
-            await database.saveSyncRevision(entityType: entityType, recordId: recordId, remoteUpdatedAt: row['updated_at'] as String);
+            await database.saveSyncRevision(
+              entityType: entityType,
+              recordId: recordId,
+              remoteUpdatedAt: remoteRevision,
+            );
             downloaded++;
           } catch (_) {
             failed++;
