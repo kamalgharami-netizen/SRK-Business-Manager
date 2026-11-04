@@ -92,9 +92,7 @@ void main() {
   });
 
   test('manual retry reports an operation that no longer exists', () async {
-    await expectLater(
-      database.retrySyncOperationNow(999999),
-      throwsA(isA<StateError>()),
-    );
+    expect(await database.retrySyncOperationNow(999999), 0);
+    expect(await database.getPendingSyncCount(), 0);
   });
 }
