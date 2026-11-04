@@ -14,11 +14,15 @@ Download both artifacts from the same successful run. Keep the run URL, commit S
 ## 2. Supabase schema deployment
 
 1. Create/select the dedicated Supabase project for SRK Business Manager. Do not use a different application's project.
-2. In the Supabase SQL Editor, apply only migrations that are not already deployed, in numerical order from `0001_initial_schema.sql` through `0014_warehouse_transfer_sync.sql`.
-3. Do not paste all migrations again into a project that may already contain some of them. Check the actual schema first and resolve any partial/failed migration before continuing.
-4. Run [the read-only post-migration verification SQL](../supabase/verification/0014_post_migration_checks.sql).
-5. Confirm the sync table has RLS enabled, the warehouse-transfer entity constraint and index exist, and the server-side role functions/grants match the migration definitions.
-6. Add only `SUPABASE_URL` and `SUPABASE_PUBLISHABLE_KEY` as GitHub Actions secrets if cloud builds are required. Never expose the service-role key in the client app, repository, or build logs.
+2. Inspect the live schema and migration history first. Apply only migrations not already deployed, in numerical order from `0001_initial_schema.sql` through `0016_incremental_sync_cursor_index.sql`. The current repository sequence includes:
+   - `0014_warehouse_transfer_sync.sql`
+   - `0015_extended_business_onboarding.sql`
+   - `0016_incremental_sync_cursor_index.sql`
+3. Do not blindly paste all migrations into a project that may already contain some of them. Resolve any partial/failed migration before continuing. In particular, migrations 0014–0016 must be checked against the actual deployed schema before execution.
+4. Run [the read-only migration 0014 checks](../supabase/verification/0014_post_migration_checks.sql) and [the read-only migration 0015 checks](../supabase/verification/0015_post_migration_checks.sql).
+5. Run [the read-only migration 0016 checks](../supabase/verification/0016_post_migration_checks.sql). Confirm the incremental pull index exists with the expected column order.
+6. Confirm `public.business_records` has RLS enabled, all intended policies and constraints exist, and server-side role functions/grants match the migration definitions.
+7. Add only `SUPABASE_URL` and `SUPABASE_PUBLISHABLE_KEY` as GitHub Actions secrets if cloud builds are required. Never expose the service-role key in the client app, repository, or build logs.
 
 **Pass condition:** all schema checks return the expected objects and no migration errors remain. A SQL Editor query alone does not prove RLS behavior.
 
