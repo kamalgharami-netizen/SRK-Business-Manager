@@ -2,6 +2,7 @@ import 'package:supabase_flutter/supabase_flutter.dart';
 
 import '../local/app_database.dart';
 import 'business_sync_entity_policy.dart';
+import 'business_sync_cursor.dart';
 
 class BusinessSyncResult {
   const BusinessSyncResult({
@@ -265,7 +266,10 @@ class BusinessSyncService {
           request = request.gte('updated_at', savedCursor['updated_at']!);
         } else if (!firstPage && pageUpdatedAt != null && pageRecordId != null) {
           request = request.or(
-            'updated_at.gt.$pageUpdatedAt,and(updated_at.eq.$pageUpdatedAt,record_id.gt.$pageRecordId)',
+            BusinessSyncCursor.nextPageFilter(
+              updatedAt: pageUpdatedAt,
+              recordId: pageRecordId,
+            ),
           );
         }
 
