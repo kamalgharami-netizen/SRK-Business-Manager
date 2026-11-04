@@ -3,6 +3,7 @@ import 'package:supabase_flutter/supabase_flutter.dart';
 import '../local/app_database.dart';
 import 'business_sync_entity_policy.dart';
 import 'business_sync_cursor.dart';
+import 'business_sync_pull_checkpoint.dart';
 
 class BusinessSyncResult {
   const BusinessSyncResult({
@@ -276,62 +277,39 @@ class BusinessSyncService {
         final rows = await request;
         if (rows.isEmpty) break;
 
-        for (final rawRow in rows) {
-          final row = Map<String, dynamic>.from(rawRow as Map);
-          final recordId = row['record_id'] as String;
-          final remoteRevision = row['updated_at'] as String;
-          try {
-            final hasLocalPendingChange =
-                await database.hasPendingSyncOperation(
-              tableName: entityType,
-              recordId: recordId,
-            );
-            if (hasLocalPendingChange) {
-              // Do not move the checkpoint past a cloud conflict or a queued
-              // local edit. The next sync retries this exact boundary.
-              failed++;
-              stopEntity = true;
-              break;
-            }
-
-            final localRevision = await database.getSyncRevision(
-              entityType: entityType,
-              recordId: recordId,
-            );
-            if (localRevision != remoteRevision) {
-              final payload = Map<String, dynamic>.from(
-                row['payload'] as Map,
-              );
-              await database.applyRemoteSyncRecord(
-                tableName: entityType,
-                recordId: recordId,
-                payload: payload,
-                isDeleted: row['is_deleted'] as bool? ?? false,
-              );
-              await database.saveSyncRevision(
-                entityType: entityType,
-                recordId: recordId,
-                remoteUpdatedAt: remoteRevision,
-              );
-              downloaded++;
-            }
-
-            // Checkpoint only after apply + revision persistence, or after a
-            // confirmed unchanged revision. A crash before this point safely
-            // replays the row; a failed apply never advances the cursor.
-            await database.saveSyncPullCursor(
-              entityType: entityType,
-              updatedAt: remoteRevision,
-              recordId: recordId,
-            );
-            pageUpdatedAt = remoteRevision;
-            pageRecordId = recordId;
-          } catch (_) {
-            failed++;
-            stopEntity = true;
-            break;
-          }
-        }
+        final pageResult = await BusinessSyncPullCheckpoint.processPage(
+          entityType: entityType,
+          rows: rows.map((rawRow) => Map<String, dynamic>.from(rawRow as Map)).toList(growable: false),
+          hasPendingLocalChange: (recordId) => database.hasPendingSyncOperation(
+            tableName: entityType,
+            recordId: recordId,
+          ),
+          getLocalRevision: (recordId) => database.getSyncRevision(
+            entityType: entityType,
+            recordId: recordId,
+          ),
+          applyRemote: (row) => database.applyRemoteSyncRecord(
+            tableName: entityType,
+            recordId: row['record_id'] as String,
+            payload: Map<String, dynamic>.from(row['payload'] as Map),
+            isDeleted: row['is_deleted'] as bool? ?? false,
+          ),
+          saveRevision: (recordId, revision) => database.saveSyncRevision(
+            entityType: entityType,
+            recordId: recordId,
+            remoteUpdatedAt: revision,
+          ),
+          saveCursor: (updatedAt, recordId) => database.saveSyncPullCursor(
+            entityType: entityType,
+            updatedAt: updatedAt,
+            recordId: recordId,
+          ),
+        );
+        downloaded += pageResult.applied;
+        failed += pageResult.failures;
+        stopEntity = pageResult.stopped;
+        pageUpdatedAt = pageResult.lastUpdatedAt;
+        pageRecordId = pageResult.lastRecordId;
 
         if (stopEntity || rows.length < pageSize) break;
         firstPage = false;
