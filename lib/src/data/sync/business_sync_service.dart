@@ -228,58 +228,109 @@ class BusinessSyncService {
     var failed = 0;
 
     for (final entityType in BusinessSyncEntityPolicy.pullOrder) {
-      var offset = 0;
-      while (true) {
-        final rows = await _client
+      // Freeze the timestamp boundary for this pass. Rows written after this
+      // query are picked up by the next pass rather than extending this scan.
+      final newestRows = await _client
+          .from('business_records')
+          .select('updated_at')
+          .eq('business_id', businessId)
+          .eq('entity_type', entityType)
+          .order('updated_at', ascending: false)
+          .order('record_id', ascending: false)
+          .limit(1);
+      if (newestRows.isEmpty) continue;
+      final upperUpdatedAt = newestRows.first['updated_at'] as String;
+
+      final savedCursor = await database.getSyncPullCursor(entityType);
+      // Re-scan the last timestamp inclusively on each sync. This deliberately
+      // catches records inserted later with the same timestamp but a lower
+      // record_id; revision checks make the overlap idempotent.
+      String? pageUpdatedAt;
+      String? pageRecordId;
+      var firstPage = true;
+      var stopEntity = false;
+
+      while (!stopEntity) {
+        dynamic request = _client
             .from('business_records')
             .select('entity_type,record_id,payload,is_deleted,updated_at')
             .eq('business_id', businessId)
             .eq('entity_type', entityType)
+            .lte('updated_at', upperUpdatedAt)
+            .order('updated_at')
             .order('record_id')
-            .range(offset, offset + pageSize - 1);
+            .limit(pageSize);
+
+        if (firstPage && savedCursor != null) {
+          request = request.gte('updated_at', savedCursor['updated_at']!);
+        } else if (!firstPage && pageUpdatedAt != null && pageRecordId != null) {
+          request = request.or(
+            'updated_at.gt.$pageUpdatedAt,and(updated_at.eq.$pageUpdatedAt,record_id.gt.$pageRecordId)',
+          );
+        }
+
+        final rows = await request;
+        if (rows.isEmpty) break;
 
         for (final rawRow in rows) {
           final row = Map<String, dynamic>.from(rawRow as Map);
           final recordId = row['record_id'] as String;
+          final remoteRevision = row['updated_at'] as String;
           try {
             final hasLocalPendingChange =
                 await database.hasPendingSyncOperation(
               tableName: entityType,
               recordId: recordId,
             );
-            if (hasLocalPendingChange) continue;
+            if (hasLocalPendingChange) {
+              // Do not move the checkpoint past a cloud conflict or a queued
+              // local edit. The next sync retries this exact boundary.
+              failed++;
+              stopEntity = true;
+              break;
+            }
 
-            final remoteRevision = row['updated_at'] as String;
             final localRevision = await database.getSyncRevision(
               entityType: entityType,
               recordId: recordId,
             );
-            // The pull remains a full paged reconciliation, but unchanged
-            // cloud rows no longer trigger SQLite writes on every sync.
-            if (localRevision == remoteRevision) continue;
+            if (localRevision != remoteRevision) {
+              final payload = Map<String, dynamic>.from(
+                row['payload'] as Map,
+              );
+              await database.applyRemoteSyncRecord(
+                tableName: entityType,
+                recordId: recordId,
+                payload: payload,
+                isDeleted: row['is_deleted'] as bool? ?? false,
+              );
+              await database.saveSyncRevision(
+                entityType: entityType,
+                recordId: recordId,
+                remoteUpdatedAt: remoteRevision,
+              );
+              downloaded++;
+            }
 
-            final payload = Map<String, dynamic>.from(
-              row['payload'] as Map,
-            );
-            await database.applyRemoteSyncRecord(
-              tableName: entityType,
-              recordId: recordId,
-              payload: payload,
-              isDeleted: row['is_deleted'] as bool? ?? false,
-            );
-            await database.saveSyncRevision(
+            // Checkpoint only after apply + revision persistence, or after a
+            // confirmed unchanged revision. A crash before this point safely
+            // replays the row; a failed apply never advances the cursor.
+            await database.saveSyncPullCursor(
               entityType: entityType,
+              updatedAt: remoteRevision,
               recordId: recordId,
-              remoteUpdatedAt: remoteRevision,
             );
-            downloaded++;
+            pageUpdatedAt = remoteRevision;
+            pageRecordId = recordId;
           } catch (_) {
             failed++;
+            stopEntity = true;
+            break;
           }
         }
 
-        offset += rows.length;
-        if (rows.length < pageSize) break;
+        if (stopEntity || rows.length < pageSize) break;
+        firstPage = false;
       }
     }
 
