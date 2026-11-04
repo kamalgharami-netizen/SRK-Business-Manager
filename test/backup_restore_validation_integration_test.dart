@@ -27,7 +27,7 @@ void main() {
 
   test('restores a valid backup, preserves safety copy, and allows new writes', () async {
     const pathProviderChannel = MethodChannel('plugins.flutter.io/path_provider');
-    pathProviderChannel.setMockMethodCallHandler((call) async {
+    TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger.setMockMethodCallHandler(pathProviderChannel, (call) async {
       if (call.method == 'getApplicationDocumentsDirectory') {
         return temporaryDirectory.path;
       }
@@ -75,7 +75,7 @@ void main() {
     ]);
     expect(await reopened.rawQuery('PRAGMA integrity_check'), isNotEmpty);
     await appDatabase.close();
-    pathProviderChannel.setMockMethodCallHandler(null);
+    TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger.setMockMethodCallHandler(pathProviderChannel, null);
   });
 
   test('rejects a truncated/non-SQLite backup without changing active data',
