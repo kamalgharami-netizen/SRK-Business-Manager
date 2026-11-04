@@ -94,4 +94,68 @@ void main() {
     expect(applyCount, 0);
     expect(cursors, ['a']);
   });
+  test('processes a large page without skipping or reordering checkpoints', () async {
+    const count = 1200;
+    final largeRows = List.generate(
+      count,
+      (index) => {
+        'record_id': 'record-${index.toString().padLeft(4, '0')}',
+        'updated_at': revision,
+        'payload': {'value': index},
+      },
+    );
+    final saved = <String>[];
+    final result = await BusinessSyncPullCheckpoint.processPage(
+      entityType: 'parties',
+      rows: largeRows,
+      hasPendingLocalChange: (_) async => false,
+      getLocalRevision: (_) async => null,
+      applyRemote: (_) async {},
+      saveRevision: (_, __) async {},
+      saveCursor: (_, id) async => saved.add(id),
+    );
+    expect(result.applied, count);
+    expect(result.failures, 0);
+    expect(result.stopped, isFalse);
+    expect(saved, hasLength(count));
+    expect(saved.first, 'record-0000');
+    expect(saved.last, 'record-1199');
+    expect(result.lastRecordId, 'record-1199');
+  });
+
+  test('resumes from the last committed cursor after a later row fails', () async {
+    final firstRunCursors = <String>[];
+    final firstRun = await BusinessSyncPullCheckpoint.processPage(
+      entityType: 'parties',
+      rows: rows(),
+      hasPendingLocalChange: (_) async => false,
+      getLocalRevision: (_) async => null,
+      applyRemote: (row) async {
+        if (row['record_id'] == 'c') throw StateError('temporary failure');
+      },
+      saveRevision: (_, __) async {},
+      saveCursor: (_, id) async => firstRunCursors.add(id),
+    );
+    expect(firstRun.stopped, isTrue);
+    expect(firstRun.lastRecordId, 'b');
+    expect(firstRunCursors, ['a', 'b']);
+
+    final remainingRows = rows().where(
+      (row) => (row['record_id'] as String).compareTo(firstRun.lastRecordId!) > 0,
+    ).toList();
+    final secondRunCursors = <String>[];
+    final secondRun = await BusinessSyncPullCheckpoint.processPage(
+      entityType: 'parties',
+      rows: remainingRows,
+      hasPendingLocalChange: (_) async => false,
+      getLocalRevision: (_) async => null,
+      applyRemote: (_) async {},
+      saveRevision: (_, __) async {},
+      saveCursor: (_, id) async => secondRunCursors.add(id),
+    );
+    expect(secondRun.stopped, isFalse);
+    expect(secondRunCursors, ['c']);
+    expect(secondRun.lastRecordId, 'c');
+  });
+
 }
