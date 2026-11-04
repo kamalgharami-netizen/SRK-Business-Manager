@@ -111,7 +111,7 @@ void main() {
     });
 
     final beforeRestart = await db.rawQuery('''
-      SELECT COUNT(*) AS entries,
+      SELECT COUNT(DISTINCT je.id) AS entries,
              (SELECT COUNT(*) FROM journal_lines) AS lines,
              COALESCE(SUM(debit), 0) AS debit,
              COALESCE(SUM(credit), 0) AS credit
