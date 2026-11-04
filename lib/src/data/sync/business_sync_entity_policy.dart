@@ -21,6 +21,10 @@ class BusinessSyncEntityPolicy {
 
   static bool supports(String entityType) => pullOrder.contains(entityType);
 
+  /// Returns false when a downloaded row is already at the local revision.
+  static bool shouldApplyRemoteRevision(String? localRevision, String remoteRevision) =>
+      localRevision != remoteRevision;
+
   /// Mirrors the server-side can_write_business_entity role policy.
   static bool canWrite(String role, String entityType) {
     switch (role.trim().toLowerCase()) {
