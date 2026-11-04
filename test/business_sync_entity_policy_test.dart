@@ -3,6 +3,24 @@ import 'package:srk_business_manager/src/data/sync/business_sync_entity_policy.d
 
 void main() {
   group('BusinessSyncEntityPolicy', () {
+    test('does not reapply an unchanged cloud revision', () {
+      expect(
+        BusinessSyncEntityPolicy.shouldApplyRemoteRevision('rev-1', 'rev-1'),
+        isFalse,
+      );
+    });
+
+    test('applies a new or previously unseen cloud revision', () {
+      expect(
+        BusinessSyncEntityPolicy.shouldApplyRemoteRevision('rev-1', 'rev-2'),
+        isTrue,
+      );
+      expect(
+        BusinessSyncEntityPolicy.shouldApplyRemoteRevision(null, 'rev-1'),
+        isTrue,
+      );
+    });
+
     test('supports every entity in the dependency-aware pull order', () {
       for (final entity in BusinessSyncEntityPolicy.pullOrder) {
         expect(BusinessSyncEntityPolicy.supports(entity), isTrue, reason: entity);
