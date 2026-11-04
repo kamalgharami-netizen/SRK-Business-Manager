@@ -15,10 +15,21 @@ import '../sync/business_sync_entity_policy.dart';
 
 /// Local-first database shared by the Windows and Android applications.
 class AppDatabase {
-  AppDatabase._();
+  AppDatabase._([String? databasePathOverride])
+      : _databasePathOverride = databasePathOverride;
+
+  /// Creates an isolated file-backed database for integration tests.
+  /// Production code must use [AppDatabase.instance].
+  factory AppDatabase.forTesting({required String databasePath}) {
+    if (databasePath.trim().isEmpty) {
+      throw ArgumentError.value(databasePath, 'databasePath');
+    }
+    return AppDatabase._(databasePath);
+  }
 
   static final AppDatabase instance = AppDatabase._();
   static const int _databaseVersion = 34;
+  final String? _databasePathOverride;
   String? _databasePath;
   String? _activeBusinessId;
   String? _activeBusinessRole;
@@ -89,20 +100,25 @@ class AppDatabase {
       databaseFactory = databaseFactoryFfi;
     }
 
-    final documents = await getApplicationDocumentsDirectory();
-    final databasePath = _activeBusinessId == null
-        ? p.join(
-            documents.path,
-            'SRK Business Manager',
-            'srk_business_manager.db',
-          )
-        : p.join(
-            documents.path,
-            'SRK Business Manager',
-            'Businesses',
-            _activeBusinessId!,
-            'srk_business_manager.db',
-          );
+    final String databasePath;
+    if (_databasePathOverride != null) {
+      databasePath = _databasePathOverride;
+    } else {
+      final documents = await getApplicationDocumentsDirectory();
+      databasePath = _activeBusinessId == null
+          ? p.join(
+              documents.path,
+              'SRK Business Manager',
+              'srk_business_manager.db',
+            )
+          : p.join(
+              documents.path,
+              'SRK Business Manager',
+              'Businesses',
+              _activeBusinessId!,
+              'srk_business_manager.db',
+            );
+    }
 
     _databasePath = databasePath;
     await Directory(p.dirname(databasePath)).create(recursive: true);
