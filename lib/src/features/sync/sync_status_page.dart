@@ -62,6 +62,35 @@ class _SyncStatusPageState extends State<SyncStatusPage> {
     }
   }
 
+  Future<void> _retryOperation(Map<String, dynamic> item) async {
+    final businessId = AppDatabase.instance.activeBusinessId;
+    if (!widget.cloudConfigured || businessId == null || _syncing) return;
+    try {
+      await AppDatabase.instance.retrySyncOperationNow(item['id'] as int);
+      setState(() => _syncing = true);
+      final result = await BusinessSyncService(businessId: businessId).syncNow();
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text(
+          'Retry finished: ${result.uploaded} uploaded, '
+          '${result.uploadFailures + result.downloadFailures} failed.',
+        )),
+      );
+    } catch (error) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('Retry could not be completed. $error')),
+      );
+    } finally {
+      if (mounted) {
+        setState(() {
+          _syncing = false;
+          _pendingFuture = _loadPending();
+        });
+      }
+    }
+  }
+
   Future<void> _resolveConflict(
     Map<String, dynamic> item,
     String resolution,
@@ -218,6 +247,17 @@ class _SyncStatusPageState extends State<SyncStatusPage> {
                             ),
                           if (error != null && error.isNotEmpty)
                             Text(error, style: TextStyle(color: isConflict ? Theme.of(context).colorScheme.error : null)),
+                          if (!isConflict && widget.cloudConfigured && AppDatabase.instance.activeBusinessId != null) ...[
+                            const SizedBox(height: 8),
+                            Align(
+                              alignment: Alignment.centerLeft,
+                              child: OutlinedButton.icon(
+                                onPressed: _syncing ? null : () => _retryOperation(item),
+                                icon: const Icon(Icons.refresh),
+                                label: const Text('Retry now'),
+                              ),
+                            ),
+                          ],
                           if (isConflict && widget.cloudConfigured && AppDatabase.instance.activeBusinessId != null) ...[
                             const SizedBox(height: 8),
                             Wrap(

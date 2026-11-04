@@ -1363,6 +1363,30 @@ class AppDatabase {
     );
   }
 
+  /// Makes a failed non-conflict operation immediately eligible for retry.
+  /// Conflict records must be resolved explicitly and cannot use this shortcut.
+  Future<int> retrySyncOperationNow(int id) async {
+    final db = await database;
+    final rows = await db.query(
+      'sync_queue',
+      columns: ['last_error'],
+      where: 'id = ?',
+      whereArgs: [id],
+      limit: 1,
+    );
+    if (rows.isEmpty) return 0;
+    final error = rows.first['last_error']?.toString() ?? '';
+    if (error.contains('SYNC_CONFLICT')) {
+      throw StateError('Resolve the cloud conflict instead of retrying it automatically.');
+    }
+    return db.update(
+      'sync_queue',
+      {'retry_count': 0, 'last_error': null, 'next_retry_at': null},
+      where: 'id = ?',
+      whereArgs: [id],
+    );
+  }
+
   /// Makes one delayed operation eligible after an explicit conflict decision.
   Future<int> resetSyncOperationRetry(int id) async {
     final db = await database;
