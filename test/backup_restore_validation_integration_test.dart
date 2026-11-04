@@ -78,10 +78,8 @@ void main() {
       ),
     );
 
-    // A rejected restore must leave the active database open and usable.
     final active = await appDatabase.database;
-    expect(await active.rawQuery('PRAGMA integrity_check'),
-        isNotEmpty);
+    expect(await active.rawQuery('PRAGMA integrity_check'), isNotEmpty);
     await appDatabase.close();
   });
 
@@ -98,7 +96,6 @@ void main() {
 
     await appDatabase.close();
   });
-}
 
   test('rejects a backup from a different business without changing active data',
       () async {
@@ -112,9 +109,11 @@ void main() {
     });
     await appDatabase.close();
 
-    final foreignBackupPath = '${temporaryDirectory.path}/foreign-business.db';
+    final foreignBackupPath =
+        '${temporaryDirectory.path}/foreign-business.db';
     await File(activeDatabasePath).copy(foreignBackupPath);
-    final foreignBackup = await databaseFactory.openDatabase(foreignBackupPath);
+    final foreignBackup =
+        await databaseFactory.openDatabase(foreignBackupPath);
     await foreignBackup.update(
       'app_settings',
       {'setting_value': '11111111-1111-4111-8111-111111111111'},
@@ -171,3 +170,4 @@ void main() {
     expect(parties.single['name'], 'Keep current schema data');
     await appDatabase.close();
   });
+}
