@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:sqflite/sqflite.dart' show ConflictAlgorithm;
 import 'package:supabase_flutter/supabase_flutter.dart';
 
 import '../dashboard/dashboard_page.dart';
