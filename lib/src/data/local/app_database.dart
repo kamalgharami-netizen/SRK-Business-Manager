@@ -18,7 +18,7 @@ class AppDatabase {
   AppDatabase._();
 
   static final AppDatabase instance = AppDatabase._();
-  static const int _databaseVersion = 33;
+  static const int _databaseVersion = 34;
   String? _databasePath;
   String? _activeBusinessId;
   String? _activeBusinessRole;
@@ -320,6 +320,14 @@ class AppDatabase {
         if (oldVersion < 33) {
           await db.execute('ALTER TABLE stock_movements ADD COLUMN inventory_effect_json TEXT');
         }
+
+        if (oldVersion < 34) {
+          await db.execute('''CREATE TABLE IF NOT EXISTS sync_pull_cursors (
+            entity_type TEXT PRIMARY KEY,
+            cursor_updated_at TEXT NOT NULL,
+            cursor_record_id TEXT NOT NULL
+          )''');
+        }
         if (oldVersion < 29) {
           await db.execute('ALTER TABLE staff_members ADD COLUMN sync_id TEXT');
           await _backfillSyncIds(db, 'staff_members');
@@ -580,6 +588,14 @@ class AppDatabase {
         record_id TEXT NOT NULL,
         remote_updated_at TEXT NOT NULL,
         PRIMARY KEY (entity_type, record_id)
+      )
+    ''');
+
+    await db.execute('''
+      CREATE TABLE sync_pull_cursors (
+        entity_type TEXT PRIMARY KEY,
+        cursor_updated_at TEXT NOT NULL,
+        cursor_record_id TEXT NOT NULL
       )
     ''');
 
@@ -1438,6 +1454,41 @@ class AppDatabase {
     );
   }
 
+
+  /// Returns the last committed keyset cursor for one entity pull.
+  Future<Map<String, String>?> getSyncPullCursor(String entityType) async {
+    final db = await database;
+    final rows = await db.query(
+      'sync_pull_cursors',
+      columns: ['cursor_updated_at', 'cursor_record_id'],
+      where: 'entity_type = ?',
+      whereArgs: [entityType],
+      limit: 1,
+    );
+    if (rows.isEmpty) return null;
+    return {
+      'updated_at': rows.single['cursor_updated_at'] as String,
+      'record_id': rows.single['cursor_record_id'] as String,
+    };
+  }
+
+  /// Commits a pull cursor only after its corresponding row was handled.
+  Future<void> saveSyncPullCursor({
+    required String entityType,
+    required String updatedAt,
+    required String recordId,
+  }) async {
+    final db = await database;
+    await db.insert(
+      'sync_pull_cursors',
+      {
+        'entity_type': entityType,
+        'cursor_updated_at': updatedAt,
+        'cursor_record_id': recordId,
+      },
+      conflictAlgorithm: ConflictAlgorithm.replace,
+    );
+  }
 
   /// Records an explicit conflict decision locally for later review.
   Future<void> recordConflictResolution({
