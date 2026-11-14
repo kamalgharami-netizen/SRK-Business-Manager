@@ -14,6 +14,7 @@ void main() {
 
   Future<Database> openFixture() async {
     final database = await databaseFactoryFfi.openDatabase(databasePath);
+    if (await File(databasePath).exists()) return database;
     await database.execute('CREATE TABLE parties(id INTEGER PRIMARY KEY, opening_balance REAL, balance_type TEXT, created_at TEXT)');
     await database.execute('CREATE TABLE invoices(id INTEGER PRIMARY KEY, invoice_type TEXT, party_id INTEGER, invoice_date TEXT, grand_total REAL)');
     await database.execute('CREATE TABLE debit_notes(id INTEGER PRIMARY KEY, party_id INTEGER, note_date TEXT, grand_total REAL, status TEXT)');
